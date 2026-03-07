@@ -1,0 +1,70 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env/
+
+# uv
+uv.lock
+
+# Data (local only — never commit)
+data/corpus/*
+data/vectordb/*
+data/models/*
+data/*.db
+!data/corpus/.gitkeep
+!data/vectordb/.gitkeep
+!data/models/.gitkeep
+
+# Models
+models/*.gguf
+models/*.bin
+models/embedding-model/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+*.env
+
+# Copilot workspace instructions (local dev only)
+.github/instructions/
+.github/copilot.intstructions.md
+
+# System design (optional — remove if you want to track these)
+# system-design/
+
+# Logs
+*.log
+logs/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# PyInstaller
+*.spec
+
+# Data and Models (optional — remove if you want to track these)
+data/
+models/
+
+# Misc
+system-design/
