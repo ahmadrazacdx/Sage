@@ -1,11 +1,12 @@
 [project]
 name = "sage"
 version = "0.1.0"
-description = "Multi-Agent offline RAG-based Educational Assistant"
+description = "Multi-Agent offline-first RAG-based Educational Assistant"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [
-    { name = "Ahmad Raza", email = "ahmee2.0ofc@gmail.com" }
+    { name = "Ahmad Raza", email = "ahmad.raza@scholar.tu.edu.pk" },
+    { name = "Abdullah Khan", email = "abdullah.khan@scholar.tu.edu.pk" }
 ]
 requires-python = ">=3.11,<3.13"
 dependencies = [
@@ -15,7 +16,7 @@ dependencies = [
     "langchain-openai>=0.3",
     "langchain-community>=0.3",
     "langgraph-checkpoint-sqlite>=3.0",
-    "langmem>=0.1",
+    "langmem>=0.0.20",
     "chromadb>=0.5",
     "sentence-transformers",
     "langchain-sandbox>=0.0.1",
@@ -43,6 +44,7 @@ online = [
     "arxiv>=2.1",
     "duckduckgo-search>=7.0",
     "wikipedia>=1.4",
+    "langchain-mcp-adapters>=0.2",
 ]
 
 [project.scripts]
