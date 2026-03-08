@@ -10,9 +10,6 @@ wheels/
 .venv
 .env/
 
-# uv
-uv.lock
-
 # Data (local only — never commit)
 data/corpus/*
 data/vectordb/*

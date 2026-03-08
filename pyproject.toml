@@ -9,6 +9,27 @@ authors = [
     { name = "Abdullah Khan", email = "abdullah.khan@scholar.tu.edu.pk" }
 ]
 requires-python = ">=3.11,<3.13"
+keywords = [
+    "rag",
+    "llm",
+    "educational-assistant",
+    "offline-ai",
+    "multi-agent"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Education",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Environment :: Console",
+    "Natural Language :: English",
+]
 dependencies = [
     "gradio>=5.0",
     "langchain>=1.0",
@@ -19,7 +40,7 @@ dependencies = [
     "langmem>=0.0.20",
     "chromadb>=0.5",
     "sentence-transformers",
-    "langchain-sandbox>=0.0.1",
+    "langchain-sandbox>=0.0.1,<0.0.6",
     "pydantic>=2.9",
     "pydantic-settings",
     "structlog>=24.0",
@@ -39,7 +60,7 @@ dev = [
     "ruff",
     "pre-commit",
 ]
-gpu = ["llama-cpp-python[cuda]"]
+gpu = ["llama-cpp-python"]
 online = [
     "arxiv>=2.1",
     "duckduckgo-search>=7.0",
