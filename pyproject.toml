@@ -31,7 +31,7 @@ classifiers = [
     "Natural Language :: English",
 ]
 dependencies = [
-    "gradio>=5.0",
+    "streamlit>=1.55",
     "langchain>=1.0",
     "langgraph>=1.0",
     "langchain-openai>=0.3",
