@@ -31,7 +31,7 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
       - run: uv sync --all-extras
       - name: Audit dependencies
@@ -47,7 +47,7 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
       - uses: github/codeql-action/init@v3
         with:
