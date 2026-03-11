@@ -14,7 +14,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
       - run: uv sync --all-extras
@@ -34,7 +34,7 @@ jobs:
   #       python-version: ["3.11", "3.12"]
   #   runs-on: ${{ matrix.os }}
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@v6
   #     - uses: astral-sh/setup-uv@v5
   #     - run: uv python install ${{ matrix.python-version }}
   #     - run: uv sync --all-extras
@@ -51,7 +51,7 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
       - name: Build wheel
@@ -68,7 +68,7 @@ jobs:
   architecture-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Verify import layering
         run: |
           # tools/ must never import from agents/ or rag/
