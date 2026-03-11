@@ -1,0 +1,84 @@
+# Sage — Default System Configuration
+
+[app]
+name      = "Sage"
+data_dir  = "artifacts/data"
+log_level = "info"
+
+[llm]
+model_path     = "artifacts/models/Qwen3.5-4B-Q4_K_M.gguf"
+model_name     = "Qwen3.5-4B"
+llama_cpp_bin  = "artifacts/models/llama-server.exe"
+
+# Hardware auto-scaling
+gpu_layers     = "auto"
+context_window = "auto"
+
+# KV-cache quantization strategy
+cache_type_k = "q4_0"
+cache_type_v = "q4_0"
+
+# Generation parameters
+temperature    = 0.3
+max_tokens     = 4096
+thinking_mode = false
+
+[embedding]
+tier           = "lite"
+model_lite     = "artifacts/models/embedding-models/arctic-embed-s"
+model_standard = "artifacts/models/embedding-models/arctic-embed-m-v2"
+
+[rag]
+curriculum_collection    = "curriculum"
+user_uploads_collection  = "user_uploads"
+vectordb_lite_dir        = "artifacts/data/databases/vectordb-lite"
+vectordb_standard_dir    = "artifacts/data/databases/vectordb-standard"
+
+# Chunking
+chunk_size  = 512
+chunk_overlap = 64
+
+# Hybrid retrieval
+top_k                   = 5
+rrf_k_constant          = 60
+max_retrieval_iterations = 3
+
+[database]
+path     = "artifacts/data/databases/sage.db"
+wal_mode = true
+
+[agent]
+max_input_tokens    = 2000
+max_history_tokens  = 800
+max_conversations   = 100
+llm_timeout         = 120
+diagram_max_retries = 3
+research_max_iters  = 2
+
+[tools.sandbox]
+timeout         = 10
+max_code_length = 8000
+
+[tools.search]
+arxiv_timeout  = 15
+web_timeout    = 15
+wiki_timeout   = 15
+max_results    = 5
+
+[tools.export]
+typst_bin  = "typst"
+output_dir = "artifacts/data/exports"
+
+[corpus]
+max_user_documents  = 100
+allowed_extensions  = [".pdf", ".docx", ".pptx", ".md", ".txt"]
+
+[network]
+force_offline  = false
+check_interval = 60
+timeout        = 2.0
+
+[ui]
+host               = "localhost"
+port               = 8501
+browser_auto_open  = true

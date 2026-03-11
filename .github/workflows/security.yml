@@ -1,6 +1,8 @@
 name: Security
 
 on:
+  push:
+    branches: [main, dev, "dev/**"]
   pull_request:
     branches: [main]
   schedule:
@@ -11,8 +13,22 @@ permissions:
   contents: read
 
 jobs:
-  dependency-audit:
+  # Runs on every push to dev/main AND PRs AND weekly.
+  # Catches accidentally committed secrets as early as possible.
+  secrets-scan:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-audit:
+    # Runs only on PRs to main AND the weekly schedule.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -24,9 +40,11 @@ jobs:
           uvx pip-audit -r /tmp/requirements.txt --strict --desc
 
   codeql:
+    # Runs only on PRs to main AND the weekly schedule.
     runs-on: ubuntu-latest
     permissions:
       security-events: write
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -36,13 +54,3 @@ jobs:
           languages: python
       - run: uv sync --all-extras
       - uses: github/codeql-action/analyze@v3
-
-  secrets-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

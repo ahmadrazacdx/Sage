@@ -12,6 +12,7 @@ repos:
       - id: mypy
         additional_dependencies:
           - pydantic
+          - pydantic-settings
         args: [--config-file=pyproject.toml]
         pass_filenames: false
         entry: mypy src/
