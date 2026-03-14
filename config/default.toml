@@ -80,5 +80,5 @@ timeout        = 2.0
 
 [ui]
 host               = "localhost"
-port               = 8501
+port               = 8765
 browser_auto_open  = true
