@@ -41,7 +41,7 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=3.0",
     "langmem>=0.0.20",
     "chromadb>=0.5",
-    "sentence-transformers",
+    "fastembed>=0.4.2",
     "langchain-sandbox>=0.0.1,<0.0.6",
     "pydantic>=2.9",
     "pydantic-settings",
@@ -61,6 +61,8 @@ dev = [
     "mypy",
     "ruff",
     "pre-commit",
+    "ipykernel",
+    "pip"
 ]
 gpu = ["llama-cpp-python"]
 online = [
@@ -76,6 +78,8 @@ sage = "sage.__main__:main"
 [build-system]
 requires = ["uv_build>=0.10.9,<0.11.0"]
 build-backend = "uv_build"
+
+
 
 # ── Ruff ─────────────────────────────────────────────────────
 [tool.ruff]
