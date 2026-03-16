@@ -15,6 +15,7 @@ Usage::
 from __future__ import annotations
 
 import atexit
+import json
 import shutil
 import signal
 import socket
@@ -36,9 +37,9 @@ log = structlog.get_logger(__name__)
 # --- Constants ---
 _LLAMA_SERVER_HOST: str = "127.0.0.1"
 _HEALTH_POLL_INTERVAL_S: float = 0.5
-_SERVER_STARTUP_TIMEOUT_S: float = 60.0
+_SERVER_STARTUP_TIMEOUT_S: float = 180.0
 
-# Vulkan: VRAM is unknown via vulkaninfo; disable offload to prevent iGPU bottlenecks.
+# Vulkan: VRAM is unknown via vulkaninfo; offload conservatively.
 _VULKAN_DEFAULT_LAYERS: int = 0
 
 # GPU layer offload thresholds (VRAM in MB).
@@ -47,21 +48,23 @@ _VRAM_PARTIAL_OFFLOAD_MB: int = 2_000
 _VRAM_PARTIAL_LAYERS: int = 24
 _GPU_ALL_LAYERS: int = -1  # llama.cpp sentinel: offload every layer to GPU
 
-# CPU RAM thresholds and corresponding context sizes (MB).
-_RAM_16GB_MB: int = 16_000
-_RAM_8GB_MB: int = 8_000
-_RAM_6GB_MB: int = 6_000
+# ---- context-size thresholds ----
 
-_CTX_32K: int = 32_768
+_AVAIL_7GB_MB: int = 7_000   # comfortable: ctx=16K
+_AVAIL_5GB_MB: int = 5_000   # adequate: ctx=8K
+_AVAIL_3_5GB_MB: int = 3_500 # tight: ctx=4K
+# Below 3.5 GB available: ctx=2K, mmap paging is expected
+
 _CTX_16K: int = 16_384
 _CTX_8K: int = 8_192
 _CTX_4K: int = 4_096
+_CTX_2K: int = 2_048
 
 # GPU VRAM thresholds for context scaling (MB).
 _VRAM_8GB_MB: int = 8_000
 _VRAM_4GB_MB: int = 4_000
-_CTX_VRAM_8GB: int = 131_072
-_CTX_VRAM_4GB: int = 65_536
+_CTX_VRAM_8GB: int = 65_536
+_CTX_VRAM_4GB: int = 32_768
 _CTX_VRAM_LOW: int = 8_192
 
 
@@ -132,7 +135,7 @@ def detect_gpu() -> dict[str, Any]:
         except (subprocess.TimeoutExpired, OSError) as exc:
             log.warning("gpu_detection_vulkan_failed", error=str(exc))
 
-    # 3. CPU fallback
+    # CPU fallback
     return {"backend": "cpu", "vram_mb": 0, "gpu_name": None}
 
 
@@ -170,9 +173,11 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
     """Return the value for ``--ctx-size`` based on hardware and config.
 
     When ``cfg.context_window`` is not ``"auto"``, that explicit value
-    is returned directly.  Otherwise available system RAM (CPU path) or
-    VRAM (GPU path) is used to select the largest context that leaves
-    sufficient headroom for the OS and application process.
+    is returned directly.
+
+    For CPU paths, uses ``psutil.virtual_memory().available`` — the
+    amount of RAM the OS can give to new allocations right now — not
+    total RAM.
     """
     if cfg.context_window != "auto":
         return int(cfg.context_window)
@@ -181,16 +186,34 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
     vram: int = gpu_info["vram_mb"]
 
     if backend == "cpu":
-        total_ram_mb: int = psutil.virtual_memory().total // (1024 * 1024)
-        if total_ram_mb >= _RAM_16GB_MB:
-            return _CTX_32K
-        if total_ram_mb >= _RAM_8GB_MB:
+        available_mb: int = psutil.virtual_memory().available // (1024 * 1024)
+
+        try:
+            model_size_mb = cfg.model_path.stat().st_size // (1024 * 1024)
+        except OSError:
+            model_size_mb = 2860
+
+        size_diff = 2860 - model_size_mb
+        
+        # Absolute minimum floors to ensure OS and apps overhead is covered.
+        t_16k = max(_AVAIL_7GB_MB - size_diff, 4_000)
+        t_8k  = max(_AVAIL_5GB_MB - size_diff, 3_000)
+        t_4k  = max(_AVAIL_3_5GB_MB - size_diff, 2_000)
+
+        log.info(
+            "context_size_resolution",
+            available_ram_mb=available_mb,
+            model_size_mb=model_size_mb,
+            backend="cpu",
+        )
+
+        if available_mb >= t_16k:
+            return _CTX_16K
+        if available_mb >= t_8k:
             return _CTX_8K
-        if total_ram_mb >= _RAM_6GB_MB:
-            # 6GB systems cannot handle 8K context with a 4B parameter model without paging to disk.
-            # Limiting to 2K context provides a critical memory buffer.
-            return 2048
-        return _CTX_4K
+        if available_mb >= t_4k:
+            return _CTX_4K
+        return _CTX_2K
 
     # GPU path
     if vram >= _VRAM_8GB_MB:
@@ -198,6 +221,57 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
     if vram >= _VRAM_4GB_MB:
         return _CTX_VRAM_4GB
     return _CTX_VRAM_LOW
+
+
+# --- Thread Count ---
+def _resolve_thread_count() -> tuple[int, int]:
+    """Return (generation_threads, batch_threads) tuned for the CPU.
+
+    Two distinct thread counts are optimal for llama.cpp's dual-phase
+    compute:
+
+    - Token generation (decode): memory-bandwidth-bound.  More
+      threads beyond the physical-core count causes cache thrashing.
+      On Intel hybrid CPUs (Alder Lake / Raptor Lake), E-cores lack
+      AVX-512 and stall the reduction tree, use P-cores only.
+    - Prompt ingestion (encode / prefill): compute-bound.  All
+      cores including E-cores are useful here.
+
+    Heuristic for Intel 12th-gen hybrid (4P + 4E = 8 physical):
+        generation_threads = physical // 2  (P-cores only)
+        batch_threads      = physical       (all cores)
+
+    For non-hybrid CPUs (AMD Ryzen, Intel 10th/11th gen, ARM):
+        both = physical_cores
+    """
+    physical: int | None = psutil.cpu_count(logical=False)
+    logical: int | None = psutil.cpu_count(logical=True)
+
+    if physical is None:
+        physical = 4
+    if logical is None:
+        logical = physical
+
+    hyperthreading_ratio = logical / physical if physical > 0 else 1
+    is_likely_hybrid = physical >= 8 and hyperthreading_ratio < 2.0
+
+    if is_likely_hybrid:
+        # P-cores only for generation to avoid E-core stall in GEMM reduction.
+        gen_threads = max(physical // 2, 1)
+    else:
+        gen_threads = physical
+
+    batch_threads = physical  # All cores for prompt prefill (compute-bound).
+
+    log.info(
+        "thread_resolution",
+        physical_cores=physical,
+        logical_cores=logical,
+        is_likely_hybrid=is_likely_hybrid,
+        generation_threads=gen_threads,
+        batch_threads=batch_threads,
+    )
+    return gen_threads, batch_threads
 
 
 # --- Port Allocation ---
@@ -227,6 +301,7 @@ def _wait_for_server(port: int, timeout_s: float = _SERVER_STARTUP_TIMEOUT_S) ->
     """
     url = f"http://{_LLAMA_SERVER_HOST}:{port}/health"
     deadline = time.monotonic() + timeout_s
+    last_progress_log = time.monotonic()
 
     while time.monotonic() < deadline:
         try:
@@ -236,12 +311,53 @@ def _wait_for_server(port: int, timeout_s: float = _SERVER_STARTUP_TIMEOUT_S) ->
                     return
         except (urllib.error.URLError, OSError):
             pass
+
+        # Log progress every 15 seconds so the user sees the server is loading.
+        now = time.monotonic()
+        if now - last_progress_log >= 15.0:
+            elapsed = now - (deadline - timeout_s)
+            log.info(
+                "llama_server_loading",
+                elapsed_s=round(elapsed),
+                timeout_s=round(timeout_s),
+                port=port,
+            )
+            last_progress_log = now
+
         time.sleep(_HEALTH_POLL_INTERVAL_S)
 
     raise RuntimeError(
         f"llama-server did not become healthy within {timeout_s:.0f}s on port {port}. "
-        "Verify that the binary path is correct and the model file is not corrupted."
+        "Verify that the binary path is correct and the model file is not corrupted. "
+        "On slow storage (HDD/SATA SSD), increase llm.startup_timeout in config."
     )
+
+
+def _warmup_server(port: int) -> None:
+    """Send a single-token completion request to trigger GGML graph JIT.
+
+    llama.cpp compiles its compute graph on the first real inference
+    call.  Without a warm-up request, the first user message pays a
+    2–8 second compilation penalty.  This call forces that compilation
+    at startup instead.
+
+    Failures are logged at WARNING level and swallowed, a failed
+    warm-up is not fatal.
+    """
+    url = f"http://{_LLAMA_SERVER_HOST}:{port}/v1/completions"
+    payload = json.dumps({"prompt": ".", "max_tokens": 1}).encode()
+    req = urllib.request.Request(  # noqa: S310
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            resp.read()
+        log.info("llama_server_warmed_up", port=port)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("llama_server_warmup_failed", error=str(exc))
 
 
 # --- Teardown ---
@@ -271,7 +387,7 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     Performs hardware detection, resolves the appropriate GPU layer
     count and context size, and starts the llama-server subprocess on a
     dynamically allocated loopback port.  The call blocks until the
-    server passes its health check.
+    server passes its health check and a JIT warm-up request completes.
 
     Teardown is registered on two channels so the subprocess is never
     orphaned:
@@ -302,6 +418,7 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     gpu_info = detect_gpu()
     gpu_layers = _resolve_gpu_layers(gpu_info, cfg)
     ctx_size = _resolve_context_size(gpu_info, cfg)
+    gen_threads, batch_threads = _resolve_thread_count()
     port = _find_free_port()
 
     log.info(
@@ -311,12 +428,15 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
         vram_mb=gpu_info["vram_mb"],
         gpu_layers=gpu_layers,
         ctx_size=ctx_size,
+        gen_threads=gen_threads,
+        batch_threads=batch_threads,
         port=port,
         model=cfg.model_path.name,
+        available_ram_mb=psutil.virtual_memory().available // (1024 * 1024),
     )
 
     proc = subprocess.Popen(
-        _build_cmd(cfg, port, gpu_layers, ctx_size),
+        _build_cmd(cfg, port, gpu_layers, ctx_size, gen_threads, batch_threads),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -329,7 +449,8 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
 
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
-    _wait_for_server(port)
+    _wait_for_server(port, timeout_s=cfg.startup_timeout)
+    _warmup_server(port)
 
     log.info(
         "llama_server_ready",
@@ -364,12 +485,19 @@ def _build_cmd(
     port: int,
     gpu_layers: int,
     ctx_size: int,
+    gen_threads: int,
+    batch_threads: int,
 ) -> list[str]:
-    """Assemble the llama-server argv list from resolved hardware parameters."""
-    # Use physical cores to avoid hyperthreading cache thrashing
-    physical_cores = psutil.cpu_count(logical=False)
-    
-    return [
+    """Assemble the llama-server argv list from resolved hardware parameters.
+    """
+    try:
+        model_size_mb = cfg.model_path.stat().st_size // (1024 * 1024)
+    except OSError:
+        model_size_mb = 2860
+        
+    ubatch = "64" if model_size_mb < 2000 else "128"
+
+    cmd = [
         str(cfg.llama_cpp_bin),
         "--model",
         str(cfg.model_path),
@@ -382,18 +510,30 @@ def _build_cmd(
         "--n-gpu-layers",
         str(gpu_layers),
         "--threads",
-        str(physical_cores) if physical_cores else "4",
+        str(gen_threads),
+        "--threads-batch",
+        str(batch_threads),
         "--batch-size",
-        "128",  # Reduces prompt ingestion RAM spikes
-        "--mlock",
+        "512",
+        "--ubatch-size",
+        ubatch,
+        "--flash-attn", "auto",
         "--cache-type-k",
         cfg.cache_type_k,
         "--cache-type-v",
         cfg.cache_type_v,
-        "--jinja",  # required for Qwen3.5 Jinja2 chat template
+        "--cont-batching",        # interleave prompt ingestion with token generation
+        "--jinja",                # required for Qwen3.5 Jinja2 chat template
         "--reasoning-format",
-        "deepseek",  # strips <think> blocks from streamed output
+        "deepseek",               # strips <think> blocks from streamed output
     ]
+
+    if cfg.thinking_mode:
+        cmd += ["--reasoning-budget", str(cfg.reasoning_budget)]
+    else:
+        cmd += ["--reasoning-budget", "0"]
+
+    return cmd
 
 
 # --- LangChain Factory ---
@@ -405,6 +545,9 @@ def create_llm(port: int) -> ChatOpenAI:
     token budget is silently raised to 4096 to ensure the model has
     sufficient headroom for chain-of-thought tokens before producing
     the visible answer.
+
+    The request timeout is wired to ``agent.llm_timeout`` to prevent
+    indefinite hangs in multi-node agent loops when llama-server stalls.
 
     This function is stateless and may be called multiple times.  Each
     call returns an independent ``ChatOpenAI`` instance sharing the
@@ -418,6 +561,7 @@ def create_llm(port: int) -> ChatOpenAI:
         for use with ``astream_events`` v2.
     """
     cfg = get_settings().llm
+    cfg_agent = get_settings().agent
 
     max_tok = cfg.max_tokens
     if cfg.thinking_mode and max_tok < 4096:
@@ -435,4 +579,5 @@ def create_llm(port: int) -> ChatOpenAI:
         temperature=cfg.temperature,
         max_tokens=max_tok,
         streaming=True,
+        timeout=cfg_agent.llm_timeout,
     )

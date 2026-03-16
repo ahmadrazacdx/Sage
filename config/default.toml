@@ -13,6 +13,7 @@ llama_cpp_bin  = "artifacts/models/llama-server.exe"
 # Hardware auto-scaling
 gpu_layers     = "auto"
 context_window = "auto"
+startup_timeout = 180.0
 
 # KV-cache quantization strategy
 cache_type_k = "q4_0"
@@ -22,6 +23,7 @@ cache_type_v = "q4_0"
 temperature    = 0.3
 max_tokens     = 4096
 thinking_mode = false
+reasoning_budget = 0
 
 [embedding]
 tier           = "lite"

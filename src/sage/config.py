@@ -59,6 +59,11 @@ class AppSettings(BaseSettings):
 class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
+    # --- Deployment tier ---
+    # Controls which model, embedding model, and llama-server flags are active.
+    # "auto" = inferred from available RAM at startup.
+    deployment_tier: Literal["auto", "nano", "mid", "turbo"] = "auto"
+
     model_path: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
     model_name: str = "Qwen3.5-4B"
     llama_cpp_bin: Path = Path("artifacts/models/llama-server.exe")
@@ -73,6 +78,13 @@ class LLMSettings(BaseSettings):
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, ge=256, le=131072)
     thinking_mode: bool = False
+
+    # Caps Qwen3.5 <think>...</think> tokens server-side.
+    reasoning_budget: int = Field(default=1024, ge=0, le=32768)
+
+    # How long to wait for llama-server /health to become 200.
+    # 60s was too short: mmap cold-start on SATA SSD takes 60-120s for a 2.86 GB model.
+    startup_timeout: float = Field(default=180.0, ge=30.0, le=600.0)
 
     @field_validator("gpu_layers", "context_window", mode="before")
     @classmethod
