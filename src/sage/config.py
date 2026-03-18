@@ -66,7 +66,7 @@ class LLMSettings(BaseSettings):
 
     model_path: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
     model_name: str = "Qwen3.5-4B"
-    llama_cpp_bin: Path = Path("artifacts/models/llama-server.exe")
+    llama_cpp_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")
 
     # "auto" or an integer string
     gpu_layers: str = "auto"
