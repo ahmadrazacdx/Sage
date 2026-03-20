@@ -50,9 +50,9 @@ _GPU_ALL_LAYERS: int = -1  # llama.cpp sentinel: offload every layer to GPU
 
 # ---- context-size thresholds ----
 
-_AVAIL_7GB_MB: int = 7_000   # comfortable: ctx=16K
-_AVAIL_5GB_MB: int = 5_000   # adequate: ctx=8K
-_AVAIL_3_5GB_MB: int = 3_500 # tight: ctx=4K
+_AVAIL_7GB_MB: int = 7_000  # comfortable: ctx=16K
+_AVAIL_5GB_MB: int = 5_000  # adequate: ctx=8K
+_AVAIL_3_5GB_MB: int = 3_500  # tight: ctx=4K
 # Below 3.5 GB available: ctx=2K, mmap paging is expected
 
 _CTX_16K: int = 16_384
@@ -194,11 +194,11 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
             model_size_mb = 2860
 
         size_diff = 2860 - model_size_mb
-        
+
         # Absolute minimum floors to ensure OS and apps overhead is covered.
         t_16k = max(_AVAIL_7GB_MB - size_diff, 4_000)
-        t_8k  = max(_AVAIL_5GB_MB - size_diff, 3_000)
-        t_4k  = max(_AVAIL_3_5GB_MB - size_diff, 2_000)
+        t_8k = max(_AVAIL_5GB_MB - size_diff, 3_000)
+        t_4k = max(_AVAIL_3_5GB_MB - size_diff, 2_000)
 
         log.info(
             "context_size_resolution",
@@ -221,6 +221,63 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
     if vram >= _VRAM_4GB_MB:
         return _CTX_VRAM_4GB
     return _CTX_VRAM_LOW
+
+
+# --- Binary Resolution ---
+def _resolve_binary(gpu_info: dict[str, Any], cfg: LLMSettings) -> Path:
+    """Return the llama-server binary appropriate for the detected GPU backend.
+
+    When ``cfg.llama_cpp_bin`` lives inside a ``servers/{backend}/``
+    directory, this function tries to swap the backend subfolder
+    to match the detected hardware::
+
+        configured : artifacts/servers/cpu/llama-server.exe
+        detected   : cuda
+        candidate  : artifacts/servers/cuda/llama-server.exe
+
+    If the candidate exists it is returned (GPU binary).  If it is absent
+    a warning is logged and the original configured path is returned so the
+    server still starts in CPU mode.
+
+    Paths outside the ``servers/{x}/`` layout are returned unchanged.
+    """
+    backend: str = gpu_info["backend"]
+    configured: Path = cfg.llama_cpp_bin
+
+    # Find the "servers" segment in the path parts.
+    parts = configured.parts
+    try:
+        servers_idx = next(i for i, p in enumerate(parts) if p.lower() == "servers")
+    except StopIteration:
+        # Custom path outside standard layout
+        log.debug("binary_resolution_skipped", reason="non-standard path", path=str(configured))
+        return configured
+
+    # Already using the correct backend folder.
+    current_backend = parts[servers_idx + 1] if servers_idx + 1 < len(parts) else ""
+    if current_backend == backend:
+        return configured
+
+    # Swap the backend subfolder.
+    candidate: Path = Path(*parts[: servers_idx + 1]) / backend / Path(*parts[servers_idx + 2 :])
+
+    if candidate.exists():
+        log.info(
+            "binary_auto_selected",
+            backend=backend,
+            from_path=str(configured),
+            to_path=str(candidate),
+        )
+        return candidate
+
+    log.warning(
+        "binary_upgrade_unavailable",
+        detected_backend=backend,
+        candidate=str(candidate),
+        fallback=str(configured),
+        hint=f"Place the {backend} llama.cpp release in: {candidate.parent}",
+    )
+    return configured
 
 
 # --- Thread Count ---
@@ -255,11 +312,8 @@ def _resolve_thread_count() -> tuple[int, int]:
     hyperthreading_ratio = logical / physical if physical > 0 else 1
     is_likely_hybrid = physical >= 8 and hyperthreading_ratio < 2.0
 
-    if is_likely_hybrid:
-        # P-cores only for generation to avoid E-core stall in GEMM reduction.
-        gen_threads = max(physical // 2, 1)
-    else:
-        gen_threads = physical
+    # P-cores only for generation to avoid E-core stall in GEMM reduction.
+    gen_threads = max(physical // 2, 1) if is_likely_hybrid else physical
 
     batch_threads = physical  # All cores for prompt prefill (compute-bound).
 
@@ -416,6 +470,7 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     _validate_paths(cfg)
 
     gpu_info = detect_gpu()
+    binary = _resolve_binary(gpu_info, cfg)
     gpu_layers = _resolve_gpu_layers(gpu_info, cfg)
     ctx_size = _resolve_context_size(gpu_info, cfg)
     gen_threads, batch_threads = _resolve_thread_count()
@@ -431,12 +486,13 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
         gen_threads=gen_threads,
         batch_threads=batch_threads,
         port=port,
+        binary=str(binary),
         model=cfg.model_path.name,
         available_ram_mb=psutil.virtual_memory().available // (1024 * 1024),
     )
 
     proc = subprocess.Popen(
-        _build_cmd(cfg, port, gpu_layers, ctx_size, gen_threads, batch_threads),
+        _build_cmd(cfg, binary, port, gpu_layers, ctx_size, gen_threads, batch_threads),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -482,23 +538,23 @@ def _validate_paths(cfg: LLMSettings) -> None:
 
 def _build_cmd(
     cfg: LLMSettings,
+    binary: Path,
     port: int,
     gpu_layers: int,
     ctx_size: int,
     gen_threads: int,
     batch_threads: int,
 ) -> list[str]:
-    """Assemble the llama-server argv list from resolved hardware parameters.
-    """
+    """Assemble the llama-server argv list from resolved hardware parameters."""
     try:
         model_size_mb = cfg.model_path.stat().st_size // (1024 * 1024)
     except OSError:
         model_size_mb = 2860
-        
+
     ubatch = "64" if model_size_mb < 2000 else "128"
 
     cmd = [
-        str(cfg.llama_cpp_bin),
+        str(binary),
         "--model",
         str(cfg.model_path),
         "--host",
@@ -517,15 +573,16 @@ def _build_cmd(
         "512",
         "--ubatch-size",
         ubatch,
-        "--flash-attn", "auto",
+        "--flash-attn",
+        "auto",
         "--cache-type-k",
         cfg.cache_type_k,
         "--cache-type-v",
         cfg.cache_type_v,
-        "--cont-batching",        # interleave prompt ingestion with token generation
-        "--jinja",                # required for Qwen3.5 Jinja2 chat template
+        "--cont-batching",  # interleave prompt ingestion with token generation
+        "--jinja",  # required for Qwen3.5 Jinja2 chat template
         "--reasoning-format",
-        "deepseek",               # strips <think> blocks from streamed output
+        "deepseek",  # strips <think> blocks from streamed output
     ]
 
     if cfg.thinking_mode:
