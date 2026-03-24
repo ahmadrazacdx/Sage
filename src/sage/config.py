@@ -22,7 +22,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ----Paths----
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]  # d:/Sage
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_TOML = _PROJECT_ROOT / "config" / "default.toml"
 _INSTITUTION_TOML = _PROJECT_ROOT / "config" / "institution.toml"
 
