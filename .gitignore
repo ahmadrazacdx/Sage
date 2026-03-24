@@ -69,3 +69,6 @@ notebooks/
 
 .windsurf/
 .agents/
+
+# Typst
+artifacts/typst/
