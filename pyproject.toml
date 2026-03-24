@@ -64,7 +64,7 @@ dev = [
     "pip",
     "types-psutil",
 ]
-gpu = ["llama-cpp-python"]
+
 online = [
     "arxiv>=2.1",
     "duckduckgo-search>=7.0",
