@@ -64,8 +64,10 @@ class LLMSettings(BaseSettings):
     # "auto" = inferred from available RAM at startup.
     deployment_tier: Literal["auto", "nano", "mid", "turbo"] = "auto"
 
-    model_path: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
-    model_name: str = "Qwen3.5-4B"
+    small_model_path: Path = Path("artifacts/models/Qwen3.5-2B-Q4_K_M.gguf")
+    small_model_name: str = "Qwen3.5-2B"
+    large_model_path: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
+    large_model_name: str = "Qwen3.5-4B"
     llama_cpp_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")
 
     # "auto" or an integer string
@@ -85,6 +87,34 @@ class LLMSettings(BaseSettings):
     # How long to wait for llama-server /health to become 200.
     # 60s was too short: mmap cold-start on SATA SSD takes 60-120s for a 2.86 GB model.
     startup_timeout: float = Field(default=180.0, ge=30.0, le=600.0)
+
+    @property
+    def active_model_path(self) -> Path:
+        """Resolve the active model path based on deployment tier."""
+        if self.deployment_tier == "nano":
+            return self.small_model_path
+        elif self.deployment_tier in ("mid", "turbo"):
+            return self.large_model_path
+
+        # Auto mode: fall back to total system memory.
+        import psutil
+
+        total_ram_gb = psutil.virtual_memory().total / (1024**3)
+        return self.large_model_path if total_ram_gb >= 12.0 else self.small_model_path
+
+    @property
+    def active_model_name(self) -> str:
+        """Resolve the active model name based on deployment tier."""
+        if self.deployment_tier == "nano":
+            return self.small_model_name
+        elif self.deployment_tier in ("mid", "turbo"):
+            return self.large_model_name
+
+        # Auto mode: fall back to total system memory.
+        import psutil
+
+        total_ram_gb = psutil.virtual_memory().total / (1024**3)
+        return self.large_model_name if total_ram_gb >= 12.0 else self.small_model_name
 
     @field_validator("gpu_layers", "context_window", mode="before")
     @classmethod

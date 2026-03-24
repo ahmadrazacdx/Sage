@@ -69,3 +69,5 @@ notebooks/
 
 .windsurf/
 .agents/
+artifacts/servers/
+artifacts/models/

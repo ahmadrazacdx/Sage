@@ -42,30 +42,36 @@ _SERVER_STARTUP_TIMEOUT_S: float = 180.0
 # Vulkan: VRAM is unknown via vulkaninfo; offload conservatively.
 _VULKAN_DEFAULT_LAYERS: int = 0
 
-# GPU layer offload thresholds (VRAM in MB).
-_VRAM_FULL_OFFLOAD_MB: int = 4_000
-_VRAM_PARTIAL_OFFLOAD_MB: int = 2_000
-_VRAM_PARTIAL_LAYERS: int = 24
-_GPU_ALL_LAYERS: int = -1  # llama.cpp sentinel: offload every layer to GPU
+# --- GPU layer offload thresholds (VRAM in MB) ---
+_VRAM_FULL_OFFLOAD_MB: int = 3_500  # ≥3.5 GB → all layers on GPU
+_VRAM_PARTIAL_OFFLOAD_MB: int = 2_500  # 2.5–3.5 GB → partial offload
+_VRAM_PARTIAL_LAYERS: int = 20
+_GPU_ALL_LAYERS: int = -1  # llama.cpp sentinel: offload every layer
 
-# ---- context-size thresholds ----
-
+# --- CPU context-size thresholds ---
+_AVAIL_10GB_MB: int = 10_000  # abundant: ctx=32K
 _AVAIL_7GB_MB: int = 7_000  # comfortable: ctx=16K
 _AVAIL_5GB_MB: int = 5_000  # adequate: ctx=8K
 _AVAIL_3_5GB_MB: int = 3_500  # tight: ctx=4K
-# Below 3.5 GB available: ctx=2K, mmap paging is expected
+# Below 3.5 GB available: ctx=2K
 
+_CTX_32K: int = 32_768
 _CTX_16K: int = 16_384
 _CTX_8K: int = 8_192
 _CTX_4K: int = 4_096
 _CTX_2K: int = 2_048
 
-# GPU VRAM thresholds for context scaling (MB).
+# --- GPU VRAM thresholds for context scaling (MB) ---
+# Conservative 10% safety margin applied to each threshold:
 _VRAM_8GB_MB: int = 8_000
-_VRAM_4GB_MB: int = 4_000
-_CTX_VRAM_8GB: int = 65_536
-_CTX_VRAM_4GB: int = 32_768
-_CTX_VRAM_LOW: int = 8_192
+_VRAM_6GB_MB: int = 5_500  # ≥5.5 GB detected = effectively a 6 GB card
+_VRAM_4GB_MB: int = 3_500  # ≥3.5 GB = 4 GB card
+_VRAM_3GB_MB: int = 2_800  # ≥2.8 GB = 3 GB card
+_CTX_VRAM_8GB: int = 65_536  # 8+ GB: 64K ctx
+_CTX_VRAM_6GB: int = 32_768  # 6 GB:  32K ctx
+_CTX_VRAM_4GB: int = 16_384  # 4 GB:  16K ctx
+_CTX_VRAM_3GB: int = 8_192  # 3 GB:   8K ctx
+_CTX_VRAM_LOW: int = 4_096  # <2.8 GB: 4K ctx
 
 
 # --- GPU Detection ---
@@ -161,7 +167,10 @@ def _resolve_gpu_layers(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
     if backend == "vulkan":
         return _VULKAN_DEFAULT_LAYERS
 
-    # CUDA: VRAM is known
+    # CUDA: VRAM is known.
+    # ≥3.5 GB → all 32 layers on GPU.
+    # 2.5–3.5 GB → partial: 20/32 layers on GPU to stay under VRAM budget.
+    # <2.5 GB → no offload possible without OOM.
     if vram >= _VRAM_FULL_OFFLOAD_MB:
         return _GPU_ALL_LAYERS
     if vram >= _VRAM_PARTIAL_OFFLOAD_MB:
@@ -189,14 +198,15 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
         available_mb: int = psutil.virtual_memory().available // (1024 * 1024)
 
         try:
-            model_size_mb = cfg.model_path.stat().st_size // (1024 * 1024)
+            model_size_mb = cfg.active_model_path.stat().st_size // (1024 * 1024)
         except OSError:
-            model_size_mb = 2860
+            model_size_mb = 2_500
 
-        size_diff = 2860 - model_size_mb
+        size_diff = 2_500 - model_size_mb
 
-        # Absolute minimum floors to ensure OS and apps overhead is covered.
-        t_16k = max(_AVAIL_7GB_MB - size_diff, 4_000)
+        # Minimum RAM floors ensure OS + process overhead is always covered.
+        t_32k = max(_AVAIL_10GB_MB - size_diff, 7_000)
+        t_16k = max(_AVAIL_7GB_MB - size_diff, 4_500)
         t_8k = max(_AVAIL_5GB_MB - size_diff, 3_000)
         t_4k = max(_AVAIL_3_5GB_MB - size_diff, 2_000)
 
@@ -207,6 +217,8 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
             backend="cpu",
         )
 
+        if available_mb >= t_32k:
+            return _CTX_32K
         if available_mb >= t_16k:
             return _CTX_16K
         if available_mb >= t_8k:
@@ -215,12 +227,16 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
             return _CTX_4K
         return _CTX_2K
 
-    # GPU path
+    # GPU path — graduated by VRAM bucket
     if vram >= _VRAM_8GB_MB:
-        return _CTX_VRAM_8GB
+        return _CTX_VRAM_8GB  # 64K
+    if vram >= _VRAM_6GB_MB:
+        return _CTX_VRAM_6GB  # 32K
     if vram >= _VRAM_4GB_MB:
-        return _CTX_VRAM_4GB
-    return _CTX_VRAM_LOW
+        return _CTX_VRAM_4GB  # 16K
+    if vram >= _VRAM_3GB_MB:
+        return _CTX_VRAM_3GB  #  8K
+    return _CTX_VRAM_LOW  #  4K
 
 
 # --- Binary Resolution ---
@@ -471,6 +487,7 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
 
     gpu_info = detect_gpu()
     binary = _resolve_binary(gpu_info, cfg)
+    _check_cuda_binary(binary, gpu_info)
     gpu_layers = _resolve_gpu_layers(gpu_info, cfg)
     ctx_size = _resolve_context_size(gpu_info, cfg)
     gen_threads, batch_threads = _resolve_thread_count()
@@ -487,12 +504,21 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
         batch_threads=batch_threads,
         port=port,
         binary=str(binary),
-        model=cfg.model_path.name,
+        model=cfg.active_model_path.name,
         available_ram_mb=psutil.virtual_memory().available // (1024 * 1024),
     )
 
     proc = subprocess.Popen(
-        _build_cmd(cfg, binary, port, gpu_layers, ctx_size, gen_threads, batch_threads),
+        _build_cmd(
+            cfg,
+            binary,
+            port,
+            gpu_layers,
+            ctx_size,
+            gen_threads,
+            batch_threads,
+            gpu_info["backend"],
+        ),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -521,7 +547,7 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
 def _validate_paths(cfg: LLMSettings) -> None:
     """Raise FileNotFoundError early if the binary or model path is missing."""
     binary: Path = cfg.llama_cpp_bin
-    model: Path = cfg.model_path
+    model: Path = cfg.active_model_path
 
     if not binary.exists():
         raise FileNotFoundError(
@@ -536,6 +562,76 @@ def _validate_paths(cfg: LLMSettings) -> None:
         )
 
 
+def _check_cuda_binary(binary: Path, gpu_info: dict[str, Any]) -> None:
+    """Warn loudly if the binary placed in the cuda/ folder is a CPU-only build.
+
+    Root cause this guards against:
+        The llama.cpp release page ships two separate .zip archives:
+
+        - ``llama-bXXXX-bin-win-cpu-x64.zip``   — CPU only. Contains
+          ``llama-server.exe`` with **no CUDA DLL imports**.
+        - ``llama-bXXXX-bin-win-cuda-cu12.X-x64.zip`` — CUDA-enabled.
+          Contains ``llama-server.exe`` **and** ``cublas64_12.dll``,
+          ``cublasLt64_12.dll``, ``cudart64_12.dll`` as side-car DLLs.
+
+        If a user copies the CPU ``llama-server.exe`` into the ``cuda/``
+        directory (alongside the three CUDA DLLs), the binary will start
+        successfully in CPU-only mode despite ``--n-gpu-layers -1``, giving
+        0 % GPU utilization with no error message.
+
+    Detection heuristic (Windows PE import table scan):
+        Read the raw bytes of the EXE and check for the ASCII substring
+        ``cublas`` (present in CUDA builds, absent in CPU builds).  This
+        avoids loading the PE parser library ``pefile`` as a dependency.
+        False-positive rate: essentially zero (CPU builds never link cuBLAS).
+
+    Raises:
+        RuntimeError: If CUDA is the detected backend, the binary lives in a
+            ``cuda/`` directory, and no CUDA DLL import evidence is found.
+    """
+    if gpu_info["backend"] != "cuda":
+        return  # Only relevant for CUDA path.
+
+    # Only check binaries that are explicitly placed in a cuda/ subfolder.
+    parts = binary.parts
+    try:
+        servers_idx = next(i for i, p in enumerate(parts) if p.lower() == "servers")
+    except StopIteration:
+        return  # Non-standard path; skip check.
+
+    current_folder = parts[servers_idx + 1] if servers_idx + 1 < len(parts) else ""
+    if current_folder.lower() != "cuda":
+        return  # Binary is not in the cuda/ folder; skip check.
+
+    # Scan first 512 KB of the binary for CUDA DLL import evidence.
+    try:
+        with binary.open("rb") as fh:
+            header = fh.read(524_288)  # 512 KB is sufficient for the PE import table
+        has_cuda = b"cublas" in header.lower() or b"cudart" in header.lower()
+    except OSError as exc:
+        log.warning("cuda_binary_check_failed", error=str(exc))
+        return
+
+    if not has_cuda:
+        raise RuntimeError(
+            f"GPU acceleration failure: the binary at\n"
+            f"  {binary}\n"
+            "appears to be a CPU-only build placed in the cuda/ directory.\n\n"
+            "How to fix:\n"
+            "  1. Go to https://github.com/ggml-org/llama.cpp/releases\n"
+            "  2. Download the CUDA 12.x zip:\n"
+            "       llama-bXXXX-bin-win-cuda-cu12.X-x64.zip\n"
+            "     (NOT the cpu-only zip)\n"
+            "  3. Extract llama-server.exe AND the three .dll files\n"
+            "     (cublas64_12.dll, cublasLt64_12.dll, cudart64_12.dll)\n"
+            "     into: artifacts/servers/cuda/\n"
+            "  4. Restart Sage.\n\n"
+            "The CPU-only exe ignores --n-gpu-layers; GPU utilization will be 0 %."
+        )
+
+    log.debug("cuda_binary_check_passed", binary=str(binary))
+
+
 def _build_cmd(
     cfg: LLMSettings,
     binary: Path,
@@ -544,19 +640,58 @@ def _build_cmd(
     ctx_size: int,
     gen_threads: int,
     batch_threads: int,
+    backend: str,
 ) -> list[str]:
-    """Assemble the llama-server argv list from resolved hardware parameters."""
-    try:
-        model_size_mb = cfg.model_path.stat().st_size // (1024 * 1024)
-    except OSError:
-        model_size_mb = 2860
+    """Assemble the llama-server argv list from resolved hardware parameters.
 
-    ubatch = "64" if model_size_mb < 2000 else "128"
+    Flag rationale (llama-server b4000+, Jan 2026):
+
+    ``--flash-attn auto``
+        Enable Flash Attention when the model architecture supports it.
+        ``auto`` = enable if supported, skip silently if not.  This is
+        the safest value: Qwen3 supports FA on both CUDA and CPU (via
+        llama.cpp's GGML FA kernels).
+
+    ``--cache-type-k/v q4_0``
+        Quantise the KV cache to 4-bit.  Reduces KV memory by 4× vs
+        f16 with negligible perplexity loss on Qwen3 at ctx ≤ 32K.
+
+    ``--no-mmap`` (GPU path)
+        Disable memory-mapped file I/O for the model weights.  With
+        mmap the OS may page weight pages out to disk during inference;
+        without mmap all weights are loaded into CUDA VRAM upfront.
+        On Windows this also avoids anti-virus scanner false-positives
+        that can stall mmap reads mid-inference.
+
+    ``--mlock`` (CPU path)
+        Pin the model in physical RAM so the OS cannot swap it to the
+        page file.  Critical on machines with 8–16 GB RAM where
+        background processes compete for memory.  Fails silently if the
+        process does not have the SeLockMemoryPrivilege (Windows);
+        llama-server logs a warning and continues.
+
+    ``--batch-size 512`` / ``--ubatch-size 256`` (CPU)
+    ``--batch-size 2048`` / ``--ubatch-size 512`` (GPU)
+        Prompt prefill ("context ingestion") is compute-bound on GPU;
+        larger physical batch → higher CUDA tensor core utilisation.
+        CPU is memory-bandwidth-bound; smaller ubatch avoids L3
+        thrashing during the GEMM reduction.
+    """
+    is_gpu = backend in ("cuda", "vulkan") and gpu_layers != 0
+
+    if is_gpu:
+        # GPU path: large batches saturate CUDA tensor cores.
+        batch_size = "2048"
+        ubatch_size = "512"
+    else:
+        # CPU path: small ubatch avoids L3/L4 cache thrashing.
+        batch_size = "512"
+        ubatch_size = "256"
 
     cmd = [
         str(binary),
         "--model",
-        str(cfg.model_path),
+        str(cfg.active_model_path),
         "--host",
         _LLAMA_SERVER_HOST,
         "--port",
@@ -570,20 +705,29 @@ def _build_cmd(
         "--threads-batch",
         str(batch_threads),
         "--batch-size",
-        "512",
+        batch_size,
         "--ubatch-size",
-        ubatch,
-        "--flash-attn",
-        "auto",
+        ubatch_size,
+        "--flash-attn",  # --flash-attn accepts: on | off | auto
+        "auto",  # auto = enable when model architecture supports it
         "--cache-type-k",
         cfg.cache_type_k,
         "--cache-type-v",
         cfg.cache_type_v,
         "--cont-batching",  # interleave prompt ingestion with token generation
-        "--jinja",  # required for Qwen3.5 Jinja2 chat template
+        "--jinja",  # required for Qwen3 Jinja2 chat template
         "--reasoning-format",
         "deepseek",  # strips <think> blocks from streamed output
     ]
+
+    if is_gpu:
+        # --no-mmap: load all weights into CUDA VRAM at startup; eliminates
+        # mmap page-fault stalls and PCIe re-read penalties during inference.
+        cmd.append("--no-mmap")
+    else:
+        # --mlock: pin model in physical RAM; prevents OS swap during inference.
+        # Fails gracefully on Windows if SeLockMemoryPrivilege is absent.
+        cmd.append("--mlock")
 
     if cfg.thinking_mode:
         cmd += ["--reasoning-budget", str(cfg.reasoning_budget)]
@@ -632,7 +776,7 @@ def create_llm(port: int) -> ChatOpenAI:
     return ChatOpenAI(
         base_url=f"http://{_LLAMA_SERVER_HOST}:{port}/v1",
         api_key="local",
-        model=cfg.model_name,
+        model=cfg.active_model_name,
         temperature=cfg.temperature,
         max_tokens=max_tok,
         streaming=True,
