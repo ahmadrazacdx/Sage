@@ -51,6 +51,8 @@ dependencies = [
     "rank-bm25",
     "psutil",
     "aiosqlite",
+    "duckduckgo-search>=8.1.1",
+    "ddgs>=9.11.4",
 ]
 
 [project.optional-dependencies]
@@ -64,7 +66,6 @@ dev = [
     "ipykernel",
     "pip"
 ]
-gpu = ["llama-cpp-python"]
 online = [
     "arxiv>=2.1",
     "duckduckgo-search>=7.0",

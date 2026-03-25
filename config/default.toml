@@ -65,9 +65,9 @@ timeout         = 10
 max_code_length = 8000
 
 [tools.search]
-arxiv_timeout  = 15
-web_timeout    = 15
-wiki_timeout   = 15
+arxiv_timeout  = 30
+web_timeout    = 30
+wiki_timeout   = 30
 max_results    = 5
 
 [tools.export]

@@ -173,9 +173,9 @@ class SandboxSettings(BaseSettings):
 class SearchSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    arxiv_timeout: int = Field(default=15, ge=1)
-    web_timeout: int = Field(default=15, ge=1)
-    wiki_timeout: int = Field(default=15, ge=1)
+    arxiv_timeout: int = Field(default=30, ge=1)
+    web_timeout: int = Field(default=30, ge=1)
+    wiki_timeout: int = Field(default=30, ge=1)
     max_results: int = Field(default=5, ge=1, le=20)
 
 
