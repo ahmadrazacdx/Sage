@@ -21,6 +21,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Dict, Any
 
 import structlog
 from langchain_core.tools import tool
@@ -31,8 +32,18 @@ log = structlog.get_logger(__name__)
 
 # --- Constants ---
 
-_MAX_CONTENT_LENGTH: int = 100_000  # ~25K words (safety cap)
+_MAX_CONTENT_LENGTH: int = 100_000
 _MAX_FILENAME_LENGTH: int = 100
+_PDF_TIMEOUT: int = 30
+
+def _response(success: bool, operation: str, path: str | None = None, error: str | None = None, meta: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    return {
+        "success": success,
+        "operation": operation,
+        "path": path,
+        "error": error,
+        "meta": meta or {},
+    }
 
 def _sanitize_filename(filename: str) -> str:
     """Strip unsafe characters and enforce length limit."""
@@ -49,7 +60,6 @@ def _resolve_output_dir() -> Path:
     output_dir = get_settings().tools.export.output_dir
     if not output_dir.is_absolute():
         from sage.config import _PROJECT_ROOT
-
         output_dir = _PROJECT_ROOT / output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
@@ -65,7 +75,6 @@ def _resolve_typst_bin() -> str:
 
     if "/" in bin_path or "\\" in bin_path:
         from sage.config import _PROJECT_ROOT
-
         return str(_PROJECT_ROOT / bin_path)
 
     return bin_path
@@ -79,17 +88,15 @@ def validate_typst_bin() -> bool:
     """
     import shutil
     bin_path = _resolve_typst_bin()
-    # Absolute / relative path → check file exists.
     p = Path(bin_path)
-    if p.suffix:  # has extension like .exe → it's a file path
+    if p.suffix:
         return p.is_file()
-    # Bare name like 'typst' → check system PATH.
     return shutil.which(bin_path) is not None
 
 
 # --- Markdown Export ---
 @tool
-def export_markdown(content: str, filename: str) -> str:
+def export_markdown(content: str, filename: str) -> Dict[str, Any]:
     """Export content as a Markdown (.md) file.
 
     Writes the content to the configured export directory.  Returns
@@ -103,35 +110,45 @@ def export_markdown(content: str, filename: str) -> str:
     Returns:
         Absolute path to the created .md file, or an error message.
     """
-
-    if not content or not content.strip():
-        return "Error: No content provided for export"
+    operation = "export_markdown"
+    if not isinstance(content, str) or not content.strip():
+        return _response(False, operation, error="No content provided")
 
     if len(content) > _MAX_CONTENT_LENGTH:
-        return f"Error: Content too long ({len(content):,} chars, limit {_MAX_CONTENT_LENGTH:,})"
+        return _response(False, operation, error=f"Content too long ({len(content)})")
 
     safe_name = _sanitize_filename(filename)
     output_dir = _resolve_output_dir()
     output_path = output_dir / f"{safe_name}.md"
 
-    # Append numeric suffix if file exists.
     counter = 1
     while output_path.exists():
         output_path = output_dir / f"{safe_name}_{counter}.md"
         counter += 1
 
-    output_path.write_text(content, encoding="utf-8")
-    log.info(
-        "export_markdown_complete",
-        path=str(output_path),
-        content_length=len(content),
-    )
-    return str(output_path)
+    try:
+        output_path.write_text(content, encoding="utf-8")
+        log.info(
+            "export_markdown_complete",
+            path=str(output_path),
+            content_length=len(content),
+        )
+    
+        return _response(
+            True,
+            operation,
+            path=str(output_path),
+            meta={"length": len(content)},
+        )
+
+    except Exception as exc:
+        log.error("export_markdown_failed", error=str(exc)[:200])
+        return _response(False, operation, error=str(exc)[:200])
 
 
 # --- PDF Export ---
 @tool
-async def export_pdf(content: str, filename: str) -> str:
+async def export_pdf(content: str, filename: str) -> Dict[str, Any]:
     """Export content as a PDF using Typst.
 
     Compiles Markdown content through a Typst template to produce a
@@ -149,11 +166,13 @@ async def export_pdf(content: str, filename: str) -> str:
         Absolute path to the created .pdf file, or an error message
         if Typst is unavailable or compilation fails.
     """
-    if not content or not content.strip():
-        return "Error: No content provided for export"
+    operation = "export_pdf"
+
+    if not isinstance(content, str) or not content.strip():
+        return _response(False, operation, error="No content provided")
 
     if len(content) > _MAX_CONTENT_LENGTH:
-        return f"Error: Content too long ({len(content):,} chars, limit {_MAX_CONTENT_LENGTH:,})"
+        return _response(False, operation, error=f"Content too long ({len(content)})")
 
     safe_name = _sanitize_filename(filename)
     output_dir = _resolve_output_dir()
@@ -164,9 +183,8 @@ async def export_pdf(content: str, filename: str) -> str:
         output_path = output_dir / f"{safe_name}_{counter}.pdf"
         counter += 1
 
-    typst_content = _generate_typst_source(content)
-
     try:
+        typst_content = _generate_typst_source(content)
         with tempfile.NamedTemporaryFile(
             mode="w",
             suffix=".typ",
@@ -187,54 +205,44 @@ async def export_pdf(content: str, filename: str) -> str:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             ),
-            timeout=30,
+            timeout=_PDF_TIMEOUT,
         )
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(),
-            timeout=30,
+            timeout=_PDF_TIMEOUT,
         )
 
         # Cleanup temp file.
         tmp_path.unlink(missing_ok=True)
 
         if proc.returncode != 0:
-            error_msg = stderr.decode("utf-8", errors="replace").strip()
+            err = stderr.decode("utf-8", errors="replace").strip()
             log.error(
                 "export_pdf_typst_failed",
                 returncode=proc.returncode,
-                stderr=error_msg[:300],
+                stderr=err[:300],
             )
-            # Return structured error — avoids leaking internal paths
-            # via raw stderr while still giving the LLM actionable detail.
-            return (
-                f"Error: Typst compilation failed (exit {proc.returncode}). "
-                f"Hint: {error_msg[:120]}"
-            )
+        log.info("export_pdf_complete", path=str(output_path))
 
-        log.info(
-            "export_pdf_complete",
+        return _response(
+            True,
+            operation,
             path=str(output_path),
-            content_length=len(content),
+            meta={"length": len(content)},
         )
-        return str(output_path)
 
     except FileNotFoundError:
-        resolved_typst_bin = _resolve_typst_bin()
-        log.error(
-            "export_pdf_typst_not_found",
-            typst_bin=resolved_typst_bin,
-        )
-        return (
-            f"Error: Typst binary not found at '{resolved_typst_bin}'.  "
-            "Install Typst from https://typst.app/ or update "
-            "tools.export.typst_bin in config."
-        )
+        return _response(False, operation, error="Typst binary not found")
+    
     except TimeoutError:
-        log.error("export_pdf_timeout")
-        return "Error: PDF compilation timed out after 30 seconds"
-    except OSError as exc:
-        log.error("export_pdf_os_error", error=str(exc)[:200])
-        return f"Error: {exc}"
+        return _response(False, operation, error="PDF generation timed out")
+    
+    except ValueError as exc:
+        return _response(False, operation, error=str(exc))
+
+    except Exception as exc:
+        log.error("export_pdf_unexpected", error=str(exc)[:200])
+        return _response(False, operation, error=str(exc)[:200])
 
 
 def _markdown_to_typst(md: str) -> str:
@@ -254,10 +262,7 @@ def _markdown_to_typst(md: str) -> str:
         re.IGNORECASE,
     )
     if _UNSAFE.search(md):
-        raise ValueError(
-            "Content contains disallowed Typst directives "
-            "(file/system access functions are not permitted)."
-        )
+        raise ValueError("Unsafe Typst directive detected")
 
     md = md.replace("#", r"\#")
 
@@ -279,12 +284,11 @@ def _generate_typst_source(markdown_content: str) -> str:
     - Raw markdown content (Typst natively supports a subset of
       Markdown syntax)
     """
-    typst_body = _markdown_to_typst(markdown_content)
+    body = _markdown_to_typst(markdown_content)
     return (
         '#set page(paper: "a4", margin: (x: 2.5cm, y: 2.5cm))\n'
         '#set text(font: "New Computer Modern", size: 11pt)\n'
         '#set heading(numbering: "1.1")\n'
-        "#set par(justify: true)\n"
-        "\n"
-        f"{typst_body}\n"
+        "#set par(justify: true)\n\n"
+        f"{body}\n"
     )

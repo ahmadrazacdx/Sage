@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 import asyncio
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
 from langchain_core.tools import tool
@@ -34,9 +34,11 @@ log = structlog.get_logger(__name__)
 
 _CONTEXT7_HTTP_URL: str = os.getenv("CONTEXT7_HTTP_URL", "https://mcp.context7.com/mcp")
 _CONTEXT7_API_KEY: str = os.getenv("CONTEXT7_API_KEY", "").strip()
+
 _TOOLS_TIMEOUT_S: int  = 10
 _RESOLVE_TIMEOUT_S: int = 10
 _QUERY_TIMEOUT_S: int  = 20
+
 _MAX_QUERY_LENGTH: int = 300
 _MAX_TOKENS: int       = 5000
 
@@ -54,6 +56,20 @@ LIB_CACHE: dict[str, str] = {
 
 _cached_tools: list[Any] | None = None
 _tools_lock = asyncio.Lock()
+
+def _response(
+    *,
+    success: bool,
+    data: str | None,
+    error: str | None,
+    source: Literal["context7", "cache", "fallback", "error"],
+) -> dict[str, Any]:
+    return {
+        "success": success,
+        "data": data,
+        "error": error,
+        "source": source,
+    }
 
 
 def _sanitize_input(text: str) -> str:
@@ -79,7 +95,7 @@ async def _get_tools() -> list[Any]:
             )
 
         if not _CONTEXT7_API_KEY:
-            raise RuntimeError("CONTEXT7_API_KEY environment variable is missing or empty")
+            raise RuntimeError("CONTEXT7_API_KEY missing")
 
         client = MultiServerMCPClient(
             {
@@ -106,22 +122,12 @@ async def _get_tools() -> list[Any]:
 def _find_tool(tools: list[Any], name: str) -> Any:
     match = next((t for t in tools if t.name == name), None)
     if match is None:
-        available = [t.name for t in tools]
-        raise RuntimeError(
-            f"Expected tool '{name}' not found in Context7. "
-            f"Available: {available}"
-        )
+        raise RuntimeError(f"Missing required tool: {name}")
     return match
 
 
-def _extract_resource_uri(resolve_output: str) -> str | None:
-    """Extract context7:// URI from resolve-library-uri output."""
-    match = re.search(r"context7://\S+", resolve_output)
-    return match.group(0) if match else None
-
-
 @tool
-async def search_library_docs(library: str, query: str) -> str:
+async def search_library_docs(library: str, query: str) -> dict[str, Any]:
     """Fetch up-to-date programming library documentation via Context7 MCP.
 
     Searches the Context7 documentation index for the specified library
@@ -140,17 +146,28 @@ async def search_library_docs(library: str, query: str) -> str:
     clean_query = _sanitize_input(query)
 
     if not clean_lib:
-        return "Error: No library name provided"
+        return _response(
+            success=False,
+            data=None,
+            error="Missing library name",
+            source="error",
+        )
     if not clean_query:
-        return "Error: No query provided"
+        return _response(
+            success=False,
+            data=None,
+            error="Missing query",
+            source="error",
+        )
 
     try:
         tools = await _get_tools()
 
         library_id = LIB_CACHE.get(clean_lib)
 
+        source: Literal["context7", "cache", "fallback"] = "context7"
+
         if not library_id:
-            # Step 1 — resolve library name -> Context7 Library ID
             resolve_tool   = _find_tool(tools, _TOOL_RESOLVE)
             resolve_result = await asyncio.wait_for(
                 resolve_tool.ainvoke({"query": clean_query, "libraryName": clean_lib}),
@@ -158,25 +175,32 @@ async def search_library_docs(library: str, query: str) -> str:
             )
 
             if not resolve_result:
-                return f"No library found matching '{clean_lib}' in Context7"
+                return _response(
+                    success=False,
+                    data=None,
+                    error=f"No library found: {clean_lib}",
+                    source="fallback",
+                )
 
             resolve_text = str(resolve_result)
 
-            # Strict extraction: only valid path segments
             match = re.search(r"(/[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)", resolve_text)
 
             if not match:
-                return (
-                    f"Could not extract valid library ID for '{clean_lib}'. "
-                    f"Context7 returned: {resolve_text[:300]}"
+                return _response(
+                    success=False,
+                    data=None,
+                    error="Failed to parse library ID",
+                    source="error",
                 )
 
             library_id = match.group(1)
             log.info("context7_resolved", library=clean_lib, id=library_id)
         else:
+            source = "cache"
             log.info("context7_cache_hit", library=clean_lib, id=library_id)
 
-        # Step 2 — fetch docs using the libraryId + correct parameter name
+        # Fetch docs
         docs_tool   = _find_tool(tools, _TOOL_DOCS)
         docs_result = await asyncio.wait_for(
             docs_tool.ainvoke(
@@ -189,32 +213,44 @@ async def search_library_docs(library: str, query: str) -> str:
         )
 
         if not docs_result:
-            return f"No documentation found for '{clean_lib}' on topic '{clean_query}'"
+            return _response(
+                success=False,
+                data=None,
+                error="No documentation found",
+                source="fallback",
+            )
 
         result_str = str(docs_result)
         log.info(
-            "library_docs_complete",
+            "context7_success",
             library=clean_lib,
             query=clean_query[:80],
             result_length=len(result_str),
         )
-        return result_str[:8000]
+        return _response(
+            success=True,
+            data=result_str[:8000],
+            error=None,
+            source=source,
+        )
 
     except (TimeoutError, asyncio.TimeoutError):
         log.warning("library_docs_timeout", library=clean_lib)
-        return (
-            f"Error: Library docs lookup timed out because the Context7 server is unresponsive. "
-            f"Please use standard web search tools to search for '{clean_lib} {clean_query}' instead."
+        return _response(
+            success=False,
+            data=None,
+            error="Context7 timeout",
+            source="fallback",
         )
-    except ExceptionGroup as eg:
-        log.warning("library_docs_exception_group", library=clean_lib, errors=[str(e) for e in eg.exceptions])
-        return (
-            f"Error: Library docs lookup failed (server timeout/error). "
-            f"Please use standard web search tools to search for '{clean_lib} {clean_query}' instead."
-        )
+
     except RuntimeError as exc:
         log.error("library_docs_setup_failed", error=str(exc))
-        return f"Error: {exc}"
+        return _response(
+            success=False,
+            data=None,
+            error=str(exc),
+            source="error",
+        )
     except Exception as exc:  # noqa: BLE001
         log.error(
             "library_docs_failed",
@@ -222,7 +258,9 @@ async def search_library_docs(library: str, query: str) -> str:
             exc_type=type(exc).__name__,
             error=str(exc)[:200],
         )
-        return (
-            f"Error: Library docs lookup failed ({type(exc).__name__}). "
-            f"Please use standard web search tools to search for '{clean_lib}' documentation instead."
+        return _response(
+            success=False,
+            data=None,
+            error=f"{type(exc).__name__}: {str(exc)[:200]}",
+            source="error",
         )

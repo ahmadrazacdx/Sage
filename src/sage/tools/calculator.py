@@ -83,13 +83,13 @@ _SAFE_CONSTANTS: dict[str, float] = {
 
 # DoS Guards.
 _MAX_EXPRESSION_LENGTH: int = 500
-_MAX_DEPTH: int = 50       # Maximum AST nesting depth before aborting.
+_MAX_DEPTH: int = 50
 _MAX_FACTORIAL: int = 5_000
-_MAX_ARGS: int = 50        # Maximum arguments in any single function call.
-_MAX_COST: int = 10_000    # Global computational cost limit.
-_MAX_BIT_LENGTH: int = 50_000 # Max allowed integer bit_length (~15k digits).
-_MAX_FLOAT: float = 1e100  # Cap intermediate floats early.
-_MAX_FLOAT_FUNC_ARG: float = 1e15 # Cap arguments to exp/log/trig to prevent libm slow paths.
+_MAX_ARGS: int = 50
+_MAX_COST: int = 10_000
+_MAX_BIT_LENGTH: int = 50_000
+_MAX_FLOAT: float = 1e100
+_MAX_FLOAT_FUNC_ARG: float = 1e15
 
 
 # --- AST Evaluator ---
@@ -109,17 +109,16 @@ class _SafeEvaluator(ast.NodeVisitor):
         """Assert intermediate results stay within reasonable memory bounds."""
         if isinstance(value, int):
             if value.bit_length() > _MAX_BIT_LENGTH:
-                raise ValueError("Integer magnitude too large")
+                raise ValueError("Integer too large")
             return float(value)
         if isinstance(value, float):
             try:
                 if math.isinf(value) or math.isnan(value) or abs(value) > _MAX_FLOAT:
-                    raise ValueError("Float magnitude too large")
-                # Epsilon clamp for floating point noise (e.g. sin(pi)).
+                    raise ValueError("Float too large")
                 if abs(value) < 1e-12:
                     return 0.0
             except OverflowError as e:
-                raise ValueError("Float magnitude too large") from e
+                raise ValueError("Float too large") from e
             return value
         return value
 
@@ -136,7 +135,8 @@ class _SafeEvaluator(ast.NodeVisitor):
     def visit(self, node: ast.AST) -> Any:  # type: ignore[override]
         """Wrap every node visit with a depth counter to catch deep nesting."""
         self._depth += 1
-        self._add_cost(1)  # Every AST node visit costs 1.
+        self._add_cost(1)
+
         if self._depth > _MAX_DEPTH:
             raise ValueError(
                 f"Expression too deeply nested (max depth {_MAX_DEPTH}).  "
@@ -167,11 +167,10 @@ class _SafeEvaluator(ast.NodeVisitor):
         left = self.visit(node.left)
         right = self.visit(node.right)
         
-        # Pre-execution limits to prevent memory allocation and CPU spikes.
-        if type(node.op) is ast.Mult and isinstance(left, int) and isinstance(right, int):
+        if isinstance(node.op, ast.Mult) and isinstance(left, int) and isinstance(right, int):
             if left.bit_length() + right.bit_length() > _MAX_BIT_LENGTH:
                 raise ValueError(f"Multiplication result exceeds {_MAX_BIT_LENGTH} bits")
-        if type(node.op) is ast.Pow:
+        if isinstance(node.op, ast.Pow):
             self._check_pow(left, right)
                 
         try:
@@ -274,19 +273,30 @@ def calculator(expression: str) -> dict[str, Any]:
     """
     if len(expression) > _MAX_EXPRESSION_LENGTH:
         return {
-            "error": f"Expression too long ({len(expression)} chars, max {_MAX_EXPRESSION_LENGTH})"
+            "success": False,
+            "result": None,
+            "error": f"Expression too long ({len(expression)} chars, max {_MAX_EXPRESSION_LENGTH})",
         }
 
     try:
         result = _evaluate(expression)
         log.debug("calculator_evaluated", expression=expression[:80], result=result)
         return {
+            "success": True,
             "result": result,
-            "type": "float"
+            "type": "float",
         }
     except (ValueError, TypeError, ZeroDivisionError, OverflowError) as exc:
         log.warning("calculator_failed", expression=expression[:80], error=str(exc))
-        return {"error": str(exc)}
+        return {
+            "success": False,
+            "result": None,
+            "error": str(exc),
+        }
     except SyntaxError:
         log.warning("calculator_syntax_error", expression=expression[:80])
-        return {"error": "Invalid mathematical expression syntax"}
+        return {
+            "success": False,
+            "result": None,
+            "error": "Invalid expression syntax",
+        }
