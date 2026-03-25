@@ -41,7 +41,7 @@ dependencies = [
     "langmem>=0.0.20",
     "chromadb>=0.5",
     "fastembed>=0.4.2",
-    "langchain-sandbox>=0.0.1,<0.0.6",
+    "langchain-sandbox>=0.0.1,<0.0.7",
     "pydantic>=2.9",
     "pydantic-settings",
     "structlog>=24.0",
