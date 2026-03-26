@@ -63,6 +63,7 @@ research_max_iters  = 2
 [tools.sandbox]
 timeout         = 10
 max_code_length = 8000
+sessions_dir    = "artifacts/data/sandbox/sessions"
 
 [tools.search]
 arxiv_timeout  = 30
