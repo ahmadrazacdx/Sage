@@ -289,9 +289,81 @@ DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
     {description}
 """)
  
+
+
+DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
+    Convert the structured diagram description below into valid Mermaid
+    code that renders correctly with mmdr (mermaid-rs-renderer).
+ 
+    RENDERER CONSTRAINTS — read before writing a single line:
+    The renderer is mmdr, a native Rust binary.  It does NOT support
+    browser/Node.js features.  Violating any rule below will produce a
+    broken or corrupted SVG.
+ 
+    PROHIBITED (will break rendering):
+    - %%{init}%% directives — do not include under any circumstances.
+    - HTML tags inside labels (<br/>, <b>, <i>, etc.).
+    - stateDiagram-v2 — use stateDiagram instead.
+    - rx: inside classDef — omit it.
+    - Multi-line node labels — use a single space instead of newlines.
+ 
+    SUPPORTED styling (use these instead):
+    - classDef <name> fill:...,stroke:...,stroke-width:...,color:...
+    - class <node_id1>,<node_id2> <class_name>
+    - style <node_id> fill:...,stroke:...
+    - linkStyle <edge_index> stroke:...,stroke-width:...
+    - subgraph <label> ... end
+ 
+    COLOUR PALETTE — apply consistently:
+    Process nodes  : fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c
+    Decision nodes : fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#1b2e1c
+    Terminal nodes : fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d2a4a
+    Data nodes     : fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#1b2e1c
+    Actor nodes    : fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#1b2e1c
+    Entity nodes   : fill:#e0f2f1,stroke:#004d40,stroke-width:2px,color:#1b2e1c
+    Default        : fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c
+ 
+    STRUCTURE RULES:
+    1. Line 1: diagram type declaration only (e.g. flowchart TD).
+       No %%{init}%%, no comments, nothing else on line 1.
+    2. Lines 2–N: classDef blocks first, then subgraphs/nodes/edges.
+    3. Use snake_case node IDs verbatim from the description.
+    4. Wrap labels containing special characters (parens, colons,
+       brackets) in double quotes.
+    5. No dangling edges — every referenced node must be declared.
+    6. Flowchart decision nodes: use {label?} curly-brace syntax.
+    7. Use subgraph blocks whenever ≥4 nodes share a logical phase.
+    8. Return ONLY raw Mermaid code.  No fences, no explanation,
+       no preamble.
+ 
+    EXAMPLE of correct output structure (flowchart):
+    flowchart TD
+        classDef process  fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c
+        classDef decision fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#1b2e1c
+        classDef terminal fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d2a4a
+ 
+        subgraph PHASE1 [Phase One]
+            start([Begin])
+            check{Condition?}
+            do_work[Process Data]
+        end
+ 
+        start --> check
+        check -->|yes| do_work
+        check -->|no| start
+ 
+        class start terminal
+        class check decision
+        class do_work process
+ 
+    ## Diagram Description
+    {description}
+""")
+ 
  
 DIAGRAM_FIX_PROMPT: str = textwrap.dedent("""\
-    Fix the syntax errors in the Mermaid.js code below.
+    Fix the syntax errors in the Mermaid code below so it renders
+    correctly with mmdr (mermaid-rs-renderer).
  
     ## Mermaid Code
     ```mermaid
@@ -303,11 +375,15 @@ DIAGRAM_FIX_PROMPT: str = textwrap.dedent("""\
  
     ## Rules
     1. Fix only the listed syntax errors — do not restructure or redesign.
-    2. Preserve all node IDs, labels, edges, classDef blocks, and the
-       %%{init}%% theme directive exactly.
-    3. If a fix requires renaming a node, note it with a %% comment above
-       the affected line.
-    4. Return ONLY the corrected Mermaid code. No explanation, no fences.
+    2. Preserve all node IDs, labels, edges, classDef, class, style,
+       linkStyle, and subgraph blocks exactly.
+    3. If a fix requires renaming a node, note it with a %% comment
+       above the affected line.
+    4. If %%{init}%% is present, remove it entirely — it is not
+       supported by the mmdr renderer and will corrupt the diagram.
+    5. If stateDiagram-v2 is present, change it to stateDiagram.
+    6. If rx: appears inside a classDef, remove that property only.
+    7. Return ONLY the corrected Mermaid code. No explanation, no fences.
 """)
 
 # --- Roadmap / Study Plan ---
