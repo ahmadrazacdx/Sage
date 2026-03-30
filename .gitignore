@@ -72,3 +72,6 @@ notebooks/
 
 # Typst
 artifacts/typst/
+
+# mmdr
+artifacts/mmdr/

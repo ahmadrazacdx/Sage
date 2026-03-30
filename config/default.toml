@@ -65,6 +65,10 @@ timeout         = 10
 max_code_length = 8000
 sessions_dir    = "artifacts/data/sandbox/sessions"
 
+[tools.mermaid]
+mmdr_bin_path = "artifacts/mmdr/mmdr.exe"
+render_timeout = 15.0
+
 [tools.search]
 arxiv_timeout  = 30
 web_timeout    = 30

@@ -171,6 +171,13 @@ class SandboxSettings(BaseSettings):
     sessions_dir: Path = Path("artifacts/data/sandbox/sessions")
 
 
+class MermaidSettings(BaseSettings):
+    model_config = SettingsConfigDict(extra="ignore")
+
+    mmdr_bin_path: Path = Path("artifacts/mmdr/mmdr.exe")
+    render_timeout: float = Field(default=15.0, ge=1.0, le=60.0)
+
+
 class SearchSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
@@ -193,6 +200,7 @@ class ToolsSettings(BaseSettings):
     sandbox: SandboxSettings = SandboxSettings()
     search: SearchSettings = SearchSettings()
     export: ExportSettings = ExportSettings()
+    mermaid: MermaidSettings = MermaidSettings()
 
 
 class CorpusSettings(BaseSettings):
