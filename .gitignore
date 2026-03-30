@@ -75,3 +75,7 @@ artifacts/typst/
 
 # mmdr
 artifacts/mmdr/
+
+# sandbox
+artifacts/sandbox/data/sessions/
+artifacts/sandbox/data/figures/

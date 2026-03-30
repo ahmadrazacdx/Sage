@@ -63,10 +63,11 @@ research_max_iters  = 2
 [tools.sandbox]
 timeout         = 10
 max_code_length = 8000
-sessions_dir    = "artifacts/data/sandbox/sessions"
+sessions_dir    = "artifacts/sandbox/data/sessions"
+figures_dir     = "artifacts/sandbox/data/figures"
 
 [tools.mermaid]
-mmdr_bin_path = "artifacts/mmdr/mmdr.exe"
+mmdr_bin_path  = "artifacts/mmdr/mmdr.exe"
 render_timeout = 15.0
 
 [tools.search]

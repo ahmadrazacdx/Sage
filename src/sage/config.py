@@ -168,7 +168,8 @@ class SandboxSettings(BaseSettings):
 
     timeout: int = Field(default=10, ge=1, le=60)
     max_code_length: int = Field(default=8000, ge=100)
-    sessions_dir: Path = Path("artifacts/data/sandbox/sessions")
+    sessions_dir: Path = Path("artifacts/sandbox/data/sessions")
+    figures_dir: Path = Path("artifacts/sandbox/data/figures")
 
 
 class MermaidSettings(BaseSettings):
