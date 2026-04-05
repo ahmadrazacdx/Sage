@@ -8,10 +8,9 @@ log_level = "info"
 [llm]
 model_path     = "artifacts/models/Qwen3.5-4B-Q4_K_M.gguf"
 model_name     = "Qwen3.5-4B"
-# CPU build:    artifacts/servers/cpu/llama-server.exe
-# CUDA build:   artifacts/servers/cuda/llama-server.exe
-# Vulkan build: artifacts/servers/vulkan/llama-server.exe
-llama_cpp_bin  = "artifacts/servers/cpu/llama-server.exe"
+llama_cpp_cpu_bin  = "artifacts/servers/cpu/llama-server.exe"
+llama_cpp_cuda_bin = "artifacts/servers/cuda/llama-server.exe"
+llama_cpp_vulkan_bin = "artifacts/servers/vulkan/llama-server.exe"
 
 # Hardware auto-scaling
 gpu_layers     = "auto"

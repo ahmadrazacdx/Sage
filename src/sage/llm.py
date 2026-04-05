@@ -20,6 +20,8 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -36,11 +38,10 @@ log = structlog.get_logger(__name__)
 
 # --- Constants ---
 _LLAMA_SERVER_HOST: str = "127.0.0.1"
-_HEALTH_POLL_INTERVAL_S: float = 0.5
+_HEALTH_POLL_INTERVAL_S: float = 0.2
 _SERVER_STARTUP_TIMEOUT_S: float = 180.0
 
-# Vulkan: VRAM is unknown via vulkaninfo; offload conservatively.
-_VULKAN_DEFAULT_LAYERS: int = 0
+_WIN_NVIDIA_SMI: Path = Path("C:/Windows/System32/nvidia-smi.exe")
 
 # GPU layer offload thresholds (VRAM in MB).
 _VRAM_FULL_OFFLOAD_MB: int = 4_000
@@ -48,8 +49,7 @@ _VRAM_PARTIAL_OFFLOAD_MB: int = 2_000
 _VRAM_PARTIAL_LAYERS: int = 24
 _GPU_ALL_LAYERS: int = -1  # llama.cpp sentinel: offload every layer to GPU
 
-# ---- context-size thresholds ----
-
+# ---- context-size thresholds (CPU, based on available RAM) ----
 _AVAIL_7GB_MB: int = 7_000   # comfortable: ctx=16K
 _AVAIL_5GB_MB: int = 5_000   # adequate: ctx=8K
 _AVAIL_3_5GB_MB: int = 3_500 # tight: ctx=4K
@@ -63,41 +63,38 @@ _CTX_2K: int = 2_048
 # GPU VRAM thresholds for context scaling (MB).
 _VRAM_8GB_MB: int = 8_000
 _VRAM_4GB_MB: int = 4_000
-_CTX_VRAM_8GB: int = 65_536
-_CTX_VRAM_4GB: int = 32_768
+_CTX_VRAM_8GB: int = 32_768
+_CTX_VRAM_4GB: int = 16_384
 _CTX_VRAM_LOW: int = 8_192
+
+_STDERR_KEEP_BYTES: int = 8_192
 
 
 # --- GPU Detection ---
 def detect_gpu() -> dict[str, Any]:
     """Probe the host machine for an available GPU accelerator.
 
-    Tries each backend in order of specificity: CUDA (NVIDIA) ->
-    Vulkan (cross-vendor) -> CPU fallback.  The first successful
-    detection is returned immediately; no backend is tried after a
-    successful hit.
+    Tries CUDA (NVIDIA) first, then falls back to CPU.  The function
+    never raises. All subprocess failures are caught and logged.
 
     Returns:
-        A dict with the following keys:
+        A dict with keys:
 
-        - ``backend`` (str): One of ``"cuda"``, ``"vulkan"``, or
-          ``"cpu"``.
-        - ``vram_mb`` (int): Available VRAM in megabytes.  ``0`` when
-          VRAM cannot be determined (Vulkan) or no GPU is present.
-        - ``gpu_name`` (str | None): Human-readable GPU name, or
-          ``None`` for CPU-only machines.
-
-    Note:
-        This function never raises.  Subprocess failures are caught,
-        logged at WARNING level, and execution falls through to the
-        next backend.
+        - `backend` (str): "cuda" or "cpu".
+        - `vram_mb` (int): Available VRAM in MB; 0 for CPU.
+        - `gpu_name` (str | None): Human-readable GPU name, or None.
     """
-    # CUDA: nvidia-smi returns VRAM in MiB with machine-readable precision.
-    if shutil.which("nvidia-smi"):
+    # --- CUDA probe ---
+    nvidia_smi: str | None = shutil.which("nvidia-smi")
+    if nvidia_smi is None and sys.platform == "win32" and _WIN_NVIDIA_SMI.exists():
+        nvidia_smi = str(_WIN_NVIDIA_SMI)
+        log.debug("nvidia_smi_found_via_system32_fallback", path=nvidia_smi)
+
+    if nvidia_smi is not None:
         try:
             result = subprocess.run(
                 [
-                    "nvidia-smi",
+                    nvidia_smi,
                     "--query-gpu=name,memory.total",
                     "--format=csv,noheader,nounits",
                 ],
@@ -106,86 +103,200 @@ def detect_gpu() -> dict[str, Any]:
                 timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
-                parts = result.stdout.strip().split(", ", 1)
+                first_line = result.stdout.strip().splitlines()[0]
+                parts = first_line.split(",", 1)
                 if len(parts) == 2:
-                    gpu_name, vram_str = parts
+                    gpu_name = parts[0].strip()
+                    vram_mb = int(float(parts[1].strip()))
+                    log.info(
+                        "gpu_detected",
+                        backend="cuda",
+                        gpu_name=gpu_name,
+                        vram_mb=vram_mb,
+                    )
                     return {
                         "backend": "cuda",
-                        "vram_mb": int(float(vram_str)),
-                        "gpu_name": gpu_name.strip(),
+                        "vram_mb": vram_mb,
+                        "gpu_name": gpu_name,
                     }
+            else:
+                log.warning(
+                    "nvidia_smi_no_data",
+                    returncode=result.returncode,
+                    stderr=result.stderr.strip()[:300],
+                )
         except (subprocess.TimeoutExpired, ValueError, OSError) as exc:
             log.warning("gpu_detection_cuda_failed", error=str(exc))
-
-    # Vulkan: covers AMD, Intel, and NVIDIA without the CUDA toolkit.
-    if shutil.which("vulkaninfo"):
-        try:
-            result = subprocess.run(
-                ["vulkaninfo", "--summary"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                return {
-                    "backend": "vulkan",
-                    "vram_mb": 0,
-                    "gpu_name": "Vulkan-compatible GPU",
-                }
-        except (subprocess.TimeoutExpired, OSError) as exc:
-            log.warning("gpu_detection_vulkan_failed", error=str(exc))
+    else:
+        log.info(
+            "nvidia_smi_not_found",
+            hint="No NVIDIA GPU or drivers not installed; running CPU-only.",
+        )
 
     # CPU fallback
+    log.info("gpu_detection_result", backend="cpu")
     return {"backend": "cpu", "vram_mb": 0, "gpu_name": None}
 
 
-# --- Hardware Resolution ---
-def _resolve_gpu_layers(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
-    """Return the value for ``--n-gpu-layers`` based on hardware and config.
+# --- Binary Selection ---
+_BASE_COMPANION_DLLS: tuple[str, ...] = ("llama.dll", "ggml.dll", "ggml-base.dll", "libomp140.x86_64.dll")
+_CUDA_COMPANION_DLLS: tuple[str, ...] = ("ggml-cuda.dll",)
 
-    When ``cfg.gpu_layers`` is not ``"auto"``, that explicit value is
-    returned directly.  Otherwise the detected backend and VRAM
-    determine the offload depth: CPU returns 0, Vulkan returns a
-    conservative partial count, and CUDA offloads all layers when VRAM
-    exceeds the model size.
+
+def _binary_installation_ok(binary: Path, backend: str = "cpu") -> bool:
+    """Return True if the binary and its essential companion DLLs all exist.
+
+    For the CUDA backend, also verifies that `ggml-cuda.dll` is present.
+    This DLL is the GPU compute plugin and is only shipped in the CUDA
+    release zip.  A CPU binary placed in the CUDA folder will lack it and
+    be correctly rejected here, preventing silent CPU-only execution with
+    GPU flags active.
+
+    Args:
+        binary:  Path to the llama-server executable.
+        backend: One of "cpu" or "cuda".  Controls which DLL set
+                 is required.
+    """
+    if not binary.exists():
+        log.warning("binary_not_found", binary=str(binary), backend=backend)
+        return False
+
+    bin_dir = binary.parent
+    dlls_to_check = _BASE_COMPANION_DLLS
+    if backend == "cuda":
+        dlls_to_check = _BASE_COMPANION_DLLS + _CUDA_COMPANION_DLLS
+
+    for dll in dlls_to_check:
+        if not (bin_dir / dll).exists():
+            log.warning(
+                "binary_missing_dll",
+                binary=str(binary),
+                missing_dll=dll,
+                backend=backend,
+                hint=(
+                    f"Incomplete {backend.upper()} installation in {bin_dir}. "
+                    "Each backend folder must contain the COMPLETE contents of "
+                    "one release zip — do NOT mix the exe from one zip with DLLs "
+                    "from another. "
+                    f"Download llama-bXXXX-bin-win-{'cuda-cu12.X.X' if backend == 'cuda' else 'noavx'}-x64.zip "
+                    "from https://github.com/ggml-org/llama.cpp/releases "
+                    f"and extract ALL files into {bin_dir}."
+                ),
+            )
+            return False
+    return True
+
+
+def _resolve_binary(gpu_info: dict[str, Any], cfg: LLMSettings) -> tuple[Path, str]:
+    """Select the llama-server binary that matches the detected backend.
+
+    Validates that the binary AND its companion DLLs exist.  If the
+    preferred backend is incomplete, falls back to CPU with a warning.
+
+    Unlike the previous implementation, this function does **not** mutate
+    `gpu_info`.  The effective backend is returned as the second element
+    of the tuple so that callers can use it for GPU-layer and context-size
+    resolution without ambiguity.
+
+    Args:
+        gpu_info: Detection result from :func:`detect_gpu`.
+        cfg: Application LLM settings with per-backend binary paths.
+
+    Returns:
+        `(binary_path, effective_backend)` where `effective_backend` is
+        `"cuda"` or `"cpu"` and reflects the backend that will actually
+        run, which may differ from `gpu_info["backend"]` if a fallback
+        occurred.
+    """
+    backend: str = gpu_info["backend"]
+
+    if backend == "cuda":
+        cuda_bin: Path = cfg.llama_cpp_cuda_bin
+        if _binary_installation_ok(cuda_bin, backend="cuda"):
+            log.info("binary_selected", backend="cuda", binary=str(cuda_bin))
+            return cuda_bin, "cuda"
+        log.warning(
+            "cuda_binary_incomplete",
+            path=str(cuda_bin),
+            fallback="cpu",
+            hint=(
+                "The CUDA llama-server installation is incomplete or uses the "
+                "wrong binary. Required layout inside artifacts/servers/cuda/:\n"
+                "  llama-server.exe  ← from the CUDA zip (NOT the CPU zip)\n"
+                "  llama.dll, ggml.dll, ggml-base.dll  ← base DLLs\n"
+                "  ggml-cuda.dll  ← CUDA plugin (only in the CUDA zip)\n"
+                "  ggml-cpu.dll   ← CPU fallback plugin\n"
+                "Download the cuda-cu12.X.X zip from "
+                "https://github.com/ggml-org/llama.cpp/releases and extract "
+                "ALL files into artifacts/servers/cuda/ without mixing zips."
+            ),
+        )
+
+    cpu_bin: Path = cfg.llama_cpp_cpu_bin
+    if not _binary_installation_ok(cpu_bin, backend="cpu"):
+        raise FileNotFoundError(
+            f"CPU llama-server installation incomplete at: {cpu_bin.parent}\n"
+            f"Need {cpu_bin.name} + {', '.join(_BASE_COMPANION_DLLS)}\n"
+            "Download llama-bXXXX-bin-win-noavx-x64.zip from "
+            "https://github.com/ggml-org/llama.cpp/releases "
+            "and extract ALL files into artifacts/servers/cpu/."
+        )
+    log.info("binary_selected", backend="cpu", binary=str(cpu_bin))
+    return cpu_bin, "cpu"
+
+
+# --- Hardware Resolution ---
+def _resolve_gpu_layers(effective_backend: str, vram_mb: int, cfg: LLMSettings) -> int:
+    """Return the value for `--n-gpu-layers` based on hardware and config.
+
+    When `cfg.gpu_layers` is not `"auto"`, that explicit value is
+    returned directly.  Otherwise the effective backend and VRAM determine
+    the offload depth.
+
+    Args:
+        effective_backend: The actual backend in use — "cuda" or
+            "cpu".  Must come from the second element returned by
+            :func:`_resolve_binary`, not from the raw `gpu_info` dict,
+            to correctly handle CPU-fallback scenarios.
+        vram_mb: Available VRAM in MB.
+        cfg: Application LLM settings.
     """
     if cfg.gpu_layers != "auto":
         return int(cfg.gpu_layers)
 
-    backend: str = gpu_info["backend"]
-    vram: int = gpu_info["vram_mb"]
-
-    if backend == "cpu":
+    if effective_backend == "cpu":
         return 0
 
-    if backend == "vulkan":
-        return _VULKAN_DEFAULT_LAYERS
-
-    # CUDA: VRAM is known
-    if vram >= _VRAM_FULL_OFFLOAD_MB:
+    # CUDA: VRAM is known; use it to determine offload depth.
+    if vram_mb >= _VRAM_FULL_OFFLOAD_MB:
         return _GPU_ALL_LAYERS
-    if vram >= _VRAM_PARTIAL_OFFLOAD_MB:
+    if vram_mb >= _VRAM_PARTIAL_OFFLOAD_MB:
         return _VRAM_PARTIAL_LAYERS
     return 0
 
 
-def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
-    """Return the value for ``--ctx-size`` based on hardware and config.
+def _resolve_context_size(
+    effective_backend: str, vram_mb: int, cfg: LLMSettings
+) -> int:
+    """Return the value for `--ctx-size` based on hardware and config.
 
-    When ``cfg.context_window`` is not ``"auto"``, that explicit value
+    When `cfg.context_window` is not `"auto"`, that explicit value
     is returned directly.
 
-    For CPU paths, uses ``psutil.virtual_memory().available`` — the
+    For CPU paths, uses `psutil.virtual_memory().available` — the
     amount of RAM the OS can give to new allocations right now — not
     total RAM.
+
+    Args:
+        effective_backend: The actual backend in use — must come from
+            :func:`_resolve_binary`, not the raw `gpu_info` dict.
+        vram_mb: Available VRAM in MB (used on GPU path).
+        cfg: Application LLM settings.
     """
     if cfg.context_window != "auto":
         return int(cfg.context_window)
 
-    backend: str = gpu_info["backend"]
-    vram: int = gpu_info["vram_mb"]
-
-    if backend == "cpu":
+    if effective_backend == "cpu":
         available_mb: int = psutil.virtual_memory().available // (1024 * 1024)
 
         try:
@@ -194,7 +305,7 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
             model_size_mb = 2860
 
         size_diff = 2860 - model_size_mb
-        
+
         # Absolute minimum floors to ensure OS and apps overhead is covered.
         t_16k = max(_AVAIL_7GB_MB - size_diff, 4_000)
         t_8k  = max(_AVAIL_5GB_MB - size_diff, 3_000)
@@ -215,10 +326,10 @@ def _resolve_context_size(gpu_info: dict[str, Any], cfg: LLMSettings) -> int:
             return _CTX_4K
         return _CTX_2K
 
-    # GPU path
-    if vram >= _VRAM_8GB_MB:
+    # GPU path — scale by VRAM.
+    if vram_mb >= _VRAM_8GB_MB:
         return _CTX_VRAM_8GB
-    if vram >= _VRAM_4GB_MB:
+    if vram_mb >= _VRAM_4GB_MB:
         return _CTX_VRAM_4GB
     return _CTX_VRAM_LOW
 
@@ -274,6 +385,39 @@ def _resolve_thread_count() -> tuple[int, int]:
     return gen_threads, batch_threads
 
 
+# --- Orphaned Process Cleanup ---
+def _kill_orphaned_servers(model_path: Path) -> None:
+    """Kill stale llama-server processes left over.
+
+    This function uses `psutil` to find any `llama-server` process
+    whose command line references the same model file we are about to
+    load, and kills it before we spawn a fresh instance.
+
+    Args:
+        model_path: Path to the model file being used. Only servers
+            loading this specific model are terminated.
+    """
+    model_name = model_path.name
+    killed: list[int] = []
+
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+        try:
+            pname = (proc.info["name"] or "").lower()
+            if "llama-server" not in pname:
+                continue
+            cmdline = " ".join(proc.info.get("cmdline") or [])
+            if model_name in cmdline:
+                proc.kill()
+                killed.append(proc.pid)
+                log.info("orphaned_server_killed", pid=proc.pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+    if killed:
+        time.sleep(1.5)
+        log.info("orphaned_servers_cleaned", count=len(killed))
+
+
 # --- Port Allocation ---
 def _find_free_port() -> int:
     """Return an OS-assigned free TCP port on the loopback interface."""
@@ -282,28 +426,86 @@ def _find_free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+# --- Stderr Drain ---
+def _start_stderr_drain(proc: subprocess.Popen[bytes]) -> list[bytes]:
+    """Spawn a background thread that continuously reads from proc.stderr.
+
+    llama-server can write hundreds of lines during model load (CUDA device
+    enumeration, layer-by-layer offload progress, etc.).  On Windows the
+    default pipe buffer is 64 KB; without a drain thread the server blocks
+    on its own write before the model is fully loaded, causing startup to
+    hang indefinitely regardless of timeout length.
+
+    The drained lines are stored in the returned list so that the crash
+    reporter in :func:`_wait_for_server` can include recent stderr output
+    when the process exits unexpectedly.
+
+    Returns:
+        A mutable list; the background thread appends `bytes` lines to it
+        as they arrive.  The caller should read it only after the process
+        has exited to avoid races.
+    """
+    lines: list[bytes] = []
+
+    def _drain() -> None:
+        if proc.stderr is None:
+            return
+        try:
+            for raw in proc.stderr:
+                # Keep a rolling window of recent output for crash reporting.
+                lines.append(raw)
+                total = sum(len(b) for b in lines)
+                while total > _STDERR_KEEP_BYTES and lines:
+                    removed = lines.pop(0)
+                    total -= len(removed)
+        except (OSError, ValueError):
+            pass  # Pipe closed, process died — normal shutdown path.
+
+    thread = threading.Thread(target=_drain, daemon=True, name="llama-stderr-drain")
+    thread.start()
+    return lines
+
+
 # --- Health Check ---
-def _wait_for_server(port: int, timeout_s: float = _SERVER_STARTUP_TIMEOUT_S) -> None:
+def _wait_for_server(
+    port: int,
+    proc: subprocess.Popen[bytes],
+    stderr_lines: list[bytes],
+    timeout_s: float = _SERVER_STARTUP_TIMEOUT_S,
+) -> None:
     """Block until llama-server reports healthy or the timeout expires.
 
-    Polls ``GET /health`` at a fixed interval.  The server returns HTTP
-    200 once the model weights are memory-mapped and the KV cache is
-    allocated.  Callers should not issue inference requests before this
-    function returns.
+    Polls `GET /health` at a fixed interval.  Detects early crashes
+    by checking `proc.poll()` on each iteration, if the process has
+    exited, the collected stderr output is included in the error message.
 
     Args:
-        port: The TCP port llama-server is listening on.
-        timeout_s: Maximum number of seconds to wait before raising.
-
-    Raises:
-        RuntimeError: If the server does not become healthy within
-            ``timeout_s`` seconds.
+        port: The TCP port the server is expected to listen on.
+        proc: The running server process.
+        stderr_lines: Lines collected by :func:`_start_stderr_drain`.
+            Used to build the error message on early crash.
+        timeout_s: Maximum seconds to wait for a healthy response.
     """
     url = f"http://{_LLAMA_SERVER_HOST}:{port}/health"
     deadline = time.monotonic() + timeout_s
     last_progress_log = time.monotonic()
 
     while time.monotonic() < deadline:
+        rc = proc.poll()
+        if rc is not None:
+            # Give the drain thread a moment to flush remaining lines.
+            time.sleep(0.1)
+            stderr = b"".join(stderr_lines).decode("utf-8", errors="replace")[-2000:]
+            raise RuntimeError(
+                f"llama-server exited immediately with code {rc}.\n"
+                f"stderr (last 2 KB):\n{stderr or '(no output captured)'}\n\n"
+                "Common causes:\n"
+                "- Wrong binary for backend (CPU exe in CUDA folder)\n"
+                "- Missing DLL (run the DLL check in _binary_installation_ok)\n"
+                "- Unsupported CLI flag on this llama.cpp build version\n"
+                "- Model file corrupted or wrong architecture"
+            )
+
         try:
             with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310
                 if resp.status == 200:
@@ -312,9 +514,8 @@ def _wait_for_server(port: int, timeout_s: float = _SERVER_STARTUP_TIMEOUT_S) ->
         except (urllib.error.URLError, OSError):
             pass
 
-        # Log progress every 15 seconds so the user sees the server is loading.
         now = time.monotonic()
-        if now - last_progress_log >= 15.0:
+        if now - last_progress_log >= 10.0:
             elapsed = now - (deadline - timeout_s)
             log.info(
                 "llama_server_loading",
@@ -341,7 +542,7 @@ def _warmup_server(port: int) -> None:
     2–8 second compilation penalty.  This call forces that compilation
     at startup instead.
 
-    Failures are logged at WARNING level and swallowed, a failed
+    Failures are logged at WARNING level and swallowed; a failed
     warm-up is not fatal.
     """
     url = f"http://{_LLAMA_SERVER_HOST}:{port}/v1/completions"
@@ -384,62 +585,75 @@ def _terminate_process(proc: subprocess.Popen[bytes]) -> None:
 def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     """Detect hardware, spawn llama-server, and wait for it to become ready.
 
-    Performs hardware detection, resolves the appropriate GPU layer
-    count and context size, and starts the llama-server subprocess on a
-    dynamically allocated loopback port.  The call blocks until the
-    server passes its health check and a JIT warm-up request completes.
+    Performs hardware detection, resolves the appropriate binary,
+    GPU layer count, and context size, then starts the llama-server
+    subprocess on a dynamically allocated loopback port.  The call
+    blocks until the server passes its health check and a JIT warm-up
+    request completes. Teardown is registered on two channels so the
+    subprocess is never orphaned:
 
-    Teardown is registered on two channels so the subprocess is never
-    orphaned:
-
-    - ``atexit``: runs when the Python interpreter exits normally.
-    - ``SIGTERM`` handler: runs when the process receives SIGTERM.
+    - `atexit`: runs when the Python interpreter exits normally.
+    - `SIGTERM` handler: runs when the process receives SIGTERM.
 
     Returns:
         A 3-tuple of:
 
-        - ``proc`` (subprocess.Popen): The running server process.
-          The caller must retain a reference to prevent garbage
-          collection of the atexit registration.
-        - ``port`` (int): The loopback port the server is listening on.
-        - ``gpu_info`` (dict): Hardware detection result with keys
-          ``backend``, ``vram_mb``, and ``gpu_name``.  Pass this to
-          the ``/api/status`` endpoint for UI display.
-
-    Raises:
-        FileNotFoundError: If the llama-server binary or model file
-            does not exist at the configured path.
-        RuntimeError: If the server does not pass its health check
-            within the startup timeout.
+        - `proc` (subprocess.Popen): The running server process.
+        - `port` (int): The loopback port the server is listening on.
+        - `gpu_info` (dict): Hardware detection result with keys
+          `backend`, `vram_mb`, and `gpu_name`.  The ``backend`` key
+          reflects the *effective* backend (i.e. "cpu" if a CUDA GPU
+          was detected but the CUDA binary was unavailable).
     """
     cfg = get_settings().llm
-    _validate_paths(cfg)
 
+    # 1. Detect hardware.
     gpu_info = detect_gpu()
-    gpu_layers = _resolve_gpu_layers(gpu_info, cfg)
-    ctx_size = _resolve_context_size(gpu_info, cfg)
+
+    # 2. Resolve binary.
+    binary, effective_backend = _resolve_binary(gpu_info, cfg)
+    gpu_info = {**gpu_info, "backend": effective_backend}
+
+    _validate_paths(cfg, binary)
+
+    # 3. Kill any stale llama-server instances loading the same model.
+    _kill_orphaned_servers(cfg.model_path)
+
+    # 4. Resolve hardware parameters using the EFFECTIVE backend.
+    vram_mb: int = gpu_info["vram_mb"]
+    gpu_layers = _resolve_gpu_layers(effective_backend, vram_mb, cfg)
+    ctx_size = _resolve_context_size(effective_backend, vram_mb, cfg)
     gen_threads, batch_threads = _resolve_thread_count()
     port = _find_free_port()
 
     log.info(
         "llama_server_starting",
-        backend=gpu_info["backend"],
+        backend=effective_backend,
         gpu_name=gpu_info["gpu_name"],
-        vram_mb=gpu_info["vram_mb"],
+        vram_mb=vram_mb,
         gpu_layers=gpu_layers,
         ctx_size=ctx_size,
         gen_threads=gen_threads,
         batch_threads=batch_threads,
         port=port,
+        binary=binary.name,
         model=cfg.model_path.name,
         available_ram_mb=psutil.virtual_memory().available // (1024 * 1024),
     )
 
+    _win_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
     proc = subprocess.Popen(
-        _build_cmd(cfg, port, gpu_layers, ctx_size, gen_threads, batch_threads),
-        stdout=subprocess.PIPE,
+        _build_cmd(
+            binary, cfg, port, gpu_layers, ctx_size,
+            gen_threads, batch_threads, effective_backend,
+        ),
+        stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
+        creationflags=_win_flags,
     )
+
+    stderr_lines = _start_stderr_drain(proc)
 
     atexit.register(_terminate_process, proc)
 
@@ -449,12 +663,12 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
 
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
-    _wait_for_server(port, timeout_s=cfg.startup_timeout)
+    _wait_for_server(port, proc, stderr_lines, timeout_s=cfg.startup_timeout)
     _warmup_server(port)
 
     log.info(
         "llama_server_ready",
-        backend=gpu_info["backend"],
+        backend=effective_backend,
         ctx_size=ctx_size,
         gpu_layers=gpu_layers,
         port=port,
@@ -462,43 +676,54 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     return proc, port, gpu_info
 
 
-def _validate_paths(cfg: LLMSettings) -> None:
+def _validate_paths(cfg: LLMSettings, binary: Path) -> None:
     """Raise FileNotFoundError early if the binary or model path is missing."""
-    binary: Path = cfg.llama_cpp_bin
-    model: Path = cfg.model_path
-
     if not binary.exists():
         raise FileNotFoundError(
             f"llama-server binary not found at: {binary}\n"
             "Download a pre-built release from https://github.com/ggml-org/llama.cpp/releases "
-            "and place it at the path configured under [llm] llama_cpp_bin."
+            "and place it at the configured path."
         )
-    if not model.exists():
+    if not cfg.model_path.exists():
         raise FileNotFoundError(
-            f"GGUF model file not found at: {model}\n"
+            f"GGUF model file not found at: {cfg.model_path}\n"
             "Ensure the quantized model is placed at the path configured under [llm] model_path."
         )
 
 
 def _build_cmd(
+    binary: Path,
     cfg: LLMSettings,
     port: int,
     gpu_layers: int,
     ctx_size: int,
     gen_threads: int,
     batch_threads: int,
+    effective_backend: str,
 ) -> list[str]:
     """Assemble the llama-server argv list from resolved hardware parameters.
+
+    Args:
+        effective_backend: The backend that will actually run ("cuda" or
+            "cpu").  Controls GPU-specific flags like "--flash-attn"
+            and "--no-mmap".
     """
     try:
         model_size_mb = cfg.model_path.stat().st_size // (1024 * 1024)
     except OSError:
         model_size_mb = 2860
-        
-    ubatch = "64" if model_size_mb < 2000 else "128"
+
+    is_cpu = effective_backend == "cpu" or gpu_layers == 0
+    is_full_gpu_offload = not is_cpu and gpu_layers == _GPU_ALL_LAYERS
+
+    # Batch sizes.
+    if is_cpu:
+        ubatch = "64" if model_size_mb < 2000 else "128"
+    else:
+        ubatch = "512"
 
     cmd = [
-        str(cfg.llama_cpp_bin),
+        str(binary),
         "--model",
         str(cfg.model_path),
         "--host",
@@ -517,16 +742,18 @@ def _build_cmd(
         "512",
         "--ubatch-size",
         ubatch,
-        "--flash-attn", "auto",
         "--cache-type-k",
         cfg.cache_type_k,
         "--cache-type-v",
         cfg.cache_type_v,
-        "--cont-batching",        # interleave prompt ingestion with token generation
-        "--jinja",                # required for Qwen3.5 Jinja2 chat template
+        "--cont-batching",   # interleave prompt ingestion with token generation
+        "--jinja",           # required for Qwen3.5 Jinja2 chat template
         "--reasoning-format",
-        "deepseek",               # strips <think> blocks from streamed output
+        "deepseek",          # strips <think> blocks from streamed output
     ]
+
+    if not is_cpu:
+        cmd.extend(["--flash-attn", "auto"])
 
     if cfg.thinking_mode:
         cmd += ["--reasoning-budget", str(cfg.reasoning_budget)]
@@ -541,24 +768,24 @@ def create_llm(port: int) -> ChatOpenAI:
     """Return a streaming ChatOpenAI client pointed at the local llama-server.
 
     Reads generation parameters from the application config.  When
-    thinking mode is enabled and ``max_tokens`` is below 4096, the
+    thinking mode is enabled and `max_tokens` is below 4096, the
     token budget is silently raised to 4096 to ensure the model has
     sufficient headroom for chain-of-thought tokens before producing
     the visible answer.
 
-    The request timeout is wired to ``agent.llm_timeout`` to prevent
+    The request timeout is wired to `agent.llm_timeout` to prevent
     indefinite hangs in multi-node agent loops when llama-server stalls.
 
     This function is stateless and may be called multiple times.  Each
-    call returns an independent ``ChatOpenAI`` instance sharing the
+    call returns an independent `ChatOpenAI` instance sharing the
     same underlying server.
 
     Args:
-        port: The TCP port returned by ``start_llm_server()``.
+        port: The TCP port returned by `start_llm_server()`.
 
     Returns:
-        A ``ChatOpenAI`` instance with ``streaming=True`` configured
-        for use with ``astream_events`` v2.
+        A `ChatOpenAI` instance with `streaming=True` configured
+        for use with `astream_events` v2.
     """
     cfg = get_settings().llm
     cfg_agent = get_settings().agent

@@ -60,13 +60,16 @@ class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     # --- Deployment tier ---
-    # Controls which model, embedding model, and llama-server flags are active.
-    # "auto" = inferred from available RAM at startup.
+    # "auto" = inferred from available RAM.
     deployment_tier: Literal["auto", "nano", "mid", "turbo"] = "auto"
 
     model_path: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
     model_name: str = "Qwen3.5-4B"
-    llama_cpp_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")
+
+    # Per-backend llama-server binaries.
+    llama_cpp_cpu_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")
+    llama_cpp_cuda_bin: Path = Path("artifacts/servers/cuda/llama-server.exe")
+    llama_cpp_vulkan_bin: Path = Path("artifacts/servers/vulkan/llama-server.exe")
 
     # "auto" or an integer string
     gpu_layers: str = "auto"
@@ -290,9 +293,7 @@ def get_settings() -> Settings:
     raw = _deep_merge(_load_toml(_DEFAULT_TOML), _load_toml(_INSTITUTION_TOML))
 
     # Flatten nested TOML tables into each sub-model's constructor kwargs.
-    # tools.sandbox / tools.search / tools.export need one extra level of unwrap.
     tools_raw: dict[str, Any] = raw.get("tools", {})
-
     inst_raw: dict[str, Any] = raw.get("institution", {})
 
     return Settings(
@@ -306,6 +307,7 @@ def get_settings() -> Settings:
             sandbox=SandboxSettings(**tools_raw.get("sandbox", {})),
             search=SearchSettings(**tools_raw.get("search", {})),
             export=ExportSettings(**tools_raw.get("export", {})),
+            mermaid=MermaidSettings(**tools_raw.get("mermaid", {})),
         ),
         corpus=CorpusSettings(**raw.get("corpus", {})),
         network=NetworkSettings(**raw.get("network", {})),
