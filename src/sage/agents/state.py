@@ -64,6 +64,6 @@ class AgentState(TypedDict, total=False):
     tool_calls: list[dict]
     online_mode: bool
 
-    # --- UI Control (Hybrid Dropdown Routing) ---
-    ui_mode: str
+    # --- Hybrid Dropdown Routing ---
+    mode: str
     thinking_mode: bool

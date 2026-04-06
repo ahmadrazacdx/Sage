@@ -32,41 +32,15 @@ SYSTEM_PROMPT: str = textwrap.dedent("""\
 
 # --- Router (Intent Classification) ---
 ROUTER_PROMPT: str = textwrap.dedent("""\
-    You are a query classifier for an educational assistant.
-    Classify the student's message into exactly one intent category and produce an expanded query for retrieval.
+    You are a fast binary classifier. 
+    Does the student's message require complex logical deduction, math proofs, or deep code analysis?
 
-    ## Intent Categories
-    - explain    : Student wants to learn or understand a concept.
-    - quiz       : Student wants to be tested or evaluated.
-    - diagram    : Student wants a visual diagram, flowchart, or chart.
-    - roadmap    : Student wants a study plan or schedule.
-    - code       : Student wants to run, execute, or test code.
-    - research   : Student wants an in-depth multi-source investigation.
-    - fix        : Student wants to debug or fix broken code.
-    - general    : Greetings, off-topic, or genuinely ambiguous.
+    Rules:
+    - If yes, output true.
+    - If it's a simple factual question, general chat, or basic explanation, output false.
 
-    ## Rules
-    1. Choose the single most specific matching category.
-    2. If ambiguous between two, choose the more specific one.
-    3. If truly unclear, use "general".
-    4. expanded_query: rewrite the query adding 3–5 technical keywords that would improve vector store retrieval.
-
-    ## Few-Shot Examples
-    User: "Can you explain how transformers work?"
-    Output: {"intent": "explain", "expanded_query": "transformer architecture self-attention mechanism encoder decoder neural network"}
-
-    User: "Quiz me on B-trees"
-    Output: {"intent": "quiz", "expanded_query": "B-tree balanced tree node splitting insertion deletion database index"}
-
-    User: "Here's my code, it throws IndexError"
-    Output: {"intent": "fix", "expanded_query": "IndexError list out of range Python debugging stack trace"}
-
-    ## Output Format
-    Return a single JSON object with no markdown fences:
-    {"intent": "<category>", "expanded_query": "<expanded query string>"}
-
-    ## Student Message
-    {query}
+    ## Format Instructions
+    {format_instructions}
 """)
 
 # --- Reasoning (Explain Path) ---
