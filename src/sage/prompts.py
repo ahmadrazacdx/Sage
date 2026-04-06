@@ -15,6 +15,8 @@ Usage:
 
 from __future__ import annotations
 
+import textwrap
+
 # --- Base Persona ---
 
 SYSTEM_PROMPT: str = textwrap.dedent("""\
