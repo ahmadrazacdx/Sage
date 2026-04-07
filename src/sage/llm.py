@@ -50,22 +50,28 @@ _VRAM_PARTIAL_LAYERS: int = 24
 _GPU_ALL_LAYERS: int = -1  # llama.cpp sentinel: offload every layer to GPU
 
 # ---- context-size thresholds (CPU, based on available RAM) ----
-_AVAIL_7GB_MB: int = 7_000   # comfortable: ctx=16K
-_AVAIL_5GB_MB: int = 5_000   # adequate: ctx=8K
-_AVAIL_3_5GB_MB: int = 3_500 # tight: ctx=4K
-# Below 3.5 GB available: ctx=2K, mmap paging is expected
+_AVAIL_5GB_MB: int = 5_000   # comfortable: ctx=32K
+_AVAIL_4GB_MB: int = 4_000   # adequate: ctx=16K
+_AVAIL_3_5GB_MB: int = 3_500 # tight: ctx=8K
+_AVAIL_3GB_MB: int = 3_000   # minimum: ctx=4K
+# Below 3 GB available: ctx=3K, mmap paging is expected
 
+_CTX_64K: int = 65_536
+_CTX_32K: int = 32_768
 _CTX_16K: int = 16_384
 _CTX_8K: int = 8_192
 _CTX_4K: int = 4_096
-_CTX_2K: int = 2_048
+_CTX_3K: int = 3_072
 
 # GPU VRAM thresholds for context scaling (MB).
+_VRAM_12GB_MB: int = 12_000
 _VRAM_8GB_MB: int = 8_000
+_VRAM_6GB_MB: int = 6_000
 _VRAM_4GB_MB: int = 4_000
+_CTX_VRAM_16GB: int = 65_536
 _CTX_VRAM_8GB: int = 32_768
 _CTX_VRAM_4GB: int = 16_384
-_CTX_VRAM_LOW: int = 8_192
+_CTX_VRAM_LOW: int = 3_072
 
 _STDERR_KEEP_BYTES: int = 8_192
 
@@ -307,9 +313,10 @@ def _resolve_context_size(
         size_diff = 2860 - model_size_mb
 
         # Absolute minimum floors to ensure OS and apps overhead is covered.
-        t_16k = max(_AVAIL_7GB_MB - size_diff, 4_000)
-        t_8k  = max(_AVAIL_5GB_MB - size_diff, 3_000)
-        t_4k  = max(_AVAIL_3_5GB_MB - size_diff, 2_000)
+        t_32k = max(_AVAIL_5GB_MB - size_diff, 4_500)
+        t_16k = max(_AVAIL_4GB_MB - size_diff, 3_500)
+        t_8k  = max(_AVAIL_3_5GB_MB - size_diff, 3_000)
+        t_4k  = max(_AVAIL_3GB_MB - size_diff, 2_000)
 
         log.info(
             "context_size_resolution",
@@ -318,20 +325,25 @@ def _resolve_context_size(
             backend="cpu",
         )
 
+        if available_mb >= t_32k:
+            return _CTX_32K
         if available_mb >= t_16k:
             return _CTX_16K
         if available_mb >= t_8k:
             return _CTX_8K
         if available_mb >= t_4k:
             return _CTX_4K
-        return _CTX_2K
+        return _CTX_3K
 
     # GPU path — scale by VRAM.
+    if vram_mb >= _VRAM_12GB_MB:
+        return _CTX_64K
     if vram_mb >= _VRAM_8GB_MB:
-        return _CTX_VRAM_8GB
+        return _CTX_32K
+    if vram_mb >= _VRAM_6GB_MB:
+        return _CTX_16K
     if vram_mb >= _VRAM_4GB_MB:
-        return _CTX_VRAM_4GB
-    return _CTX_VRAM_LOW
+        return _CTX_8K
 
 
 # --- Thread Count ---
@@ -731,7 +743,7 @@ def _build_cmd(
             "--threads-batch", "12",
             "--batch-size", "1024",
             "--ubatch-size", "228",
-            "--ctx-size", "3072",
+            "--ctx-size", str(ctx_size),
             "--n-gpu-layers", "0",
             "--parallel", "4",
             "--cache-reuse", "32",
