@@ -63,8 +63,14 @@ class LLMSettings(BaseSettings):
     # "auto" = inferred from available RAM.
     deployment_tier: Literal["auto", "nano", "mid", "turbo"] = "auto"
 
-    model_path: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
-    model_name: str = "Qwen3.5-4B"
+    model_path_cpu: Path = Path("artifacts/models/Qwen3.5-2B-Q4_K_M.gguf")
+    model_path_cuda: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
+    model_name_cpu: str = "Qwen3.5-2B"
+    model_name_cuda: str = "Qwen3.5-4B"
+    
+    # Active instance configuration dynamically populated by llm.py start_llm_server
+    active_model_path: Path = Path(".")
+    active_model_name: str = "uninitialized"
 
     # Per-backend llama-server binaries.
     llama_cpp_cpu_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")

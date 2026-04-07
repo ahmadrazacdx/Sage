@@ -300,7 +300,7 @@ def _resolve_context_size(
         available_mb: int = psutil.virtual_memory().available // (1024 * 1024)
 
         try:
-            model_size_mb = cfg.model_path.stat().st_size // (1024 * 1024)
+            model_size_mb = cfg.active_model_path.stat().st_size // (1024 * 1024)
         except OSError:
             model_size_mb = 2860
 
@@ -607,17 +607,23 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     """
     cfg = get_settings().llm
 
-    # 1. Detect hardware.
+    # Detect hardware.
     gpu_info = detect_gpu()
 
-    # 2. Resolve binary.
     binary, effective_backend = _resolve_binary(gpu_info, cfg)
     gpu_info = {**gpu_info, "backend": effective_backend}
+
+    if effective_backend == "cpu":
+        cfg.active_model_path = cfg.model_path_cpu
+        cfg.active_model_name = cfg.model_name_cpu
+    else:
+        cfg.active_model_path = cfg.model_path_cuda
+        cfg.active_model_name = cfg.model_name_cuda
 
     _validate_paths(cfg, binary)
 
     # 3. Kill any stale llama-server instances loading the same model.
-    _kill_orphaned_servers(cfg.model_path)
+    _kill_orphaned_servers(cfg.active_model_path)
 
     # 4. Resolve hardware parameters using the EFFECTIVE backend.
     vram_mb: int = gpu_info["vram_mb"]
@@ -637,7 +643,7 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
         batch_threads=batch_threads,
         port=port,
         binary=binary.name,
-        model=cfg.model_path.name,
+        model=cfg.active_model_path.name,
         available_ram_mb=psutil.virtual_memory().available // (1024 * 1024),
     )
 
@@ -684,10 +690,10 @@ def _validate_paths(cfg: LLMSettings, binary: Path) -> None:
             "Download a pre-built release from https://github.com/ggml-org/llama.cpp/releases "
             "and place it at the configured path."
         )
-    if not cfg.model_path.exists():
+    if not cfg.active_model_path.exists():
         raise FileNotFoundError(
-            f"GGUF model file not found at: {cfg.model_path}\n"
-            "Ensure the quantized model is placed at the path configured under [llm] model_path."
+            f"GGUF model file not found at: {cfg.active_model_path}\n"
+            "Ensure the quantized model is placed at the path configured under [llm] model_path_cpu or model_path_cuda."
         )
 
 
@@ -709,50 +715,50 @@ def _build_cmd(
             and "--no-mmap".
     """
     try:
-        model_size_mb = cfg.model_path.stat().st_size // (1024 * 1024)
+        model_size_mb = cfg.active_model_path.stat().st_size // (1024 * 1024)
     except OSError:
         model_size_mb = 2860
 
     is_cpu = effective_backend == "cpu" or gpu_layers == 0
-    is_full_gpu_offload = not is_cpu and gpu_layers == _GPU_ALL_LAYERS
 
-    # Batch sizes.
     if is_cpu:
-        ubatch = "64" if model_size_mb < 2000 else "128"
+        cmd = [
+            str(binary),
+            "--model", str(cfg.active_model_path),
+            "--host", _LLAMA_SERVER_HOST,
+            "--port", str(port),
+            "--threads", "7",
+            "--threads-batch", "12",
+            "--batch-size", "1024",
+            "--ubatch-size", "228",
+            "--ctx-size", "3072",
+            "--n-gpu-layers", "0",
+            "--parallel", "4",
+            "--cache-reuse", "32",
+            "--cont-batching",
+            "--cache-type-k", cfg.cache_type_k,
+            "--cache-type-v", cfg.cache_type_v,
+            "--jinja",
+            "--reasoning-format", "deepseek",
+        ]
     else:
-        ubatch = "512"
-
-    cmd = [
-        str(binary),
-        "--model",
-        str(cfg.model_path),
-        "--host",
-        _LLAMA_SERVER_HOST,
-        "--port",
-        str(port),
-        "--ctx-size",
-        str(ctx_size),
-        "--n-gpu-layers",
-        str(gpu_layers),
-        "--threads",
-        str(gen_threads),
-        "--threads-batch",
-        str(batch_threads),
-        "--batch-size",
-        "512",
-        "--ubatch-size",
-        ubatch,
-        "--cache-type-k",
-        cfg.cache_type_k,
-        "--cache-type-v",
-        cfg.cache_type_v,
-        "--cont-batching",   # interleave prompt ingestion with token generation
-        "--jinja",           # required for Qwen3.5 Jinja2 chat template
-        "--reasoning-format",
-        "deepseek",          # strips <think> blocks from streamed output
-    ]
-
-    if not is_cpu:
+        cmd = [
+            str(binary),
+            "--model", str(cfg.active_model_path),
+            "--host", _LLAMA_SERVER_HOST,
+            "--port", str(port),
+            "--ctx-size", str(ctx_size),
+            "--n-gpu-layers", str(gpu_layers),
+            "--threads", str(gen_threads),
+            "--threads-batch", str(batch_threads),
+            "--batch-size", "512",
+            "--ubatch-size", "512",
+            "--cache-type-k", cfg.cache_type_k,
+            "--cache-type-v", cfg.cache_type_v,
+            "--cont-batching",   # interleave prompt ingestion with token generation
+            "--jinja",           # required for Qwen3.5 Jinja2 chat template
+            "--reasoning-format", "deepseek",  # strips <think> blocks from streamed output
+        ]
         cmd.extend(["--flash-attn", "auto"])
 
     if cfg.thinking_mode:
@@ -802,7 +808,7 @@ def create_llm(port: int) -> ChatOpenAI:
     return ChatOpenAI(
         base_url=f"http://{_LLAMA_SERVER_HOST}:{port}/v1",
         api_key="local",
-        model=cfg.model_name,
+        model=cfg.active_model_name,
         temperature=cfg.temperature,
         max_tokens=max_tok,
         streaming=True,

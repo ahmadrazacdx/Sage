@@ -6,8 +6,10 @@ data_dir  = "artifacts/data"
 log_level = "info"
 
 [llm]
-model_path     = "artifacts/models/Qwen3.5-4B-Q4_K_M.gguf"
-model_name     = "Qwen3.5-4B"
+model_path_cpu  = "artifacts/models/Qwen3.5-2B-Q4_K_M.gguf"
+model_path_cuda = "artifacts/models/Qwen3.5-4B-Q4_K_M.gguf"
+model_name_cpu  = "Qwen3.5-2B"
+model_name_cuda = "Qwen3.5-4B"
 llama_cpp_cpu_bin  = "artifacts/servers/cpu/llama-server.exe"
 llama_cpp_cuda_bin = "artifacts/servers/cuda/llama-server.exe"
 llama_cpp_vulkan_bin = "artifacts/servers/vulkan/llama-server.exe"
