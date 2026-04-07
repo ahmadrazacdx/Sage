@@ -20,14 +20,28 @@ import textwrap
 # --- Base Persona ---
 
 SYSTEM_PROMPT: str = textwrap.dedent("""\
-    You are Sage, an expert academic tutor specializing in computer science and engineering curricula.
+    You are Sage, an expert academic assistant specializing in computer science
+    and engineering curricula.
 
-    Core behaviors:
-    - Explain concepts with precision, adapting language to the student's apparent level.
+    ## Identity
+    - Name        : Sage
+    - Purpose     : Help CS, SE, and IT students in their studies.
+    - Capabilities: Explain concepts, generate quizzes, render diagrams,
+                    run and fix code, search academic papers, export reports.
+    - Built by    : Ahmad Raza & Abdullah Khan, Thal University Bhakkar.
+
+    ## Greeting behaviour
+    When a student greets you, respond warmly and briefly. Introduce yourself, 
+    mention 1-2 things you can help with, and invite them to ask a question.  
+    Keep it to 2–3 sentences, DON'T list every capability in a greeting.
+
+    ## Core behaviours
+    - Explain concepts with precision, adapting language to the student's level.
     - Cite Knowledge Units using [KU#] tags when grounding factual claims.
-    - If you are uncertain or lack sufficient information, say so explicitly — do not guess.
+    - If uncertain or lacking information, say so explicitly — do not guess.
     - Never fabricate references, formulas, or code outputs.
-    - Be direct, encouraging and technically rigorous without being patronizing.
+    - Be direct, encouraging, and technically rigorous without being patronizing.
+    - When a question is ambiguous, state your interpretation before answering.
 """)
 
 # --- Router (Intent Classification) ---
@@ -122,21 +136,12 @@ QUIZ_GENERATION_PROMPT: str = textwrap.dedent("""\
     2. Generate exactly 10 questions at the inferred level.
     3. Distractors for MCQ must be plausible — never obviously wrong.
     4. Code questions must include a function signature and expected output.
+    5. Keep all questions and explanations concise to save output length.
 
     ## Output Format
-    Return a JSON array with no markdown fences. Each element:
-    {
-      "id": 1,
-      "type": "mcq" | "short_answer" | "true_false" | "code",
-      "question": "...",
-      "options": ["A", "B", "C", "D"],   // MCQ only, else null
-      "answer": "...",
-      "explanation": "... [KU#]",
-      "bloom_level": "..."
-    }
-
-    ## Topic
-    {query}
+    Return a JSON array with no markdown fences.
+    
+    {format_instructions}
 """)
 
 QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\
@@ -154,30 +159,9 @@ QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\
        knowledge gaps revealed by this quiz.
 
     ## Output Format
-    Return JSON only, no markdown fences:
-    {
-      "score": "3/5",
-      "percentage": 60,
-      "results": [
-        {
-          "id": 1,
-          "correct": true,
-          "student_answer": "...",
-          "correct_answer": "...",
-          "explanation": "...",
-          "misconception": null,
-          "review_topic": null
-        }
-      ],
-      "summary": {
-        "strengths": ["...", "..."],
-        "gaps": ["...", "..."],
-        "recommended_review": ["topic1", "topic2"]
-      }
-    }
+    Return JSON only, no markdown fences.
 
-    ## Questions and Student Answers
-    {questions_and_answers}
+    {format_instructions}
 """)
 
 
@@ -199,18 +183,18 @@ DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
     6. If scope is ambiguous, pick the most instructive interpretation and state it.
  
     ## Output Format — JSON only, no markdown fences
-    {
+    {{
       "diagram_type": "flowchart | sequence | class | state | ER | mindmap",
       "justification": "...",
       "title": "...",
       "nodes": [
-        {"id": "check_empty", "label": "List empty?", "type": "decision"}
+        {{"id": "check_empty", "label": "List empty?", "type": "decision"}}
       ],
       "edges": [
-        {"from": "start", "to": "check_empty", "label": ""}
+        {{"from": "start", "to": "check_empty", "label": ""}}
       ],
       "notes": "..."
-    }
+    }}
  
     ## Student Request
     {query}
@@ -226,14 +210,14 @@ DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
     Apply these styles using Mermaid classDef and the %%{init}%% directive:
  
     1. Global theme init block — always include as line 1:
-       %%{init: {'theme': 'base', 'themeVariables': {
+       %%{{init: {'theme': 'base', 'themeVariables': {
          'primaryColor': '#e8f5e9',
          'primaryBorderColor': '#2e7d32',
          'primaryTextColor': '#1b2e1c',
          'lineColor': '#388e3c',
          'secondaryColor': '#f1f8e9',
          'tertiaryColor': '#ffffff'
-       }}}%%
+       }}}}}%%
  
     2. Define these classDef classes after the diagram type declaration:
        classDef process    fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c,rx:6
@@ -384,7 +368,7 @@ ROADMAP_ANALYSIS_PROMPT: str = textwrap.dedent("""\
 
     ## Output Format
     Return JSON only, no markdown fences:
-    {
+    {{
       "subject": "...",
       "timeline_days": 14,
       "scope": "final | midterm | [topic list]",
@@ -392,14 +376,14 @@ ROADMAP_ANALYSIS_PROMPT: str = textwrap.dedent("""\
       "known_topics": ["...", "..."],
       "weak_topics": ["...", "..."],
       "topics": [
-        {
+        {{{
           "name": "...",
           "difficulty": 1,
           "estimated_hours": 2,
           "prerequisites": ["..."]
-        }
+        }}
       ]
-    }
+    }}
 
     ## Student Request
     {query}
@@ -431,9 +415,9 @@ ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
 
     ## Output Format
     Return JSON only, no markdown fences:
-    {
+    {{
       "schedule": [
-        {
+        {{
           "day": 1,
           "session_type": "study | review | revision | assessment",
           "topics": ["..."],
@@ -441,13 +425,13 @@ ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
           "activities": ["Read KU2 on hash tables", "Implement open addressing"],
           "knowledge_unit_refs": ["KU2", "KU5"],
           "checkpoint": null
-        }
+        }}
       ],
       "checkpoints": [
-        {"after_day": 4, "milestone": "You should be able to implement and analyse a hash table."}
+        {{"after_day": 4, "milestone": "You should be able to implement and analyse a hash table."}}
       ],
       "self_assessment_questions": ["...", "...", "..."]
-    }
+    }}
 """)
 
 # --- Research Agent ---
@@ -467,20 +451,20 @@ RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
 
     ## Output Format
     Return JSON only, no markdown fences:
-    {
+    {{
       "title": "...",
       "subtopics": [
-        {
+        {{{
           "name": "...",
           "description": "What this subtopic should cover in 1 sentence.",
-          "queries": {
+          "queries": {{
             "academic": "...",
             "web": "...",
             "encyclopedia": "..."
-          }
-        }
+          }}
+        }}
       ]
-    }
+    }}
 
     ## Research Topic
     {query}
@@ -531,20 +515,20 @@ RESEARCH_REVIEW_PROMPT: str = textwrap.dedent("""\
 
     ## Output Format
     Return JSON only, no markdown fences:
-    {
+    {{
       "verdict": "pass | revise",
       "factual_accuracy": "pass | issues_found",
       "citation_completeness": "sufficient | insufficient",
       "subtopic_coverage": [
-        {"subtopic": "...", "coverage": "complete | partial | missing"}
+        {{"subtopic": "...", "coverage": "complete | partial | missing"}
       ],
       "structural_conformance": "pass | fail",
       "issues": [
-        {"type": "factual | citation | structure | clarity", "detail": "...", "location": "..."}
+        {{"type": "factual | citation | structure | clarity", "detail": "...", "location": "..."}}
       ],
       "suggestions": ["...", "...", "..."],
       "overall_comment": "..."
-    }
+    }}
 """)
 
 # --- Code Fix Agent ---
@@ -565,7 +549,7 @@ CODE_FIX_DIAGNOSIS_PROMPT: str = textwrap.dedent("""\
 
     ## Output Format
     Return JSON only, no markdown fences:
-    {
+    {{
       "language": "...",
       "framework": "... or null",
       "error_type": "syntax | runtime | logic | type | import | timeout",
@@ -575,7 +559,7 @@ CODE_FIX_DIAGNOSIS_PROMPT: str = textwrap.dedent("""\
       "fix_strategy": "...",
       "alternative_strategies": ["..."],
       "confidence": "high | medium | low"
-    }
+    }}
 
     ## Code
     ```
@@ -647,13 +631,13 @@ KU_EXTRACTION_PROMPT: str = textwrap.dedent("""\
     ## Output Format
     Return a JSON array only, no markdown fences:
     [
-      {
+      {{
         "id": "KU1",
         "claim": "...",
         "source_file": "lecture_05.pdf",
         "source_page": 12,
         "relevance_rank": 1
-      }
+      }}
     ]
 
     ## Query
