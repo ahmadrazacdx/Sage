@@ -324,90 +324,67 @@ DIAGRAM_FIX_PROMPT: str = textwrap.dedent("""\
 
 # --- Roadmap / Study Plan ---
 ROADMAP_ANALYSIS_PROMPT: str = textwrap.dedent("""\
-    You are an academic advisor. Extract structured information from the
-    student's request to prepare a personalized study roadmap.
-
+    You are an academic advisor. Extract structured data from the student request below.
+ 
     ## Student Context
     {student_memory}
+ 
+    ## Extract
+    - subject: course / subject name
+    - timeline_days: total days (convert natural language: "2 weeks"→14)
+    - scope: "midterm" | "final" | "full course" | [specific topic list]
+    - daily_hours_available: hours/day (default 3 if unspecified)
+    - known_topics: topics the student already masters (from context)
+    - weak_topics: gaps / previously struggled areas (from context)
+    - topics[]: every topic in scope with:
+        name, difficulty (1=easy 2=medium 3=hard), estimated_hours, prerequisites[]
 
-    ## Rules
-    1. Parse and extract:
-       - subject: course name or subject area.
-       - timeline: total days available (convert "2 weeks" → 14, etc.).
-       - scope: "midterm", "final", "full course", or list specific topics.
-       - daily_hours: available study hours per day (default to 3 if unspecified).
-    2. From student context, identify:
-       - known_topics: what the student demonstrably knows already.
-       - weak_topics: areas flagged as gaps or previously struggled with.
-    3. Identify all prerequisite dependencies between topics in scope.
-    4. Estimate relative difficulty weight per topic (1 = easy, 3 = hard).
-
-    ## Output Format
-    Return JSON only, no markdown fences:
-    {{
-      "subject": "...",
-      "timeline_days": 14,
-      "scope": "final | midterm | [topic list]",
-      "daily_hours_available": 3,
-      "known_topics": ["...", "..."],
-      "weak_topics": ["...", "..."],
-      "topics": [
-        {{{
-          "name": "...",
-          "difficulty": 1,
-          "estimated_hours": 2,
-          "prerequisites": ["..."]
-        }}
-      ]
-    }}
-
+   ## Timeline Policy (when student does NOT specify duration)
+   1. Narrow topic / quick revision: 7-14 days.
+   2. Midterm/final preparation: 30-60 days.
+   3. Full-course mastery plan: 56-90 days.
+   4. Prefer longer horizons for rigorous subjects (for example deep learning, distributed systems, compilers).
+ 
+    Return JSON only — no fences, no commentary:
+    {{"subject":"...","timeline_days":14,"scope":"...","daily_hours_available":3,
+    "known_topics":["..."],"weak_topics":["..."],
+    "topics":[{{"name":"...","difficulty":2,"estimated_hours":2.0,"prerequisites":["..."]}}]}}
+ 
     ## Student Request
     {query}
 """)
-
-
+ 
 ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
-    Generate a day-by-day study schedule from the structured analysis below.
-
+    Build a day-by-day study schedule from the analysis and knowledge units below.
+ 
     ## Analysis
     {analysis}
-
-    ## Retrieved Knowledge Units
+ 
+    ## Knowledge Units
     {knowledge_units}
-
+ 
     ## Rules
-    1. Respect prerequisite order strictly — never schedule a topic before
-       all its dependencies have been covered.
-    2. Apply spaced repetition: schedule a short review of the previous
-       day's material at the start of each new study day (20–30 min).
-    3. Cap new material at 4 hours per day to prevent cognitive overload.
-    4. Reserve the final 2 days entirely for full revision and practice tests.
-    5. Mark known_topics as "light review" (30 min max) not full study sessions.
-    6. Allocate proportionally more time to weak_topics and high-difficulty topics.
-    7. Include a progress checkpoint every 3–4 days:
-       "By Day N you should be able to: ..."
-    8. Map each day's topics to their source Knowledge Unit IDs where available.
-    9. Close the schedule with 3 self-assessment questions covering the full scope.
-
-    ## Output Format
-    Return JSON only, no markdown fences:
-    {{
-      "schedule": [
-        {{
-          "day": 1,
-          "session_type": "study | review | revision | assessment",
-          "topics": ["..."],
-          "hours": 3.0,
-          "activities": ["Read KU2 on hash tables", "Implement open addressing"],
-          "knowledge_unit_refs": ["KU2", "KU5"],
-          "checkpoint": null
-        }}
-      ],
-      "checkpoints": [
-        {{"after_day": 4, "milestone": "You should be able to implement and analyse a hash table."}}
-      ],
-      "self_assessment_questions": ["...", "...", "..."]
-    }}
+    0. Honor analysis.timeline_days exactly.
+       - timeline_days <= 7  -> one entry per day.
+       - 7 < timeline_days <= 14 -> one entry per day, weekly phases in activities.
+       - timeline_days > 14 -> day-indexed entries organized in weekly phases.
+    1. Strict prerequisite order — never place a topic before its dependencies.
+    2. Spaced repetition: open every study day with a 20–30 min recap of the prior day.
+    3. Cap new material at 4 h/day.
+    4. Final 2 days = revision + practice tests only (session_type "revision").
+    5. known_topics → session_type "review", ≤30 min, not a full study block.
+    6. Give proportionally more time to weak_topics and difficulty=3 topics.
+    7. Insert a checkpoint every 3–4 days: "By Day N you should be able to …"
+    8. Reference Knowledge Unit IDs (knowledge_unit_refs[]) wherever relevant.
+    9. End with exactly 3 self_assessment_questions spanning the full scope.
+   10. checkpoints must be objects with keys: after_day (int), milestone (str). NEVER return checkpoint strings.
+ 
+    Return JSON only — no fences, no commentary:
+    {{"schedule":[{{"day":1,"session_type":"study|review|revision|assessment",
+    "topics":["..."],"hours":3.0,"activities":["..."],
+    "knowledge_unit_refs":["KU1"],"checkpoint":null}}],
+    "checkpoints":[{{"after_day":4,"milestone":"..."}}],
+    "self_assessment_questions":["...","...","..."]}}
 """)
 
 # --- Research Agent ---
@@ -430,7 +407,7 @@ RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
     {{
       "title": "...",
       "subtopics": [
-        {{{
+        {{
           "name": "...",
           "description": "What this subtopic should cover in 1 sentence.",
           "queries": {{
@@ -496,7 +473,7 @@ RESEARCH_REVIEW_PROMPT: str = textwrap.dedent("""\
       "factual_accuracy": "pass | issues_found",
       "citation_completeness": "sufficient | insufficient",
       "subtopic_coverage": [
-        {{"subtopic": "...", "coverage": "complete | partial | missing"}
+        {{"subtopic": "...", "coverage": "complete | partial | missing"}}
       ],
       "structural_conformance": "pass | fail",
       "issues": [
