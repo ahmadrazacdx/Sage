@@ -53,12 +53,14 @@ class AgentState(TypedDict, total=False):
     research_plan: dict | None
     research_sources: list[dict]
     research_report: str | None
+    student_memory: str
 
     # --- Output ---
     response: str
     citations: list[dict]
     references: list[dict]
     diagrams: list[dict]
+    last_quiz_questions: str | None
 
     # --- Metadata ---
     tool_calls: list[dict]
