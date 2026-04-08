@@ -30,15 +30,12 @@ thinking_mode = false
 reasoning_budget = 0
 
 [embedding]
-tier           = "lite"
-model_lite     = "artifacts/models/embedding-models/arctic-embed-s"
-model_standard = "artifacts/models/embedding-models/arctic-embed-m-v2"
+embed_model     = "artifacts/models/embedding-models/bge-small-en-v1.5"
 
 [rag]
 curriculum_collection    = "curriculum"
 user_uploads_collection  = "user_uploads"
-vectordb_lite_dir        = "artifacts/data/databases/vectordb-lite"
-vectordb_standard_dir    = "artifacts/data/databases/vectordb-standard"
+vectordb        = "artifacts/data/databases/vectordb"
 
 # Chunking
 chunk_size  = 512
