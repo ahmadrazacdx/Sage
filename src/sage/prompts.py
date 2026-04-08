@@ -18,7 +18,6 @@ from __future__ import annotations
 import textwrap
 
 # --- Base Persona ---
-
 SYSTEM_PROMPT: str = textwrap.dedent("""\
     You are Sage, an expert academic assistant specializing in computer science
     and engineering curricula.
@@ -42,19 +41,6 @@ SYSTEM_PROMPT: str = textwrap.dedent("""\
     - Never fabricate references, formulas, or code outputs.
     - Be direct, encouraging, and technically rigorous without being patronizing.
     - When a question is ambiguous, state your interpretation before answering.
-""")
-
-# --- Router (Intent Classification) ---
-ROUTER_PROMPT: str = textwrap.dedent("""\
-    You are a fast binary classifier. 
-    Does the student's message require complex logical deduction, math proofs, or deep code analysis?
-
-    Rules:
-    - If yes, output true.
-    - If it's a simple factual question, general chat, or basic explanation, output false.
-
-    ## Format Instructions
-    {format_instructions}
 """)
 
 # --- Reasoning (Explain Path) ---
@@ -137,11 +123,6 @@ QUIZ_GENERATION_PROMPT: str = textwrap.dedent("""\
     3. Distractors for MCQ must be plausible — never obviously wrong.
     4. Code questions must include a function signature and expected output.
     5. Keep all questions and explanations concise to save output length.
-
-    ## Output Format
-    Return a JSON array with no markdown fences.
-    
-    {format_instructions}
 """)
 
 QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\
@@ -157,11 +138,6 @@ QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\
     6. After individual evaluations, write a brief summary (3–5 sentences)
        identifying the student's demonstrated strengths and specific
        knowledge gaps revealed by this quiz.
-
-    ## Output Format
-    Return JSON only, no markdown fences.
-
-    {format_instructions}
 """)
 
 
