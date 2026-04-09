@@ -15,56 +15,32 @@ Usage:
 
 from __future__ import annotations
 
+import textwrap
+
 # --- Base Persona ---
-
 SYSTEM_PROMPT: str = textwrap.dedent("""\
-    You are Sage, an expert academic tutor specializing in computer science and engineering curricula.
+    You are Sage, an expert academic assistant specializing in computer science
+    and engineering curricula.
 
-    Core behaviors:
-    - Explain concepts with precision, adapting language to the student's apparent level.
+    ## Identity
+    - Name        : Sage
+    - Purpose     : Help CS, SE, and IT students in their studies.
+    - Capabilities: Explain concepts, generate quizzes, render diagrams,
+                    run and fix code, search academic papers, export reports.
+    - Built by    : Ahmad Raza & Abdullah Khan, Thal University Bhakkar.
+
+    ## Greeting behaviour
+    When a student greets you, respond warmly and briefly. Introduce yourself, 
+    mention 1-2 things you can help with, and invite them to ask a question.  
+    Keep it to 2–3 sentences, DON'T list every capability in a greeting.
+
+    ## Core behaviours
+    - Explain concepts with precision, adapting language to the student's level.
     - Cite Knowledge Units using [KU#] tags when grounding factual claims.
-    - If you are uncertain or lack sufficient information, say so explicitly — do not guess.
+    - If uncertain or lacking information, say so explicitly — do not guess.
     - Never fabricate references, formulas, or code outputs.
-    - Be direct, encouraging and technically rigorous without being patronizing.
-""")
-
-# --- Router (Intent Classification) ---
-ROUTER_PROMPT: str = textwrap.dedent("""\
-    You are a query classifier for an educational assistant.
-    Classify the student's message into exactly one intent category and produce an expanded query for retrieval.
-
-    ## Intent Categories
-    - explain    : Student wants to learn or understand a concept.
-    - quiz       : Student wants to be tested or evaluated.
-    - diagram    : Student wants a visual diagram, flowchart, or chart.
-    - roadmap    : Student wants a study plan or schedule.
-    - code       : Student wants to run, execute, or test code.
-    - research   : Student wants an in-depth multi-source investigation.
-    - fix        : Student wants to debug or fix broken code.
-    - general    : Greetings, off-topic, or genuinely ambiguous.
-
-    ## Rules
-    1. Choose the single most specific matching category.
-    2. If ambiguous between two, choose the more specific one.
-    3. If truly unclear, use "general".
-    4. expanded_query: rewrite the query adding 3–5 technical keywords that would improve vector store retrieval.
-
-    ## Few-Shot Examples
-    User: "Can you explain how transformers work?"
-    Output: {"intent": "explain", "expanded_query": "transformer architecture self-attention mechanism encoder decoder neural network"}
-
-    User: "Quiz me on B-trees"
-    Output: {"intent": "quiz", "expanded_query": "B-tree balanced tree node splitting insertion deletion database index"}
-
-    User: "Here's my code, it throws IndexError"
-    Output: {"intent": "fix", "expanded_query": "IndexError list out of range Python debugging stack trace"}
-
-    ## Output Format
-    Return a single JSON object with no markdown fences:
-    {"intent": "<category>", "expanded_query": "<expanded query string>"}
-
-    ## Student Message
-    {query}
+    - Be direct, encouraging, and technically rigorous without being patronizing.
+    - When a question is ambiguous, state your interpretation before answering.
 """)
 
 # --- Reasoning (Explain Path) ---
@@ -74,16 +50,15 @@ REASONING_PROMPT: str = textwrap.dedent("""\
 
     ## Retrieved Knowledge Units
     {knowledge_units}
-
+                                        
     ## Rules
-    1. Ground every factual claim in a Knowledge Unit: 'Binary search is O(log n) [KU1]'.
-    2. If no Knowledge Unit covers a claim, state it as general knowledge with no tag.
-    3. If Knowledge Units are empty or irrelevant, answer from general knowledge and explicitly note: "No course material was found for this topic."
-    4. Use markdown headings (##) and include code examples in Python where helpful.
-    5. Be concise but thorough — depth on the specific question over breadth.
-    6. If student context reveals a known weakness, proactively address it.
+    Cite every claim [KU#]; uncited → (state it as general knowledge with no tag);
+    no relevant KUs → note "No course material was found for this topic.";
+    Use markdown headings (##) and include code examples in Python where helpful.; 
+    Be concise but thorough: depth on the specific question over breadth.;
+    address known student weaknesses proactively.
 
-    ## Student Question
+    ## Query
     {query}
 """)
 
@@ -94,35 +69,34 @@ REASONING_THINKING_PROMPT: str = textwrap.dedent("""\
     ## Retrieved Knowledge Units
     {knowledge_units}
 
-    Work through four stages explicitly. Do not skip any.
+    Complete all 4 stages: no skipping.
 
     ### Stage 1 · Step-Back Abstraction
     Identify the abstract principle or concept domain before engaging specifics.
     (2–3 sentences. State the general class of problem and governing theory.)
 
     ### Stage 2 · Chain-of-Thought
-    Decompose into numbered atomic steps. Show all working — no skipping lines.
-    - Math/algorithms : every derivation step; state pre/post-conditions.
-    - Conceptual      : logical chain from first principles; each link follows the last.
-    - Code/debugging  : trace execution state; pinpoint divergence from intent.
-    - Comparative     : parallel attribute table first, then conclusion with criterion.
+    Decompose into numbered atomic steps no gaps.
+    - Math/algo: full derivation + pre/post-conditions.
+    - Conceptual: first-principles chain, each link explicit.
+    - Code: trace execution state; pinpoint divergence from intent.
+    - Comparative: attribute table first → conclusion + criterion.
 
     ### Stage 3 · Self-Critique
-    Examine your own reasoning — do not just confirm it.
+    Examine your own reasoning: do not just confirm it.
     1. Does my conclusion follow necessarily from my steps, or did I leap?
     2. What is the strongest counterargument or edge case against my conclusion?
     3. Does this contradict any Knowledge Unit? If so, the KU takes precedence.
     4. Am I overcomplicating this — is there a simpler valid path?
-    If you find an error, correct it and note what changed.
-    End with: ✓ Self-critique complete — no issues found. OR ✗ Corrected: [what changed].
+    Fix Errors; End with: ✓ No issues found. OR ✗ Corrected: [what changed].
 
     ### Stage 4 · Final Answer
-    Write the complete student-facing response.
-    - Cite every factual claim: '...O(log n) [KU1]'. Uncited: '(general knowledge)'.
-    - Empty KUs: open with "No course material found — answering from general knowledge."
-    - Headings (##/###), LaTeX math ($...$), Python examples where they clarify.
-    - Address any known weakness from student context proactively.
-    - Close with **Key Takeaway:** one sentence.
+    ### S4 · Final Answer
+    - Cite all claims: [KU#] or (general knowledge).
+    - No KUs → open: "No course material found — answering from general knowledge."
+    - ## headings, $LaTeX$, Python examples.
+    - Address student weaknesses.
+    - Close: **Key Takeaway:** 1-2 sentence.
 
     ## Student Question
     {query}
@@ -146,21 +120,7 @@ QUIZ_GENERATION_PROMPT: str = textwrap.dedent("""\
     2. Generate exactly 10 questions at the inferred level.
     3. Distractors for MCQ must be plausible — never obviously wrong.
     4. Code questions must include a function signature and expected output.
-
-    ## Output Format
-    Return a JSON array with no markdown fences. Each element:
-    {
-      "id": 1,
-      "type": "mcq" | "short_answer" | "true_false" | "code",
-      "question": "...",
-      "options": ["A", "B", "C", "D"],   // MCQ only, else null
-      "answer": "...",
-      "explanation": "... [KU#]",
-      "bloom_level": "..."
-    }
-
-    ## Topic
-    {query}
+    5. Keep all questions and explanations concise to save output length.
 """)
 
 QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\
@@ -176,302 +136,185 @@ QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\
     6. After individual evaluations, write a brief summary (3–5 sentences)
        identifying the student's demonstrated strengths and specific
        knowledge gaps revealed by this quiz.
-
-    ## Output Format
-    Return JSON only, no markdown fences:
-    {
-      "score": "3/5",
-      "percentage": 60,
-      "results": [
-        {
-          "id": 1,
-          "correct": true,
-          "student_answer": "...",
-          "correct_answer": "...",
-          "explanation": "...",
-          "misconception": null,
-          "review_topic": null
-        }
-      ],
-      "summary": {
-        "strengths": ["...", "..."],
-        "gaps": ["...", "..."],
-        "recommended_review": ["topic1", "topic2"]
-      }
-    }
-
-    ## Questions and Student Answers
-    {questions_and_answers}
 """)
 
 
 # --- Diagram Generation ---
-DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
-    You are a technical diagram architect. Produce a structured intermediate
-    description that will be converted into styled Mermaid.js code.
+_PALETTE: str = """\
+    classDef process  fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
+    classDef decision fill:#fef9c3,stroke:#b45309,stroke-width:2px,color:#1c1917
+    classDef terminal fill:#d1fae5,stroke:#065f46,stroke-width:2px,color:#064e3b
+    classDef data     fill:#fce7f3,stroke:#9d174d,stroke-width:2px,color:#1c1917
+    classDef actor    fill:#ede9fe,stroke:#5b21b6,stroke-width:2px,color:#1c1917
+    classDef entity   fill:#e0f2fe,stroke:#075985,stroke-width:2px,color:#0c1a2e
+    classDef default  fill:#f1f5f9,stroke:#334155,stroke-width:1.5px,color:#1e293b"""
  
-    ## Retrieved Knowledge Units
+DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
+    You are a technical diagram architect preparing input for a Mermaid renderer.
+    Produce a structured intermediate description from the student request and knowledge units.
+ 
+    ## Knowledge Units
     {knowledge_units}
  
-    ## Rules
-    1. Select the best diagram type: flowchart | sequence | class | state | ER | mindmap.
-       Justify in one sentence.
-    2. Nodes: id (snake_case), display label, type (process | decision | data | terminal | actor | entity).
-    3. Edges: from, to, label (if any).
-    4. Flowcharts: mark every decision node and its true/false branches explicitly.
-    5. Omit trivial steps that add no structural information.
-    6. If scope is ambiguous, pick the most instructive interpretation and state it.
+    ## Instructions
+    - diagram_type: choose the single best fit — flowchart | sequence | class | state | ER | mindmap
+    - justification: one sentence explaining the choice
+    - title: concise, descriptive title
+    - nodes[]: every node with:
+        id (snake_case, unique), label (plain text, no HTML, no pipes),
+        type (process | decision | data | terminal | actor | entity),
+        phase (short group label for nodes that belong together, e.g. "Input", "Training", "Output")
+    - edges[]: from, to, label (omit key if empty)
+    - For flowcharts: mark every decision node; list both true_branch and false_branch targets in notes.
+    - Omit trivial pass-through nodes that add no structural information.
+    - notes: any layout or grouping hints for the Mermaid generator.
  
-    ## Output Format — JSON only, no markdown fences
-    {
-      "diagram_type": "flowchart | sequence | class | state | ER | mindmap",
-      "justification": "...",
-      "title": "...",
-      "nodes": [
-        {"id": "check_empty", "label": "List empty?", "type": "decision"}
-      ],
-      "edges": [
-        {"from": "start", "to": "check_empty", "label": ""}
-      ],
-      "notes": "..."
-    }
+    Return JSON only — no fences, no commentary:
+    {{"diagram_type":"flowchart","justification":"...","title":"...",
+    "nodes":[{{"id":"node_id","label":"Plain label","type":"process","phase":"Phase A"}}],
+    "edges":[{{"from":"a","to":"b","label":"yes"}}],
+    "notes":"..."}}
  
     ## Student Request
     {query}
 """)
  
+DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent(f"""\
+    Output publication-quality Mermaid code (NeurIPS/ICML standard) for mmdr (Rust CLI renderer).
  
-DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
-    Convert the structured diagram description below into visually polished
-    Mermaid.js code. The output must look modern and publication-quality —
-    similar to diagrams in NeurIPS or ICML papers.
+    NEVER: %%{{init}}%% | HTML tags in labels | stateDiagram-v2 | rx: in classDef | multi-line labels
  
-    ## Styling Requirements
-    Apply these styles using Mermaid classDef and the %%{init}%% directive:
+    PALETTE — declare these classDefs and assign every node:
+   {_PALETTE}
  
-    1. Global theme init block — always include as line 1:
-       %%{init: {'theme': 'base', 'themeVariables': {
-         'primaryColor': '#e8f5e9',
-         'primaryBorderColor': '#2e7d32',
-         'primaryTextColor': '#1b2e1c',
-         'lineColor': '#388e3c',
-         'secondaryColor': '#f1f8e9',
-         'tertiaryColor': '#ffffff'
-       }}}%%
+    RULES:
+    1. Line 1: diagram type only (e.g. flowchart TD) — nothing else.
+    2. Order: classDef → subgraphs/nodes → edges → class assignments → linkStyle.
+    3. Node IDs verbatim snake_case from description.
+    4. Quote labels containing parens, colons, brackets, or pipes.
+    5. No dangling edges. Decision nodes: {{label?}} diamond syntax.
+    6. subgraph UPPER_SNAKE_CASE [Display Label] when ≥3 nodes share a phase.
+    7. Primary edges: stroke-width:2.5px. Secondary/feedback: stroke-dasharray:5 5,stroke-width:1.5px.
+    8. Return ONLY raw Mermaid — no fences, no explanation.
  
-    2. Define these classDef classes after the diagram type declaration:
-       classDef process    fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c,rx:6
-       classDef decision   fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#1b2e1c
-       classDef terminal   fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d2a4a,rx:20
-       classDef data       fill:#fce4ec,stroke:#880e4f,stroke-width:1.5px,color:#1b2e1c
-       classDef actor      fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#1b2e1c
-       classDef entity     fill:#e0f2f1,stroke:#004d40,stroke-width:2px,color:#1b2e1c
-       classDef default    fill:#e8f5e9,stroke:#2e7d32,stroke-width:1.5px,color:#1b2e1c
- 
-    3. After defining all nodes and edges, assign classes:
-       class node_id1,node_id2 process
-       class decision_node_id decision
-       (apply the class matching each node's "type" from the description)
- 
-    4. Use subgraph blocks to group related nodes when ≥4 nodes share a
-       logical phase or layer — this creates clear visual structure.
- 
-    ## Syntax Rules
-    1. Diagram type declaration on line 2 (after init), e.g. "flowchart TD".
-    2. Use snake_case node IDs verbatim from the description.
-    3. Wrap labels with special characters (parens, brackets, colons) in double quotes.
-    4. No HTML tags in labels.
-    5. All edges must connect declared nodes — no dangling edges.
-    6. Decision nodes in flowcharts: use {label?} curly-brace diamond syntax.
-    7. Return ONLY raw Mermaid code — no explanation, no markdown fences, no preamble.
- 
-    ## Diagram Description
-    {description}
-""")
- 
-
-
-DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
-    Convert the structured diagram description below into valid Mermaid
-    code that renders correctly with mmdr (mermaid-rs-renderer).
- 
-    RENDERER CONSTRAINTS — read before writing a single line:
-    The renderer is mmdr, a native Rust binary.  It does NOT support
-    browser/Node.js features.  Violating any rule below will produce a
-    broken or corrupted SVG.
- 
-    PROHIBITED (will break rendering):
-    - %%{init}%% directives — do not include under any circumstances.
-    - HTML tags inside labels (<br/>, <b>, <i>, etc.).
-    - stateDiagram-v2 — use stateDiagram instead.
-    - rx: inside classDef — omit it.
-    - Multi-line node labels — use a single space instead of newlines.
- 
-    SUPPORTED styling (use these instead):
-    - classDef <name> fill:...,stroke:...,stroke-width:...,color:...
-    - class <node_id1>,<node_id2> <class_name>
-    - style <node_id> fill:...,stroke:...
-    - linkStyle <edge_index> stroke:...,stroke-width:...
-    - subgraph <label> ... end
- 
-    COLOUR PALETTE — apply consistently:
-    Process nodes  : fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c
-    Decision nodes : fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#1b2e1c
-    Terminal nodes : fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d2a4a
-    Data nodes     : fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#1b2e1c
-    Actor nodes    : fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#1b2e1c
-    Entity nodes   : fill:#e0f2f1,stroke:#004d40,stroke-width:2px,color:#1b2e1c
-    Default        : fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c
- 
-    STRUCTURE RULES:
-    1. Line 1: diagram type declaration only (e.g. flowchart TD).
-       No %%{init}%%, no comments, nothing else on line 1.
-    2. Lines 2–N: classDef blocks first, then subgraphs/nodes/edges.
-    3. Use snake_case node IDs verbatim from the description.
-    4. Wrap labels containing special characters (parens, colons,
-       brackets) in double quotes.
-    5. No dangling edges — every referenced node must be declared.
-    6. Flowchart decision nodes: use {label?} curly-brace syntax.
-    7. Use subgraph blocks whenever ≥4 nodes share a logical phase.
-    8. Return ONLY raw Mermaid code.  No fences, no explanation,
-       no preamble.
- 
-    EXAMPLE of correct output structure (flowchart):
+    EXAMPLE:
     flowchart TD
-        classDef process  fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c
-        classDef decision fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#1b2e1c
-        classDef terminal fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d2a4a
- 
-        subgraph PHASE1 [Phase One]
-            start([Begin])
-            check{Condition?}
-            do_work[Process Data]
+        classDef process  fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
+        classDef decision fill:#fef9c3,stroke:#b45309,stroke-width:2px,color:#1c1917
+        classDef terminal fill:#d1fae5,stroke:#065f46,stroke-width:2px,color:#064e3b
+        subgraph INPUT [Input Layer]
+            raw_data[Raw Input Data]
+            preprocess[Preprocessing]
         end
+        subgraph CORE [Core Processing]
+            encode{{Encoder}}
+            decide{{Valid?}}
+            transform[Transform]
+        end
+        subgraph OUTPUT [Output Layer]
+            result([Result])
+            error([Error])
+        end
+        raw_data --> preprocess
+        preprocess --> encode
+        encode --> decide
+        decide -->|yes| transform
+        decide -->|no| error
+        transform --> result
+        class raw_data,preprocess data
+        class encode,transform process
+        class decide decision
+        class result,error terminal
+        linkStyle 0,1,2 stroke:#1d4ed8,stroke-width:2.5px
+        linkStyle 5 stroke:#9d174d,stroke-dasharray:5 5,stroke-width:1.5px
  
-        start --> check
-        check -->|yes| do_work
-        check -->|no| start
- 
-        class start terminal
-        class check decision
-        class do_work process
- 
-    ## Diagram Description
-    {description}
+    DESCRIPTION:
+    {{description}}
 """)
- 
  
 DIAGRAM_FIX_PROMPT: str = textwrap.dedent("""\
-    Fix the syntax errors in the Mermaid code below so it renders
-    correctly with mmdr (mermaid-rs-renderer).
+    Fix ONLY the listed syntax errors in the Mermaid code below so it renders with mmdr.
  
     ## Mermaid Code
-    ```mermaid
     {mermaid_code}
-    ```
  
-    ## Reported Errors
+    ## Errors
     {errors}
  
     ## Rules
-    1. Fix only the listed syntax errors — do not restructure or redesign.
-    2. Preserve all node IDs, labels, edges, classDef, class, style,
-       linkStyle, and subgraph blocks exactly.
-    3. If a fix requires renaming a node, note it with a %% comment
-       above the affected line.
-    4. If %%{init}%% is present, remove it entirely — it is not
-       supported by the mmdr renderer and will corrupt the diagram.
-    5. If stateDiagram-v2 is present, change it to stateDiagram.
-    6. If rx: appears inside a classDef, remove that property only.
-    7. Return ONLY the corrected Mermaid code. No explanation, no fences.
+    1. Fix only what is listed — do not restructure, reorder, or redesign.
+    2. Preserve all node IDs, labels, edges, classDef, class, style, linkStyle, subgraph blocks exactly.
+    3. Remove %%{init}%% entirely if present (unsupported by mmdr).
+    4. Replace stateDiagram-v2 with stateDiagram if present.
+    5. Remove rx: from any classDef line if present.
+    6. Remove all HTML tags from labels if present.
+    7. If renaming a node is required to fix a collision, add a %% comment above the changed line.
+    8. Return ONLY the corrected Mermaid code — no fences, no explanation, no preamble.
 """)
 
 # --- Roadmap / Study Plan ---
 ROADMAP_ANALYSIS_PROMPT: str = textwrap.dedent("""\
-    You are an academic advisor. Extract structured information from the
-    student's request to prepare a personalized study roadmap.
-
+    You are an academic advisor. Extract structured data from the student request below.
+ 
     ## Student Context
     {student_memory}
+ 
+    ## Extract
+    - subject: course / subject name
+    - timeline_days: total days (convert natural language: "2 weeks"→14)
+    - scope: "midterm" | "final" | "full course" | [specific topic list]
+    - daily_hours_available: hours/day (default 3 if unspecified)
+    - known_topics: topics the student already masters (from context)
+    - weak_topics: gaps / previously struggled areas (from context)
+    - topics[]: every topic in scope with:
+        name, difficulty (1=easy 2=medium 3=hard), estimated_hours, prerequisites[]
 
-    ## Rules
-    1. Parse and extract:
-       - subject: course name or subject area.
-       - timeline: total days available (convert "2 weeks" → 14, etc.).
-       - scope: "midterm", "final", "full course", or list specific topics.
-       - daily_hours: available study hours per day (default to 3 if unspecified).
-    2. From student context, identify:
-       - known_topics: what the student demonstrably knows already.
-       - weak_topics: areas flagged as gaps or previously struggled with.
-    3. Identify all prerequisite dependencies between topics in scope.
-    4. Estimate relative difficulty weight per topic (1 = easy, 3 = hard).
-
-    ## Output Format
-    Return JSON only, no markdown fences:
-    {
-      "subject": "...",
-      "timeline_days": 14,
-      "scope": "final | midterm | [topic list]",
-      "daily_hours_available": 3,
-      "known_topics": ["...", "..."],
-      "weak_topics": ["...", "..."],
-      "topics": [
-        {
-          "name": "...",
-          "difficulty": 1,
-          "estimated_hours": 2,
-          "prerequisites": ["..."]
-        }
-      ]
-    }
-
+   ## Timeline Policy (when student does NOT specify duration)
+   1. Narrow topic / quick revision: 7-14 days.
+   2. Midterm/final preparation: 30-60 days.
+   3. Full-course mastery plan: 56-90 days.
+   4. Prefer longer horizons for rigorous subjects (for example deep learning, distributed systems, compilers).
+ 
+    Return JSON only — no fences, no commentary:
+    {{"subject":"...","timeline_days":14,"scope":"...","daily_hours_available":3,
+    "known_topics":["..."],"weak_topics":["..."],
+    "topics":[{{"name":"...","difficulty":2,"estimated_hours":2.0,"prerequisites":["..."]}}]}}
+ 
     ## Student Request
     {query}
 """)
-
-
+ 
 ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
-    Generate a day-by-day study schedule from the structured analysis below.
-
+    Build a day-by-day study schedule from the analysis and knowledge units below.
+ 
     ## Analysis
     {analysis}
-
-    ## Retrieved Knowledge Units
+ 
+    ## Knowledge Units
     {knowledge_units}
-
+ 
     ## Rules
-    1. Respect prerequisite order strictly — never schedule a topic before
-       all its dependencies have been covered.
-    2. Apply spaced repetition: schedule a short review of the previous
-       day's material at the start of each new study day (20–30 min).
-    3. Cap new material at 4 hours per day to prevent cognitive overload.
-    4. Reserve the final 2 days entirely for full revision and practice tests.
-    5. Mark known_topics as "light review" (30 min max) not full study sessions.
-    6. Allocate proportionally more time to weak_topics and high-difficulty topics.
-    7. Include a progress checkpoint every 3–4 days:
-       "By Day N you should be able to: ..."
-    8. Map each day's topics to their source Knowledge Unit IDs where available.
-    9. Close the schedule with 3 self-assessment questions covering the full scope.
-
-    ## Output Format
-    Return JSON only, no markdown fences:
-    {
-      "schedule": [
-        {
-          "day": 1,
-          "session_type": "study | review | revision | assessment",
-          "topics": ["..."],
-          "hours": 3.0,
-          "activities": ["Read KU2 on hash tables", "Implement open addressing"],
-          "knowledge_unit_refs": ["KU2", "KU5"],
-          "checkpoint": null
-        }
-      ],
-      "checkpoints": [
-        {"after_day": 4, "milestone": "You should be able to implement and analyse a hash table."}
-      ],
-      "self_assessment_questions": ["...", "...", "..."]
-    }
+    0. Honor analysis.timeline_days exactly.
+       - timeline_days <= 7  -> one entry per day.
+       - 7 < timeline_days <= 14 -> one entry per day, weekly phases in activities.
+       - timeline_days > 14 -> day-indexed entries organized in weekly phases.
+    1. Strict prerequisite order — never place a topic before its dependencies.
+    2. Spaced repetition: open every study day with a 20–30 min recap of the prior day.
+    3. Cap new material at 4 h/day.
+    4. Final 2 days = revision + practice tests only (session_type "revision").
+    5. known_topics → session_type "review", ≤30 min, not a full study block.
+    6. Give proportionally more time to weak_topics and difficulty=3 topics.
+    7. Insert a checkpoint every 3–4 days: "By Day N you should be able to …"
+    8. Reference Knowledge Unit IDs (knowledge_unit_refs[]) wherever relevant.
+    9. End with exactly 3 self_assessment_questions spanning the full scope.
+   10. checkpoints must be objects with keys: after_day (int), milestone (str). NEVER return checkpoint strings.
+ 
+    Return JSON only — no fences, no commentary:
+    {{"schedule":[{{"day":1,"session_type":"study|review|revision|assessment",
+    "topics":["..."],"hours":3.0,"activities":["..."],
+    "knowledge_unit_refs":["KU1"],"checkpoint":null}}],
+    "checkpoints":[{{"after_day":4,"milestone":"..."}}],
+    "self_assessment_questions":["...","...","..."]}}
 """)
 
 # --- Research Agent ---
@@ -491,20 +334,20 @@ RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
 
     ## Output Format
     Return JSON only, no markdown fences:
-    {
+    {{
       "title": "...",
       "subtopics": [
-        {
+        {{
           "name": "...",
           "description": "What this subtopic should cover in 1 sentence.",
-          "queries": {
+          "queries": {{
             "academic": "...",
             "web": "...",
             "encyclopedia": "..."
-          }
-        }
+          }}
+        }}
       ]
-    }
+    }}
 
     ## Research Topic
     {query}
@@ -555,20 +398,20 @@ RESEARCH_REVIEW_PROMPT: str = textwrap.dedent("""\
 
     ## Output Format
     Return JSON only, no markdown fences:
-    {
+    {{
       "verdict": "pass | revise",
       "factual_accuracy": "pass | issues_found",
       "citation_completeness": "sufficient | insufficient",
       "subtopic_coverage": [
-        {"subtopic": "...", "coverage": "complete | partial | missing"}
+        {{"subtopic": "...", "coverage": "complete | partial | missing"}}
       ],
       "structural_conformance": "pass | fail",
       "issues": [
-        {"type": "factual | citation | structure | clarity", "detail": "...", "location": "..."}
+        {{"type": "factual | citation | structure | clarity", "detail": "...", "location": "..."}}
       ],
       "suggestions": ["...", "...", "..."],
       "overall_comment": "..."
-    }
+    }}
 """)
 
 # --- Code Fix Agent ---
@@ -589,7 +432,7 @@ CODE_FIX_DIAGNOSIS_PROMPT: str = textwrap.dedent("""\
 
     ## Output Format
     Return JSON only, no markdown fences:
-    {
+    {{
       "language": "...",
       "framework": "... or null",
       "error_type": "syntax | runtime | logic | type | import | timeout",
@@ -599,7 +442,7 @@ CODE_FIX_DIAGNOSIS_PROMPT: str = textwrap.dedent("""\
       "fix_strategy": "...",
       "alternative_strategies": ["..."],
       "confidence": "high | medium | low"
-    }
+    }}
 
     ## Code
     ```
@@ -671,13 +514,13 @@ KU_EXTRACTION_PROMPT: str = textwrap.dedent("""\
     ## Output Format
     Return a JSON array only, no markdown fences:
     [
-      {
+      {{
         "id": "KU1",
         "claim": "...",
         "source_file": "lecture_05.pdf",
         "source_page": 12,
         "relevance_rank": 1
-      }
+      }}
     ]
 
     ## Query
