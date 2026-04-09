@@ -142,184 +142,116 @@ QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\
 
 
 # --- Diagram Generation ---
-DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
-    You are a technical diagram architect. Produce a structured intermediate
-    description that will be converted into styled Mermaid.js code.
+_PALETTE: str = """\
+    classDef process  fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
+    classDef decision fill:#fef9c3,stroke:#b45309,stroke-width:2px,color:#1c1917
+    classDef terminal fill:#d1fae5,stroke:#065f46,stroke-width:2px,color:#064e3b
+    classDef data     fill:#fce7f3,stroke:#9d174d,stroke-width:2px,color:#1c1917
+    classDef actor    fill:#ede9fe,stroke:#5b21b6,stroke-width:2px,color:#1c1917
+    classDef entity   fill:#e0f2fe,stroke:#075985,stroke-width:2px,color:#0c1a2e
+    classDef default  fill:#f1f5f9,stroke:#334155,stroke-width:1.5px,color:#1e293b"""
  
-    ## Retrieved Knowledge Units
+DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
+    You are a technical diagram architect preparing input for a Mermaid renderer.
+    Produce a structured intermediate description from the student request and knowledge units.
+ 
+    ## Knowledge Units
     {knowledge_units}
  
-    ## Rules
-    1. Select the best diagram type: flowchart | sequence | class | state | ER | mindmap.
-       Justify in one sentence.
-    2. Nodes: id (snake_case), display label, type (process | decision | data | terminal | actor | entity).
-    3. Edges: from, to, label (if any).
-    4. Flowcharts: mark every decision node and its true/false branches explicitly.
-    5. Omit trivial steps that add no structural information.
-    6. If scope is ambiguous, pick the most instructive interpretation and state it.
+    ## Instructions
+    - diagram_type: choose the single best fit — flowchart | sequence | class | state | ER | mindmap
+    - justification: one sentence explaining the choice
+    - title: concise, descriptive title
+    - nodes[]: every node with:
+        id (snake_case, unique), label (plain text, no HTML, no pipes),
+        type (process | decision | data | terminal | actor | entity),
+        phase (short group label for nodes that belong together, e.g. "Input", "Training", "Output")
+    - edges[]: from, to, label (omit key if empty)
+    - For flowcharts: mark every decision node; list both true_branch and false_branch targets in notes.
+    - Omit trivial pass-through nodes that add no structural information.
+    - notes: any layout or grouping hints for the Mermaid generator.
  
-    ## Output Format — JSON only, no markdown fences
-    {{
-      "diagram_type": "flowchart | sequence | class | state | ER | mindmap",
-      "justification": "...",
-      "title": "...",
-      "nodes": [
-        {{"id": "check_empty", "label": "List empty?", "type": "decision"}}
-      ],
-      "edges": [
-        {{"from": "start", "to": "check_empty", "label": ""}}
-      ],
-      "notes": "..."
-    }}
+    Return JSON only — no fences, no commentary:
+    {{"diagram_type":"flowchart","justification":"...","title":"...",
+    "nodes":[{{"id":"node_id","label":"Plain label","type":"process","phase":"Phase A"}}],
+    "edges":[{{"from":"a","to":"b","label":"yes"}}],
+    "notes":"..."}}
  
     ## Student Request
     {query}
 """)
  
+DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent(f"""\
+    Output publication-quality Mermaid code (NeurIPS/ICML standard) for mmdr (Rust CLI renderer).
  
-DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
-    Convert the structured diagram description below into visually polished
-    Mermaid.js code. The output must look modern and publication-quality —
-    similar to diagrams in NeurIPS or ICML papers.
+    NEVER: %%{{init}}%% | HTML tags in labels | stateDiagram-v2 | rx: in classDef | multi-line labels
  
-    ## Styling Requirements
-    Apply these styles using Mermaid classDef and the %%{init}%% directive:
+    PALETTE — declare these classDefs and assign every node:
+   {_PALETTE}
  
-    1. Global theme init block — always include as line 1:
-       %%{{init: {'theme': 'base', 'themeVariables': {
-         'primaryColor': '#e8f5e9',
-         'primaryBorderColor': '#2e7d32',
-         'primaryTextColor': '#1b2e1c',
-         'lineColor': '#388e3c',
-         'secondaryColor': '#f1f8e9',
-         'tertiaryColor': '#ffffff'
-       }}}}}%%
+    RULES:
+    1. Line 1: diagram type only (e.g. flowchart TD) — nothing else.
+    2. Order: classDef → subgraphs/nodes → edges → class assignments → linkStyle.
+    3. Node IDs verbatim snake_case from description.
+    4. Quote labels containing parens, colons, brackets, or pipes.
+    5. No dangling edges. Decision nodes: {{label?}} diamond syntax.
+    6. subgraph UPPER_SNAKE_CASE [Display Label] when ≥3 nodes share a phase.
+    7. Primary edges: stroke-width:2.5px. Secondary/feedback: stroke-dasharray:5 5,stroke-width:1.5px.
+    8. Return ONLY raw Mermaid — no fences, no explanation.
  
-    2. Define these classDef classes after the diagram type declaration:
-       classDef process    fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c,rx:6
-       classDef decision   fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#1b2e1c
-       classDef terminal   fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d2a4a,rx:20
-       classDef data       fill:#fce4ec,stroke:#880e4f,stroke-width:1.5px,color:#1b2e1c
-       classDef actor      fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#1b2e1c
-       classDef entity     fill:#e0f2f1,stroke:#004d40,stroke-width:2px,color:#1b2e1c
-       classDef default    fill:#e8f5e9,stroke:#2e7d32,stroke-width:1.5px,color:#1b2e1c
- 
-    3. After defining all nodes and edges, assign classes:
-       class node_id1,node_id2 process
-       class decision_node_id decision
-       (apply the class matching each node's "type" from the description)
- 
-    4. Use subgraph blocks to group related nodes when ≥4 nodes share a
-       logical phase or layer — this creates clear visual structure.
- 
-    ## Syntax Rules
-    1. Diagram type declaration on line 2 (after init), e.g. "flowchart TD".
-    2. Use snake_case node IDs verbatim from the description.
-    3. Wrap labels with special characters (parens, brackets, colons) in double quotes.
-    4. No HTML tags in labels.
-    5. All edges must connect declared nodes — no dangling edges.
-    6. Decision nodes in flowcharts: use {label?} curly-brace diamond syntax.
-    7. Return ONLY raw Mermaid code — no explanation, no markdown fences, no preamble.
- 
-    ## Diagram Description
-    {description}
-""")
- 
-
-
-DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
-    Convert the structured diagram description below into valid Mermaid
-    code that renders correctly with mmdr (mermaid-rs-renderer).
- 
-    RENDERER CONSTRAINTS — read before writing a single line:
-    The renderer is mmdr, a native Rust binary.  It does NOT support
-    browser/Node.js features.  Violating any rule below will produce a
-    broken or corrupted SVG.
- 
-    PROHIBITED (will break rendering):
-    - %%{init}%% directives — do not include under any circumstances.
-    - HTML tags inside labels (<br/>, <b>, <i>, etc.).
-    - stateDiagram-v2 — use stateDiagram instead.
-    - rx: inside classDef — omit it.
-    - Multi-line node labels — use a single space instead of newlines.
- 
-    SUPPORTED styling (use these instead):
-    - classDef <name> fill:...,stroke:...,stroke-width:...,color:...
-    - class <node_id1>,<node_id2> <class_name>
-    - style <node_id> fill:...,stroke:...
-    - linkStyle <edge_index> stroke:...,stroke-width:...
-    - subgraph <label> ... end
- 
-    COLOUR PALETTE — apply consistently:
-    Process nodes  : fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c
-    Decision nodes : fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#1b2e1c
-    Terminal nodes : fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d2a4a
-    Data nodes     : fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#1b2e1c
-    Actor nodes    : fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#1b2e1c
-    Entity nodes   : fill:#e0f2f1,stroke:#004d40,stroke-width:2px,color:#1b2e1c
-    Default        : fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c
- 
-    STRUCTURE RULES:
-    1. Line 1: diagram type declaration only (e.g. flowchart TD).
-       No %%{init}%%, no comments, nothing else on line 1.
-    2. Lines 2–N: classDef blocks first, then subgraphs/nodes/edges.
-    3. Use snake_case node IDs verbatim from the description.
-    4. Wrap labels containing special characters (parens, colons,
-       brackets) in double quotes.
-    5. No dangling edges — every referenced node must be declared.
-    6. Flowchart decision nodes: use {label?} curly-brace syntax.
-    7. Use subgraph blocks whenever ≥4 nodes share a logical phase.
-    8. Return ONLY raw Mermaid code.  No fences, no explanation,
-       no preamble.
- 
-    EXAMPLE of correct output structure (flowchart):
+    EXAMPLE:
     flowchart TD
-        classDef process  fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b2e1c
-        classDef decision fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#1b2e1c
-        classDef terminal fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d2a4a
- 
-        subgraph PHASE1 [Phase One]
-            start([Begin])
-            check{Condition?}
-            do_work[Process Data]
+        classDef process  fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
+        classDef decision fill:#fef9c3,stroke:#b45309,stroke-width:2px,color:#1c1917
+        classDef terminal fill:#d1fae5,stroke:#065f46,stroke-width:2px,color:#064e3b
+        subgraph INPUT [Input Layer]
+            raw_data[Raw Input Data]
+            preprocess[Preprocessing]
         end
+        subgraph CORE [Core Processing]
+            encode{{Encoder}}
+            decide{{Valid?}}
+            transform[Transform]
+        end
+        subgraph OUTPUT [Output Layer]
+            result([Result])
+            error([Error])
+        end
+        raw_data --> preprocess
+        preprocess --> encode
+        encode --> decide
+        decide -->|yes| transform
+        decide -->|no| error
+        transform --> result
+        class raw_data,preprocess data
+        class encode,transform process
+        class decide decision
+        class result,error terminal
+        linkStyle 0,1,2 stroke:#1d4ed8,stroke-width:2.5px
+        linkStyle 5 stroke:#9d174d,stroke-dasharray:5 5,stroke-width:1.5px
  
-        start --> check
-        check -->|yes| do_work
-        check -->|no| start
- 
-        class start terminal
-        class check decision
-        class do_work process
- 
-    ## Diagram Description
-    {description}
+    DESCRIPTION:
+    {{description}}
 """)
- 
  
 DIAGRAM_FIX_PROMPT: str = textwrap.dedent("""\
-    Fix the syntax errors in the Mermaid code below so it renders
-    correctly with mmdr (mermaid-rs-renderer).
+    Fix ONLY the listed syntax errors in the Mermaid code below so it renders with mmdr.
  
     ## Mermaid Code
-    ```mermaid
     {mermaid_code}
-    ```
  
-    ## Reported Errors
+    ## Errors
     {errors}
  
     ## Rules
-    1. Fix only the listed syntax errors — do not restructure or redesign.
-    2. Preserve all node IDs, labels, edges, classDef, class, style,
-       linkStyle, and subgraph blocks exactly.
-    3. If a fix requires renaming a node, note it with a %% comment
-       above the affected line.
-    4. If %%{init}%% is present, remove it entirely — it is not
-       supported by the mmdr renderer and will corrupt the diagram.
-    5. If stateDiagram-v2 is present, change it to stateDiagram.
-    6. If rx: appears inside a classDef, remove that property only.
-    7. Return ONLY the corrected Mermaid code. No explanation, no fences.
+    1. Fix only what is listed — do not restructure, reorder, or redesign.
+    2. Preserve all node IDs, labels, edges, classDef, class, style, linkStyle, subgraph blocks exactly.
+    3. Remove %%{init}%% entirely if present (unsupported by mmdr).
+    4. Replace stateDiagram-v2 with stateDiagram if present.
+    5. Remove rx: from any classDef line if present.
+    6. Remove all HTML tags from labels if present.
+    7. If renaming a node is required to fix a collision, add a %% comment above the changed line.
+    8. Return ONLY the corrected Mermaid code — no fences, no explanation, no preamble.
 """)
 
 # --- Roadmap / Study Plan ---
