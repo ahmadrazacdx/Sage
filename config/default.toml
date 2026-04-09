@@ -53,9 +53,9 @@ wal_mode = true
 
 [agent]
 max_input_tokens    = 2000
-max_history_tokens  = 800
+max_history_tokens  = 600
 max_conversations   = 100
-llm_timeout         = 120
+llm_timeout         = 180
 diagram_max_retries = 3
 research_max_iters  = 2
 

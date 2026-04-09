@@ -50,16 +50,15 @@ REASONING_PROMPT: str = textwrap.dedent("""\
 
     ## Retrieved Knowledge Units
     {knowledge_units}
-
+                                        
     ## Rules
-    1. Ground every factual claim in a Knowledge Unit: 'Binary search is O(log n) [KU1]'.
-    2. If no Knowledge Unit covers a claim, state it as general knowledge with no tag.
-    3. If Knowledge Units are empty or irrelevant, answer from general knowledge and explicitly note: "No course material was found for this topic."
-    4. Use markdown headings (##) and include code examples in Python where helpful.
-    5. Be concise but thorough — depth on the specific question over breadth.
-    6. If student context reveals a known weakness, proactively address it.
+    Cite every claim [KU#]; uncited → (state it as general knowledge with no tag);
+    no relevant KUs → note "No course material was found for this topic.";
+    Use markdown headings (##) and include code examples in Python where helpful.; 
+    Be concise but thorough: depth on the specific question over breadth.;
+    address known student weaknesses proactively.
 
-    ## Student Question
+    ## Query
     {query}
 """)
 
@@ -70,35 +69,34 @@ REASONING_THINKING_PROMPT: str = textwrap.dedent("""\
     ## Retrieved Knowledge Units
     {knowledge_units}
 
-    Work through four stages explicitly. Do not skip any.
+    Complete all 4 stages: no skipping.
 
     ### Stage 1 · Step-Back Abstraction
     Identify the abstract principle or concept domain before engaging specifics.
     (2–3 sentences. State the general class of problem and governing theory.)
 
     ### Stage 2 · Chain-of-Thought
-    Decompose into numbered atomic steps. Show all working — no skipping lines.
-    - Math/algorithms : every derivation step; state pre/post-conditions.
-    - Conceptual      : logical chain from first principles; each link follows the last.
-    - Code/debugging  : trace execution state; pinpoint divergence from intent.
-    - Comparative     : parallel attribute table first, then conclusion with criterion.
+    Decompose into numbered atomic steps no gaps.
+    - Math/algo: full derivation + pre/post-conditions.
+    - Conceptual: first-principles chain, each link explicit.
+    - Code: trace execution state; pinpoint divergence from intent.
+    - Comparative: attribute table first → conclusion + criterion.
 
     ### Stage 3 · Self-Critique
-    Examine your own reasoning — do not just confirm it.
+    Examine your own reasoning: do not just confirm it.
     1. Does my conclusion follow necessarily from my steps, or did I leap?
     2. What is the strongest counterargument or edge case against my conclusion?
     3. Does this contradict any Knowledge Unit? If so, the KU takes precedence.
     4. Am I overcomplicating this — is there a simpler valid path?
-    If you find an error, correct it and note what changed.
-    End with: ✓ Self-critique complete — no issues found. OR ✗ Corrected: [what changed].
+    Fix Errors; End with: ✓ No issues found. OR ✗ Corrected: [what changed].
 
     ### Stage 4 · Final Answer
-    Write the complete student-facing response.
-    - Cite every factual claim: '...O(log n) [KU1]'. Uncited: '(general knowledge)'.
-    - Empty KUs: open with "No course material found — answering from general knowledge."
-    - Headings (##/###), LaTeX math ($...$), Python examples where they clarify.
-    - Address any known weakness from student context proactively.
-    - Close with **Key Takeaway:** one sentence.
+    ### S4 · Final Answer
+    - Cite all claims: [KU#] or (general knowledge).
+    - No KUs → open: "No course material found — answering from general knowledge."
+    - ## headings, $LaTeX$, Python examples.
+    - Address student weaknesses.
+    - Close: **Key Takeaway:** 1-2 sentence.
 
     ## Student Question
     {query}
