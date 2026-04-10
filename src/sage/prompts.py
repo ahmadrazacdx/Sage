@@ -27,7 +27,7 @@ SYSTEM_PROMPT: str = textwrap.dedent("""\
     - Purpose     : Help CS, SE, and IT students in their studies.
     - Capabilities: Explain concepts, generate quizzes, render diagrams,
                     run and fix code, search academic papers, export reports.
-    - Built by    : Ahmad Raza & Abdullah Khan, Thal University Bhakkar.
+    - Developed by    : Ahmad Raza & Abdullah Khan, Thal University Bhakkar.
 
     ## Greeting behaviour
     When a student greets you, respond warmly and briefly. Introduce yourself, 
@@ -44,64 +44,35 @@ SYSTEM_PROMPT: str = textwrap.dedent("""\
 """)
 
 # --- Reasoning (Explain Path) ---
-REASONING_PROMPT: str = textwrap.dedent("""\
+REASONING_THINKING_SYSTEM: str = textwrap.dedent("""\
+    You will reason internally using the model's native thinking mode.
+    Do NOT write your reasoning steps in the visible answer.
+
+    ## Visible Answer Rules
+    1. Begin with intuition, then give precise technical details.
+    2. Include derivations, edge cases, and failure modes where relevant.
+    3. Use ## headings and concrete examples where they improve clarity.
+    4. Do not stop early — complete the explanation end-to-end.
+    5. Never output <think>, </think>, or any scratchpad markers.
+""")
+
+REASONING_EXPLAIN_PROMPT: str = textwrap.dedent("""\
     ## Student Context
     {student_memory}
 
-    ## Retrieved Knowledge Units
-    {knowledge_units}
-                                        
-    ## Rules
-    Cite every claim [KU#]; uncited → (state it as general knowledge with no tag);
-    no relevant KUs → note "No course material was found for this topic.";
-    Use markdown headings (##) and include code examples in Python where helpful.; 
-    Be concise but thorough: depth on the specific question over breadth.;
-    address known student weaknesses proactively.
-
-    ## Query
-    {query}
-""")
-
-REASONING_THINKING_PROMPT: str = textwrap.dedent("""\
-    ## Student Context
-    {student_memory}
-
-    ## Retrieved Knowledge Units
+    ## Knowledge Units
     {knowledge_units}
 
-    Complete all 4 stages: no skipping.
-
-    ### Stage 1 · Step-Back Abstraction
-    Identify the abstract principle or concept domain before engaging specifics.
-    (2–3 sentences. State the general class of problem and governing theory.)
-
-    ### Stage 2 · Chain-of-Thought
-    Decompose into numbered atomic steps no gaps.
-    - Math/algo: full derivation + pre/post-conditions.
-    - Conceptual: first-principles chain, each link explicit.
-    - Code: trace execution state; pinpoint divergence from intent.
-    - Comparative: attribute table first → conclusion + criterion.
-
-    ### Stage 3 · Self-Critique
-    Examine your own reasoning: do not just confirm it.
-    1. Does my conclusion follow necessarily from my steps, or did I leap?
-    2. What is the strongest counterargument or edge case against my conclusion?
-    3. Does this contradict any Knowledge Unit? If so, the KU takes precedence.
-    4. Am I overcomplicating this — is there a simpler valid path?
-    Fix Errors; End with: ✓ No issues found. OR ✗ Corrected: [what changed].
-
-    ### Stage 4 · Final Answer
-    ### S4 · Final Answer
-    - Cite all claims: [KU#] or (general knowledge).
-    - No KUs → open: "No course material found — answering from general knowledge."
-    - ## headings, $LaTeX$, Python examples.
-    - Address student weaknesses.
-    - Close: **Key Takeaway:** 1-2 sentence.
-
-    ## Student Question
-    {query}
+    ## Answer Rules
+    1. Every sentence using a Knowledge Unit MUST end with its tag,
+       e.g. "Binary search halves the search space each step [KU1]."
+    2. If Knowledge Units says "None available.", start with:
+       "No course material found — answering from general knowledge."
+    3. Use ## headings. Use $LaTeX$ for math. Add a code example if helpful.
+    4. Address student weaknesses from Student Context.
+    5. End with exactly: **Key Takeaway:** followed by 1-2 summary sentences.
+    6. Be thorough. Finish every section you start.
 """)
-
 # --- Quiz Generation ---
 QUIZ_GENERATION_PROMPT: str = textwrap.dedent("""\
     You are an educational assessment designer.

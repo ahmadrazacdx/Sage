@@ -86,14 +86,10 @@ class LLMSettings(BaseSettings):
 
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, ge=256, le=131072)
-    thinking_mode: bool = False
-
-    # Caps Qwen3.5 <think>...</think> tokens server-side.
-    reasoning_budget: int = Field(default=1024, ge=0, le=32768)
-
-    # How long to wait for llama-server /health to become 200.
-    # 60s was too short: mmap cold-start on SATA SSD takes 60-120s for a 2.86 GB model.
+    thinking_mode: bool = True
+    reasoning_budget: int = Field(default=512, ge=0, le=32768)
     startup_timeout: float = Field(default=180.0, ge=30.0, le=600.0)
+    port: int = Field(default=8080, ge=1, le=65535)
 
     @field_validator("gpu_layers", "context_window", mode="before")
     @classmethod
@@ -167,7 +163,7 @@ class AgentSettings(BaseSettings):
     max_input_tokens: int = Field(default=2000, ge=256)
     max_history_tokens: int = Field(default=800, ge=128)
     max_conversations: int = Field(default=100, ge=1)
-    llm_timeout: int = Field(default=120, ge=10)
+    llm_timeout: int = Field(default=180, ge=10)
     diagram_max_retries: int = Field(default=3, ge=1, le=10)
     research_max_iters: int = Field(default=2, ge=1, le=5)
 

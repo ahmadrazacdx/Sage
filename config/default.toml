@@ -18,6 +18,7 @@ llama_cpp_vulkan_bin = "artifacts/servers/vulkan/llama-server.exe"
 gpu_layers     = "auto"
 context_window = "auto"
 startup_timeout = 180.0
+port            = 8080
 
 # KV-cache quantization strategy
 cache_type_k = "q4_0"
@@ -26,8 +27,8 @@ cache_type_v = "q4_0"
 # Generation parameters
 temperature    = 0.3
 max_tokens     = 4096
-thinking_mode = false
-reasoning_budget = 0
+thinking_mode = true
+reasoning_budget = 512
 
 [embedding]
 embed_model     = "artifacts/models/embedding-models/bge-small-en-v1.5"
