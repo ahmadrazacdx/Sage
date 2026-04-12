@@ -21,12 +21,7 @@ from typing_extensions import TypedDict
 
 
 class AgentState(TypedDict, total=False):
-    """Typed state for every node in the Sage agent graph.
-
-    `total=False` makes every field optional at construction time so
-    initial invocations only need to supply `messages` and `query`.
-    Fields acquire default semantics via `.get()` inside each node.
-    """
+    """Typed state for every node in the Sage agent graph."""
 
     # --- Core ---
     messages: Annotated[list, add_messages]
@@ -42,9 +37,6 @@ class AgentState(TypedDict, total=False):
     expanded_query: str
     chunks: list[dict]
     knowledge_units: list[dict]
-
-    # Lightweight retrieval cache, avoids redundant retrieval
-    # Keyed on the expanded_query hash; cleared on topic shift.
     retrieval_cache_key: str
     retrieval_cache_chunks: list[dict]
     retrieval_cache_kus: list[dict]
@@ -53,6 +45,7 @@ class AgentState(TypedDict, total=False):
     research_plan: dict | None
     research_sources: list[dict]
     research_report: str | None
+
     student_memory: str
 
     # --- Output ---
@@ -66,6 +59,6 @@ class AgentState(TypedDict, total=False):
     tool_calls: list[dict]
     online_mode: bool
 
-    # --- Hybrid Dropdown Routing ---
+    # --- Dropdown Routing ---
     mode: str
     thinking_mode: bool
