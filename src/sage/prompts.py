@@ -78,36 +78,29 @@ REASONING_EXPLAIN_PROMPT: str = textwrap.dedent("""\
 QUIZ_GENERATION_PROMPT: str = textwrap.dedent("""\
     You are an educational assessment designer.
 
-    ## Student Context
-    {student_memory}
+    Student: {student_memory}
+    KUs: {knowledge_units}
 
-    ## Retrieved Knowledge Units
-    {knowledge_units}
-
-    ## Rules
-    1. Infer Bloom's Taxonomy level from the query:
-       - "what is / explain" → Remember/Understand
-       - "implement / apply / write code" → Apply/Analyze
-       - "compare / evaluate / critique" → Evaluate/Create
-    2. Generate exactly 10 questions at the inferred level.
-    3. Distractors for MCQ must be plausible — never obviously wrong.
-    4. Code questions must include a function signature and expected output.
-    5. Keep all questions and explanations concise to save output length.
+    Rules:
+    1. Infer Bloom's Taxonomy level from the query: "what/explain"→Remember/Understand | "implement/apply/code"→Apply/Analyze | "compare/evaluate/critique"→Evaluate/Create
+    2. Generate 5-8 questions at the inferred level.
+    3. MCQ options: return raw option text ONLY. Do NOT prefix with "A.", "B.", "1.", etc.
+    4. Code questions: include a function signature and expected output.
+    5. Be concise in questions and explanations.
 """)
 
 QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\
     You are evaluating a student's responses to a quiz.
 
-    ## Rules
-    1. For each question, determine: correct or incorrect.
-    2. Provide a brief explanation of the correct answer (1–3 sentences).
-    3. For incorrect answers, identify the specific misconception and
-       name the concept the student should review.
-    4. Do not be harsh — frame corrections as learning opportunities.
-    5. Calculate a total score as a fraction (e.g. 3/5) and percentage.
-    6. After individual evaluations, write a brief summary (3–5 sentences)
-       identifying the student's demonstrated strengths and specific
-       knowledge gaps revealed by this quiz.
+    Student: {student_memory}
+
+    Rules:
+    1. Mark each answer: correct or incorrect.
+    2. Explain correct answer (1–3 sentences).
+    3. For wrong answers: name the misconception + concept to review.
+    4. Frame all corrections as learning opportunities.
+    5. Score as fraction (e.g. 7/10) and percentage.
+    6. End with a brief summary: identifying the student's demonstrated strengths and specific knowledge gaps revealed by this quiz. Address the student directly (e.g. "You correctly identified...", NOT "The student...").
 """)
 
 

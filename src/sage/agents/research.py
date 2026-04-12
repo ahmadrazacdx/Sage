@@ -90,8 +90,6 @@ class ContextBudget:
         Safe to call before the server starts (falls back to 3072 ctx / 1 slot).
         """
         llm_cfg = get_settings().llm
-        # active_context_size is the per-slot budget (_resolve_context_size output).
-        # The server receives ctx_size * parallel_slots as --ctx-size, so no division needed.
         ctx: int = getattr(llm_cfg, "active_context_size", None) or 768
         parallel: int = max(getattr(llm_cfg, "active_parallel_slots", 1), 1)
 
