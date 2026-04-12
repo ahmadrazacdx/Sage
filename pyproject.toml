@@ -1,7 +1,7 @@
 [project]
 name = "sage"
 version = "0.1.0"
-description = "Multi-Agent offline-first RAG-based Educational Assistant"
+description = "Multi-Agent offline-first RAG-based Academic Assistant"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [
@@ -12,7 +12,7 @@ requires-python = ">=3.11,<3.13"
 keywords = [
     "rag",
     "llm",
-    "educational-assistant",
+    "academic-assistant",
     "offline-ai",
     "multi-agent"
 ]
@@ -42,8 +42,6 @@ dependencies = [
     "langmem>=0.0.20",
     "chromadb>=0.5",
     "fastembed>=0.4.2",
-    # langchain-sandbox removed — replaced by subprocess-based executor
-    # (no Deno, no WASM; uses bundled sys.executable directly)
     "pydantic>=2.9",
     "pydantic-settings",
     "structlog>=24.0",
@@ -80,6 +78,7 @@ dev = [
 ]
 online = [
     "arxiv>=2.1",
+    "beautifulsoup4>=4.12",
     "duckduckgo-search>=7.0",
     "wikipedia>=1.4",
     "langchain-mcp-adapters>=0.2",
@@ -92,9 +91,7 @@ sage = "sage.__main__:main"
 requires = ["uv_build>=0.10.9,<0.11.0"]
 build-backend = "uv_build"
 
-
-
-# ── Ruff ─────────────────────────────────────────────────────
+# Ruff
 [tool.ruff]
 target-version = "py311"
 line-length = 100
@@ -106,7 +103,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.ruff.lint.isort]
 known-first-party = ["sage"]
 
-# ── Mypy ─────────────────────────────────────────────────────
+# Mypy
 [tool.mypy]
 strict = true
 plugins = ["pydantic.mypy"]
@@ -138,13 +135,13 @@ module = [
 ]
 ignore_missing_imports = true
 
-# ── Pytest ───────────────────────────────────────────────────
+# Pytest
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra -q"
 
-# ── Coverage ─────────────────────────────────────────────────
+# Coverage
 [tool.coverage.run]
 source = ["src/sage"]
 omit = ["tests/*"]

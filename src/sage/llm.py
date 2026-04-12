@@ -518,10 +518,17 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     gen_threads, batch_threads = _resolve_thread_count()
     port = _find_free_port()
 
+    cmd, parallel_slots = _build_cmd(
+        binary, cfg, port, gpu_layers, ctx_size,
+        gen_threads, batch_threads, effective_backend,
+    )
+    cfg.active_parallel_slots = parallel_slots
+
     log.info(
         "llama_server_starting", backend=effective_backend,
         gpu_name=gpu_info["gpu_name"], vram_mb=vram_mb, gpu_layers=gpu_layers,
-        ctx_size=ctx_size, gen_threads=gen_threads, batch_threads=batch_threads,
+        ctx_size=ctx_size, parallel_slots=parallel_slots,
+        gen_threads=gen_threads, batch_threads=batch_threads,
         port=port, binary=binary.name, model=cfg.active_model_path.name,
         available_ram_mb=psutil.virtual_memory().available // (1024 * 1024),
     )
@@ -529,8 +536,7 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     _win_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
     proc = subprocess.Popen(
-        _build_cmd(binary, cfg, port, gpu_layers, ctx_size,
-                   gen_threads, batch_threads, effective_backend),
+        cmd,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         creationflags=_win_flags,
@@ -578,7 +584,7 @@ def _build_cmd(
     gen_threads: int,
     batch_threads: int,
     effective_backend: str,
-) -> list[str]:
+) -> tuple[list[str], int]:
     """Assemble the llama-server argv list from resolved hardware parameters.
 
     Args:
@@ -588,8 +594,10 @@ def _build_cmd(
     """
 
     is_cpu = effective_backend == "cpu" or gpu_layers == 0
+    cpu_parallel: int = 4
 
     if is_cpu:
+        server_ctx = ctx_size * cpu_parallel
         cmd = [
             str(binary),
             "--model", str(cfg.active_model_path),
@@ -599,9 +607,9 @@ def _build_cmd(
             "--threads-batch", "12",
             "--batch-size", "1024",
             "--ubatch-size", "228",
-            "--ctx-size", str(ctx_size),
+            "--ctx-size", str(server_ctx),
             "--n-gpu-layers", "0",
-            "--parallel", "4",
+            "--parallel", str(cpu_parallel),
             "--cache-reuse", "32",
             "--cont-batching",
             "--cache-type-k", cfg.cache_type_k,
@@ -610,6 +618,7 @@ def _build_cmd(
             "--reasoning-budget", str(cfg.reasoning_budget),
             "--reasoning-format", "none",
         ]
+        return cmd, cpu_parallel
     else:
         cmd = [
             str(binary),
@@ -630,8 +639,7 @@ def _build_cmd(
             "--reasoning-format", "none",
         ]
         cmd.extend(["--flash-attn", "auto"])
-
-    return cmd
+        return cmd, 1
 
 
 # --- LangChain Factory ---

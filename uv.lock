@@ -3266,6 +3266,7 @@ dev = [
 ]
 online = [
     { name = "arxiv" },
+    { name = "beautifulsoup4" },
     { name = "duckduckgo-search" },
     { name = "langchain-mcp-adapters" },
     { name = "wikipedia" },
@@ -3275,6 +3276,7 @@ online = [
 requires-dist = [
     { name = "aiosqlite" },
     { name = "arxiv", marker = "extra == 'online'", specifier = ">=2.1" },
+    { name = "beautifulsoup4", marker = "extra == 'online'", specifier = ">=4.12" },
     { name = "chromadb", specifier = ">=0.5" },
     { name = "ddgs", specifier = ">=9.11.4" },
     { name = "duckduckgo-search", specifier = ">=8.1.1" },

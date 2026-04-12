@@ -72,6 +72,7 @@ class LLMSettings(BaseSettings):
     active_model_path: Path = Path(".")
     active_model_name: str = "uninitialized"
     active_context_size: int = 0
+    active_parallel_slots: int = 1
 
     # Per-backend llama-server binaries.
     llama_cpp_cpu_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")
@@ -165,6 +166,7 @@ class AgentSettings(BaseSettings):
     max_history_tokens: int = Field(default=800, ge=128)
     max_conversations: int = Field(default=100, ge=1)
     llm_timeout: int = Field(default=180, ge=10)
+    research_writer_timeout: int = Field(default=300, ge=30)
     diagram_max_retries: int = Field(default=3, ge=1, le=10)
     research_max_iters: int = Field(default=2, ge=1, le=5)
 

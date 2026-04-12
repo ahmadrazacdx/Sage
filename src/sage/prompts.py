@@ -295,7 +295,7 @@ RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
  
     Rules:
     1. Title for report ≤12 words.
-    2. 3–5 subtopics, each answerable in 300–400 words.
+    2. Generate exactly {max_subtopics} subtopics, each answerable in 300–400 words.
     3. Per subtopic, one query per source:
        - academic: arXiv/Scholar style (technical terms; add "survey" or year range).
        - web: plain-language search engine query.
@@ -305,14 +305,13 @@ RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
  
     Return JSON only, no markdown fences:
     {{"title":"...","subtopics":[{{"name":"...","description":"1-sentence scope.","queries":{{"academic":"...","web":"...","encyclopedia":"..."}}}}]}}
- 
     Topic: {query}
 """)
 
 RESEARCH_REPORT_PROMPT: str = textwrap.dedent("""\
-    You are an academic report writer. Synthesise retrieved sources into a structured research report.
+    You are an academic report writer. Synthesise digested sources into a full structured report.
  
-    Sources:
+    Sources (pre-digested by subtopic):
     {sources}
  
     Rules:
@@ -320,10 +319,10 @@ RESEARCH_REPORT_PROMPT: str = textwrap.dedent("""\
     2. Every factual claim: cite with [N]. No uncited assertions.
     3. Formal academic tone. No colloquialisms.
     4. Math in LaTeX: inline $...$ or display $$...$$.
-    5. Where sources contradict each other, explicitly note the disagreement: "Source [2] claims X, while [5] reports Y — this may reflect..."
+    5. Where sources contradict, note the disagreement explicitly.
     6. Identify ≥1 open research question or knowledge gap.
-    7. 1000–2000 words (excluding references).
-    8. References: [N] Author(s). Title. Venue/URL. Year.
+    7. 400–800 words (excluding references). Cover every required section.
+    8. References — one per line, no exceptions: [N] Author(s). Title. Venue. Year.
  
     Report title: {title}
 """)
