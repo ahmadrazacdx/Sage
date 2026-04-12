@@ -73,6 +73,7 @@ REASONING_EXPLAIN_PROMPT: str = textwrap.dedent("""\
     5. End with exactly: **Key Takeaway:** followed by 1-2 summary sentences.
     6. Be thorough. Finish every section you start.
 """)
+
 # --- Quiz Generation ---
 QUIZ_GENERATION_PROMPT: str = textwrap.dedent("""\
     You are an educational assessment designer.
@@ -290,179 +291,114 @@ ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
 
 # --- Research Agent ---
 RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
-    You are a research planning assistant. Produce a structured research plan that will guide a multi-step web and academic search pipeline.
-
-    ## Rules
-    1. Generate a concise title for the research report (≤12 words).
-    2. Break the topic into 3–5 subtopics. Each subtopic must be narrow enough to answer in 300–400 words.
-    3. For each subtopic, generate one targeted search query per source type:
-       - academic : suitable for arXiv or Google Scholar (use technical terms,
-                    include "survey" or year range where appropriate).
-       - web      : suitable for a general search engine (plain language).
-       - encyclopedia : suitable for Wikipedia (canonical concept name only).
-    4. Prioritise queries likely to surface work from the last 2 years.
-    5. Order subtopics from foundational → applied (prerequisite order).
-
-    ## Output Format
+    You are a research planning assistant. Output a structured plan for a multi-source search pipeline.
+ 
+    Rules:
+    1. Title for report ≤12 words.
+    2. 3–5 subtopics, each answerable in 300–400 words.
+    3. Per subtopic, one query per source:
+       - academic: arXiv/Scholar style (technical terms; add "survey" or year range).
+       - web: plain-language search engine query.
+       - encyclopedia: canonical Wikipedia concept name only.
+    4. Favour queries surfacing work from the last 2 years.
+    5. Order subtopics foundational → applied.
+ 
     Return JSON only, no markdown fences:
-    {{
-      "title": "...",
-      "subtopics": [
-        {{
-          "name": "...",
-          "description": "What this subtopic should cover in 1 sentence.",
-          "queries": {{
-            "academic": "...",
-            "web": "...",
-            "encyclopedia": "..."
-          }}
-        }}
-      ]
-    }}
-
-    ## Research Topic
-    {query}
+    {{"title":"...","subtopics":[{{"name":"...","description":"1-sentence scope.","queries":{{"academic":"...","web":"...","encyclopedia":"..."}}}}]}}
+ 
+    Topic: {query}
 """)
 
 RESEARCH_REPORT_PROMPT: str = textwrap.dedent("""\
-    You are an academic report writer. Synthesize retrieved sources into a
-    structured research report for a computer science student.
-
-    ## Sources
+    You are an academic report writer. Synthesise retrieved sources into a structured research report.
+ 
+    Sources:
     {sources}
-
-    ## Rules
-    1. Structure strictly as:
-       Abstract → Introduction → [one section per subtopic] →
-       Key Findings → Contradictions & Open Questions → Conclusion → References
-    2. Every factual claim must cite its source with [N] notation where N is
-       the source index. Never assert a fact without a citation.
-    3. Maintain formal academic tone throughout. No colloquialisms.
-    4. Typeset all mathematical expressions in LaTeX inline ($...$) or
-       display ($$...$$) notation.
-    5. Where sources contradict each other, explicitly note the disagreement:
-       "Source [2] claims X, while [5] reports Y — this may reflect..."
-    6. Identify at least one open research question or knowledge gap.
-    7. Target length: 1000–2000 words excluding references.
-    8. References section format: [N] Author(s). Title. Venue/URL. Year.
-
-    ## Report Title
-    {title}
+ 
+    Rules:
+    1. Structure strictly as: Abstract → Introduction → [subtopic sections] → Key Findings → Contradictions & Open Questions → Conclusion → References
+    2. Every factual claim: cite with [N]. No uncited assertions.
+    3. Formal academic tone. No colloquialisms.
+    4. Math in LaTeX: inline $...$ or display $$...$$.
+    5. Where sources contradict each other, explicitly note the disagreement: "Source [2] claims X, while [5] reports Y — this may reflect..."
+    6. Identify ≥1 open research question or knowledge gap.
+    7. 1000–2000 words (excluding references).
+    8. References: [N] Author(s). Title. Venue/URL. Year.
+ 
+    Report title: {title}
 """)
 
 RESEARCH_REVIEW_PROMPT: str = textwrap.dedent("""\
-    You are a peer reviewer for an academic report targeted at a
-    computer science student. Evaluate the draft rigorously.
-
-    ## Draft Report
+    You are a peer reviewer for an academic research report. Evaluate the draft rigorously.
+ 
+    Draft:
     {report}
-
-    ## Review Criteria
-    1. Factual accuracy: are all claims defensible given the cited sources?
+ 
+    Criteria:
+    1. Factual accuracy: are all claims defensible given cited sources?
     2. Citation completeness: does every factual claim carry a [N] citation?
-    3. Subtopic coverage: for each subtopic in the plan, rate as
-       "complete", "partial", or "missing".
-    4. Structural conformance: does the report follow the required structure?
+    3. Subtopic coverage: rate each: complete | partial | missing.
+    4. Structural conformance : does report follow required section order?
     5. Clarity: is the writing precise and free of ambiguity?
-    6. Open questions: does the report identify at least one gap or
-       unresolved question?
-
-    ## Output Format
+    6. Open questions: does report identify ≥1 gap or unresolved question identified?
+ 
     Return JSON only, no markdown fences:
-    {{
-      "verdict": "pass | revise",
-      "factual_accuracy": "pass | issues_found",
-      "citation_completeness": "sufficient | insufficient",
-      "subtopic_coverage": [
-        {{"subtopic": "...", "coverage": "complete | partial | missing"}}
-      ],
-      "structural_conformance": "pass | fail",
-      "issues": [
-        {{"type": "factual | citation | structure | clarity", "detail": "...", "location": "..."}}
-      ],
-      "suggestions": ["...", "...", "..."],
-      "overall_comment": "..."
-    }}
+    {{"verdict":"pass|revise","factual_accuracy":"pass|issues_found","citation_completeness":"sufficient|insufficient","subtopic_coverage":[{{"subtopic":"...","coverage":"complete|partial|missing"}}],"structural_conformance":"pass|fail","issues":[{{"type":"factual|citation|structure|clarity","detail":"...","location":"..."}}],"suggestions":["..."],"overall_comment":"..."}}
 """)
 
 # --- Code Fix Agent ---
+CODE_FIX_SYSTEM_PROMPT: str = textwrap.dedent("""\
+    You are a debugging expert integrated into Sage, an academic AI assistant
+    for CS and engineering students. Your sole task in this context is to
+    analyse code, locate bugs, and explain fixes.
+
+    Rules:
+    - Respond directly with the technical analysis — NO greeting, NO self-introduction.
+    - Cite Knowledge Units as [KU#] when grounding factual claims.
+    - Never fabricate error messages, outputs, or code behaviour.
+    - If a fix is incomplete, say so explicitly and suggest the next debug step.
+""")
 
 CODE_FIX_DIAGNOSIS_PROMPT: str = textwrap.dedent("""\
-    You are a debugging expert. Analyse the code and error below and produce
-    a structured diagnosis that will be passed to a code repair step.
-
-    ## Rules
-    1. Identify the programming language and any relevant framework/library.
-    2. Classify the error type: syntax | runtime | logic | type | import | timeout.
-    3. Pinpoint the root cause precisely — not just the symptom.
-    4. Identify the exact line number(s) that need changing.
-    5. Propose a minimal fix strategy — change only what is necessary.
-    6. If multiple fixes are possible, recommend the safest one and note
-       alternatives.
-    7. Do not write the fixed code here — only the diagnosis.
-
-    ## Output Format
-    Return JSON only, no markdown fences:
-    {{
-      "language": "...",
-      "framework": "... or null",
-      "error_type": "syntax | runtime | logic | type | import | timeout",
-      "error_message": "...",
-      "root_cause": "...",
-      "affected_lines": [12, 15],
-      "fix_strategy": "...",
-      "alternative_strategies": ["..."],
-      "confidence": "high | medium | low"
-    }}
-
-    ## Code
-    ```
-    {code}
-    ```
-
-    ## Error
-    {error}
+    You are a debugging expert. Analyse the code and error; return JSON only (no fences).
+ 
+    Schema:
+    {{"language":"...","framework":null,"error_type":"syntax|runtime|logic|type|import|timeout","error_message":"...","root_cause":"...","affected_lines":[N],"fix_strategy":"...","alternative_strategies":["..."],"confidence":"high|medium|low"}}
+ 
+    Rules: pin point exact root cause (not symptom); affected line numbers; minimal change only; safest strategy first; no fixed code here, only diagnosis.
+ 
+    Code: {code}
+    Error: {error}
 """)
 
 CODE_FIX_EXPLANATION_PROMPT: str = textwrap.dedent("""\
     You are an educational code tutor. Explain the bug fix clearly so the
     student understands what went wrong, why, and how to prevent it.
 
-    ## Original Code
-    ```
-    {original_code}
-    ```
-
-    ## Fixed Code
-    ```
-    {fixed_code}
-    ```
-
-    ## Execution Result After Fix
-    {execution_result}
-
-    ## Retrieved Knowledge Units
-    {knowledge_units}
-
-    ## Rules
-    1. Explain in 3 parts:
-       a) WHAT was wrong — describe the bug in plain terms.
-       b) WHY it happened — explain the underlying concept or mechanism.
-       c) HOW it was fixed — walk through the changed lines.
-    2. Produce a diff view using +/- notation highlighting only changed lines.
-    3. Provide one concrete "best practice" tip to prevent this class of error.
-    4. If a Knowledge Unit covers the relevant concept, cite it: [KU#].
-    5. Keep the total explanation under 350 words — prioritise clarity.
-    6. If the execution result shows the fix did not fully resolve the issue,
-       acknowledge it and suggest the next debugging step.
-
-    ## Output Format
-    Use markdown with these exact headings:
+    Output markdown with EXACTLY these headings in order:
     ### What Was Wrong
     ### Why It Happened
     ### The Fix (Diff)
     ### Best Practice
-    ### Key Concept [KU#]  ← omit section if no KU applies
+    ### Key Concept [KU#] - omit section if no KU applies
+
+    STRICT GROUNDING RULES — violations make the explanation wrong:
+    1. "### What Was Wrong" MUST describe the exact error stated in `diagnosis.root_cause`.
+       Do NOT describe a different bug, do NOT invent symptoms not present in the diagnosis.
+    2. "### The Fix (Diff)" diff lines MUST reflect the actual change between `original_code`
+       and `fixed_code`. Do NOT fabricate line changes.
+    3. "### Why It Happened" MUST be consistent with `execution_result`.
+       If `execution_result` contains a `TypeError`, do NOT claim the code ran successfully.
+    4. ≤350 words total.
+    5. Cite relevant KU inline as [KU#]; omit "### Key Concept" section if no KU applies.
+    6. If `fix_incomplete` or fix_succeeded=False: acknowledge this in "### What Was Wrong"
+       and propose the next debug step in "### Best Practice".
+
+    Diagnosis (JSON): {diagnosis}
+    Original code: {original_code}
+    Fixed code: {fixed_code}
+    Execution result: {execution_result}
+    Knowledge Units: {knowledge_units}
 """)
 
 # --- Knowledge Unit Extraction ---

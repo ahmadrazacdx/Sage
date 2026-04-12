@@ -71,6 +71,7 @@ class LLMSettings(BaseSettings):
     # Active instance configuration dynamically populated by llm.py start_llm_server
     active_model_path: Path = Path(".")
     active_model_name: str = "uninitialized"
+    active_context_size: int = 0
 
     # Per-backend llama-server binaries.
     llama_cpp_cpu_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")

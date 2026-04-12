@@ -514,6 +514,7 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     vram_mb: int = gpu_info["vram_mb"]
     gpu_layers = _resolve_gpu_layers(effective_backend, vram_mb, cfg)
     ctx_size = _resolve_context_size(effective_backend, vram_mb, cfg)
+    cfg.active_context_size = ctx_size
     gen_threads, batch_threads = _resolve_thread_count()
     port = _find_free_port()
 
