@@ -110,7 +110,7 @@ class _SafeEvaluator(ast.NodeVisitor):
         if isinstance(value, int):
             if value.bit_length() > _MAX_BIT_LENGTH:
                 raise ValueError("Integer too large")
-            return float(value)
+            return value
         if isinstance(value, float):
             try:
                 if math.isinf(value) or math.isnan(value) or abs(value) > _MAX_FLOAT:
@@ -127,7 +127,7 @@ class _SafeEvaluator(ast.NodeVisitor):
         if isinstance(left, int) and isinstance(right, int):
             if right > 0:
                 if right * max(1, left.bit_length()) > _MAX_BIT_LENGTH:
-                    raise ValueError(f"Exponentiation result exceeds {_MAX_BIT_LENGTH} bits")
+                    raise ValueError(f"Exponentiation result exceeds {_MAX_BIT_LENGTH} bits (too large)")
                 self._add_cost(right * max(1, left.bit_length() // 10))
         elif isinstance(right, (int, float)) and abs(right) > 2000:
             raise ValueError(f"Exponent too large: {right}")
@@ -151,6 +151,8 @@ class _SafeEvaluator(ast.NodeVisitor):
         return self.visit(node.body)
 
     def visit_Constant(self, node: ast.Constant) -> Any:  # noqa: N802
+        if isinstance(node.value, bool):
+            raise ValueError("Unsupported constant type: bool")
         if isinstance(node.value, (int, float)):
             return self._check_magnitude(node.value)
         raise ValueError(f"Unsupported constant type: {type(node.value).__name__}")
@@ -284,7 +286,7 @@ def calculator(expression: str) -> dict[str, Any]:
         return {
             "success": True,
             "result": result,
-            "type": "float",
+            "type": type(result).__name__,
         }
     except (ValueError, TypeError, ZeroDivisionError, OverflowError) as exc:
         log.warning("calculator_failed", expression=expression[:80], error=str(exc))
