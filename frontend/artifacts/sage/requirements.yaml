@@ -1,0 +1,17 @@
+packages:
+  "framer-motion": "Smooth animations for page transitions, popovers, and messages"
+  "react-markdown": "Rendering markdown in assistant messages"
+  "remark-gfm": "GitHub Flavored Markdown support for tables and lists"
+  "rehype-highlight": "Syntax highlighting for code blocks"
+  "highlight.js": "Styles for rehype-highlight"
+  "mermaid": "Rendering Mermaid diagrams inline"
+  "date-fns": "Formatting dates in the sidebar"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility for merging tailwind classes safely"
+  "uuid": "Generating random IDs for mock data"
+
+notes:
+  - App is entirely dark mode based on the visual specification.
+  - VITE_USE_MOCK=true will activate the mocked API layer for rapid frontend development.
+  - API calls hit /api relative paths natively.
+  - SSE stream connects directly to /api/stream/{thread_id} via EventSource.
