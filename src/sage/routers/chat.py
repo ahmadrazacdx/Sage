@@ -162,7 +162,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
             detail="Stream already active for this thread.",
         )
 
-        now = asyncio.get_event_loop().time()
+    now = asyncio.get_event_loop().time()
     stale = [
         tid for tid, e in pending.items()
         if now - e.get("created_at", now) > _STALE_PENDING_TTL
