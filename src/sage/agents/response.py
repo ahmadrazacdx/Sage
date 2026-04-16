@@ -43,7 +43,7 @@ def _rewrite_citations(text: str, citation_map: dict[str, int]) -> str:
     def _replace(match: re.Match) -> str:  # type: ignore[type-arg]
         ku_id = match.group(1).upper()
         num = citation_map.get(ku_id)
-        return f"[{num}]" if num is not None else match.group(0)
+        return f"[{num}]" if num is not None else ""
 
     return _RE_KU_TAG.sub(_replace, text)
 

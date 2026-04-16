@@ -17,6 +17,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from sage.agents.code_fix import code_fix_node
 from sage.agents.diagram import diagram_node
+from sage.agents.general import general_node
 from sage.agents.planner import planner_node
 from sage.agents.quiz import quiz_node
 from sage.agents.reasoning import reasoning_node
@@ -38,8 +39,8 @@ def _bind_llm(node_fn: Any, llm: ChatOpenAI) -> Any:
 def _route_post_reasoning(state: AgentState) -> str:
     """Route out of the reasoning node.
 
-    - `explain` intent  to citation formatter (response_generator)
-    - `general` / `thinking` intents → EXIT directly
+    - `explain` intent goes to citation formatter (response_generator)
+    - `thinking` intent goes to EXIT directly
     """
     return "response_generator" if state.get("intent") == "explain" else END
 
@@ -55,20 +56,21 @@ def build_graph(llm: ChatOpenAI) -> CompiledStateGraph:
     Returns:
         A compiled `CompiledStateGraph` with all nodes error-bounded
         and edges wired per the topology in the module docstring.
-        Ready for ``await graph.ainvoke(state)``.
+        Ready for `await graph.ainvoke(state)`.
     """
     graph = StateGraph(AgentState)
 
     # Nodes
-    graph.add_node("router", with_error_boundary(_bind_llm(router_node, llm)))
-    graph.add_node("retrieval", with_error_boundary(_bind_llm(retrieval_node, llm)))
-    graph.add_node("reasoning", with_error_boundary(_bind_llm(reasoning_node, llm)))
+    graph.add_node("router",             with_error_boundary(_bind_llm(router_node, llm)))
+    graph.add_node("retrieval",          with_error_boundary(_bind_llm(retrieval_node, llm)))
+    graph.add_node("general",            with_error_boundary(_bind_llm(general_node, llm)))
+    graph.add_node("reasoning",          with_error_boundary(_bind_llm(reasoning_node, llm)))
     graph.add_node("response_generator", with_error_boundary(response_node))
-    graph.add_node("quiz", with_error_boundary(_bind_llm(quiz_node, llm)))
-    graph.add_node("diagram", with_error_boundary(_bind_llm(diagram_node, llm)))
-    graph.add_node("planner", with_error_boundary(_bind_llm(planner_node, llm)))
-    graph.add_node("research", with_error_boundary(_bind_llm(research_node, llm)))
-    graph.add_node("code_fix", with_error_boundary(_bind_llm(code_fix_node, llm)))
+    graph.add_node("quiz",               with_error_boundary(_bind_llm(quiz_node, llm)))
+    graph.add_node("diagram",            with_error_boundary(_bind_llm(diagram_node, llm)))
+    graph.add_node("planner",            with_error_boundary(_bind_llm(planner_node, llm)))
+    graph.add_node("research",           with_error_boundary(_bind_llm(research_node, llm)))
+    graph.add_node("code_fix",           with_error_boundary(_bind_llm(code_fix_node, llm)))
 
     # Entry Edge
     graph.add_edge(START, "router")
@@ -76,13 +78,14 @@ def build_graph(llm: ChatOpenAI) -> CompiledStateGraph:
         "router",
         route_by_intent,
         {
-            "explain": "retrieval",
-            "quiz": "retrieval",
-            "diagram": "retrieval",
-            "general": "reasoning",
-            "roadmap": "planner",
-            "research": "research",
-            "fix": "code_fix",
+            "explain":   "retrieval",
+            "quiz":      "retrieval",
+            "diagram":   "retrieval",
+            "general":   "general",
+            "reasoning": "reasoning",
+            "roadmap":   "planner",
+            "research":  "research",
+            "fix":       "code_fix",
         },
     )
 
@@ -108,12 +111,13 @@ def build_graph(llm: ChatOpenAI) -> CompiledStateGraph:
     )
 
     # Terminal Edges
+    graph.add_edge("general",           END)
     graph.add_edge("response_generator", END)
-    graph.add_edge("quiz", END)
-    graph.add_edge("diagram", END)
-    graph.add_edge("planner", END)
-    graph.add_edge("research", END)
-    graph.add_edge("code_fix", END)
+    graph.add_edge("quiz",              END)
+    graph.add_edge("diagram",           END)
+    graph.add_edge("planner",           END)
+    graph.add_edge("research",          END)
+    graph.add_edge("code_fix",          END)
 
     # Compile
     compiled = graph.compile()
