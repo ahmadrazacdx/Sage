@@ -261,7 +261,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
           {status?.model_ready ? (
             <>
               <CheckCircle2 className="w-4 h-4 text-success" />
-              <span className="text-foreground/80">Model Connected</span>
+              <span className="text-foreground/80">Ready</span>
             </>
           ) : (
             <>

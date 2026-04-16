@@ -341,11 +341,11 @@ export default function Home() {
               <div className="px-6 py-5 space-y-5">
                 <div className="space-y-3 text-sm text-foreground/85 leading-relaxed">
                   <p>
-                    Sage is an offline-first AI study assistant designed for higher-education workflows at Thal University Bhakkar.
+                    <b>Sage</b> is an offline AI Academic assistant designed for higher-education assistance at Thal University Bhakkar.
                     It combines guided tutoring, interactive study modes, and course-aware context to support daily learning with low friction.
                   </p>
                   <p>
-                    The platform prioritizes production-grade reliability through streamed responses, controlled mode/course selection,
+                    The platform prioritizes production-grade reliability through controlled mode/course selection,
                     local personalization, and privacy-first behavior suitable for campus labs and personal systems.
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -358,16 +358,6 @@ export default function Home() {
                     <Cpu className="w-3.5 h-3.5 text-primary" />
                     <span className="text-muted-foreground">Model:</span>
                     <span className="font-medium text-foreground/90 ml-auto">{status?.model_name || "Unknown"}</span>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-white/[0.03] px-3 py-2">
-                    <Database className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-muted-foreground">Embedding:</span>
-                    <span className="font-medium text-foreground/90 ml-auto">{status?.embedding_tier || "N/A"}</span>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-white/[0.03] px-3 py-2">
-                    <ShieldCheck className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-muted-foreground">Collections:</span>
-                    <span className="font-medium text-foreground/90 ml-auto">{status?.vectordb_collections?.length ?? 0}</span>
                   </div>
                   <div className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-white/[0.03] px-3 py-2">
                     <WifiOff className="w-3.5 h-3.5 text-primary" />

@@ -86,7 +86,7 @@ allowed_extensions  = [".pdf", ".docx", ".pptx", ".md", ".txt"]
 [network]
 force_offline  = false
 check_interval = 60
-timeout        = 2.0
+timeout        = 5.0
 
 [ui]
 host               = "localhost"
