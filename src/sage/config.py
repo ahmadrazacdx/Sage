@@ -236,7 +236,7 @@ class UISettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     host: str = "localhost"
-    port: int = Field(default=8501, ge=1024, le=65535)
+    port: int = Field(default=8765, ge=1024, le=65535)
     browser_auto_open: bool = True
 
 

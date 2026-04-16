@@ -86,9 +86,14 @@ def with_error_boundary(
         graph.add_node("router", with_error_boundary(router_agent))
     """
 
-    @functools.wraps(node_fn)
+    _node_name: str = (
+        getattr(node_fn, "__name__", None)
+        or getattr(getattr(node_fn, "func", None), "__name__", None)
+        or repr(node_fn)
+    )
+
     async def _wrapper(state: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        node_name = node_fn.__name__
+        node_name = _node_name
         t0 = time.perf_counter()
         try:
             result = await node_fn(state, *args, **kwargs)
