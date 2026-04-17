@@ -7,7 +7,10 @@
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "node ./scripts/lint-check.mjs",
+    "test": "node --test \"./scripts/tests/**/*.test.mjs\"",
+    "test:watch": "node --test --watch \"./scripts/tests/**/*.test.mjs\""
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -73,10 +76,13 @@
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
+    "katex": "^0.16.45",
     "mermaid": "^11.13.0",
-    "react-markdown": "^8.0.7",
+    "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "uuid": "^13.0.0"
   }
 }

@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/Home";
 import NotFound from "@/pages/not-found";
-import { initMocks } from "@/api/mock";
+import { initMocks, IS_MOCK_ENABLED } from "@/api/mock";
 import { useEffect, useState } from "react";
 
 const queryClient = new QueryClient({
@@ -29,7 +29,9 @@ function App() {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    initMocks();
+    if (IS_MOCK_ENABLED) {
+      initMocks();
+    }
     setInitialized(true);
   }, []);
 

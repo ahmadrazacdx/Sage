@@ -1,17 +1,24 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { Composer } from "@/components/Composer";
 import { WelcomeScreen } from "@/components/chat/WelcomeScreen";
-import { Markdown } from "@/components/Markdown";
 import { FirstRun } from "@/components/setup/FirstRun";
 import { ModelLoading } from "@/components/setup/ModelLoading";
 import { useChatStream } from "@/hooks/use-chat-stream";
 import { useGetStatus, useGetSessionMessages, useSubmitChat, type SystemStatus } from "@workspace/api-client-react";
-import { GraduationCap, BrainCircuit, X, Info, Github, Building2, Cpu, Database, WifiOff, ShieldCheck } from "lucide-react";
+import { GraduationCap, BrainCircuit, X, Info, Github, Building2, Cpu, Database, WifiOff, ShieldCheck, FileDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TOOL_NAMES, type SageMode } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListSessionsQueryKey, getGetStatusQueryKey, getGetSessionMessagesQueryKey } from "@workspace/api-client-react";
+
+const Markdown = lazy(() => import("@/components/Markdown").then((m) => ({ default: m.Markdown })));
+const TypewriterMarkdown = lazy(() =>
+  import("../components/TypewriterMarkdown").then((m) => ({ default: m.TypewriterMarkdown })),
+);
+const ProgressTimeline = lazy(() =>
+  import("../components/ProgressTimeline").then((m) => ({ default: m.ProgressTimeline })),
+);
 
 interface LocalMessage {
   role: "user" | "assistant";
@@ -114,7 +121,7 @@ export default function Home() {
 
       setCurrentThreadId(response.thread_id);
 
-      startStream(response.thread_id, (finalAssistantContent) => {
+      startStream(response.thread_id, mode, (finalAssistantContent) => {
         if (finalAssistantContent.trim()) {
           setOptimisticMessages(prev => [...prev, { role: "assistant", content: finalAssistantContent }]);
         }
@@ -229,7 +236,23 @@ export default function Home() {
                         <GraduationCap className="w-4 h-4 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0 pt-1">
-                        <Markdown content={msg.content} />
+                        {/* Error crash guard */}
+                        {msg.content?.includes("💣") || msg.content?.startsWith("<!") ? (
+                          <div className="p-4 bg-red-500/10 text-red-300 border border-red-500/20 rounded-md text-sm my-4 font-mono">
+                            ⚠️ An error occurred processing this response.
+                          </div>
+                        ) : (
+                          // If this is the last message and it's explain mode, use typewriter
+                          idx === displayMessages.length - 1 && streamState.activeMode === "explain" ? (
+                            <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{msg.content}</p>}>
+                              <TypewriterMarkdown content={msg.content} speed={15} />
+                            </Suspense>
+                          ) : (
+                            <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{msg.content}</p>}>
+                              <Markdown content={msg.content} />
+                            </Suspense>
+                          )
+                        )}
                       </div>
                     </div>
                   )}
@@ -265,6 +288,12 @@ export default function Home() {
                       </details>
                     )}
 
+                    {streamState.steps?.length > 0 && (
+                      <Suspense fallback={null}>
+                        <ProgressTimeline steps={streamState.steps} isComplete={!streamState.isStreaming} />
+                      </Suspense>
+                    )}
+
                     {streamState.error ? (
                       <div className="text-error text-sm p-3 bg-error/10 border border-error/20 rounded-lg">
                         ⚠️ {streamState.error}
@@ -272,10 +301,35 @@ export default function Home() {
                     ) : (
                       <div className={streamState.isStreaming && !streamState.content ? "typing-cursor-empty" : (streamState.isStreaming ? "typing-cursor" : "")}>
                         {streamState.content ? (
-                          <Markdown content={streamState.content} enableMermaid={!streamState.isStreaming} />
+                          <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{streamState.content}</p>}>
+                            <Markdown content={streamState.content} enableMermaid={!streamState.isStreaming} />
+                          </Suspense>
                         ) : streamState.isStreaming ? (
-                          <span className="text-muted-foreground text-sm">Thinking...</span>
+                          streamState.activeMode === "thinking" ? (
+                            <span className="text-muted-foreground text-sm">Thinking...</span>
+                          ) : (
+                            <span className="text-muted-foreground text-sm flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-primary animate-pulse" /></span>
+                          )
                         ) : null}
+                      </div>
+                    )}
+                    
+                    {streamState.artifact && (
+                      <div className="mt-4 p-4 border border-border rounded-xl bg-sidebar/50 flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <FileDown className="w-5 h-5 text-primary" />
+                            <span className="font-medium">{streamState.artifact.filename}</span>
+                          </div>
+                          <a 
+                            href={streamState.artifact.url || `/api/artifacts/${streamState.artifact.filename}`}
+                            download={streamState.artifact.filename}
+                            target="_blank" rel="noopener noreferrer"
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                          >
+                            Download {streamState.artifact.kind.toUpperCase()}
+                          </a>
+                        </div>
                       </div>
                     )}
                   </div>

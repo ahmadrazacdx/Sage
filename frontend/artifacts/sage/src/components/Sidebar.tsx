@@ -13,6 +13,7 @@ import {
 import { differenceInCalendarDays } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListSessionsQueryKey, getListDocumentsQueryKey } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface SidebarProps {
   currentThreadId: string | null;
@@ -39,10 +40,19 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
   const deleteDocument = useDeleteDocument();
   const uploadDocuments = useUploadDocuments();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [docsExpanded, setDocsExpanded] = useState(false);
+
+  const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (typeof error === "object" && error !== null) {
+      const maybeError = error as { message?: string; data?: { detail?: string } };
+      return maybeError.data?.detail ?? maybeError.message ?? fallback;
+    }
+    return fallback;
+  };
 
   // Group sessions by date
   const groupedSessions = (sessions || []).reduce((acc, session) => {
@@ -64,8 +74,17 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
       const files = Array.from(e.target.files);
       await uploadDocuments.mutateAsync({ data: { files, course: "all" } });
       queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+      toast({
+        title: "Upload complete",
+        description: `${files.length} document(s) uploaded successfully.`,
+      });
     } catch (err) {
       console.error("Upload failed", err);
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: getErrorMessage(err, "Unable to upload documents. Please try again."),
+      });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -99,6 +118,17 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
                     onSuccess: () => {
                       queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
                       if (currentThreadId === s.thread_id) onNewChat();
+                      toast({
+                        title: "Conversation deleted",
+                        description: "The selected conversation was removed.",
+                      });
+                    },
+                    onError: (error) => {
+                      toast({
+                        variant: "destructive",
+                        title: "Delete failed",
+                        description: getErrorMessage(error, "Unable to delete this conversation."),
+                      });
                     }
                   });
                 }}
@@ -231,7 +261,20 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
                     <button
                       onClick={() => {
                         deleteDocument.mutate({ filename: doc.file }, {
-                          onSuccess: () => queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() })
+                          onSuccess: () => {
+                            queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+                            toast({
+                              title: "Document deleted",
+                              description: `${doc.file} was removed successfully.`,
+                            });
+                          },
+                          onError: (error) => {
+                            toast({
+                              variant: "destructive",
+                              title: "Delete failed",
+                              description: getErrorMessage(error, `Unable to delete ${doc.file}.`),
+                            });
+                          },
                         });
                       }}
                       className="p-1 rounded text-muted-foreground hover:text-error opacity-0 group-hover:opacity-100 transition-opacity bg-sidebar"

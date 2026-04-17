@@ -23,23 +23,6 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes("node_modules/mermaid")) return "vendor-mermaid";
-          if (id.includes("node_modules/katex")) return "vendor-katex";
-          if (id.includes("node_modules/cytoscape")) return "vendor-cytoscape";
-          if (
-            id.includes("node_modules/react-markdown") ||
-            id.includes("node_modules/remark-gfm") ||
-            id.includes("node_modules/rehype-highlight") ||
-            id.includes("node_modules/highlight.js")
-          ) {
-            return "vendor-markdown";
-          }
-        },
-      },
-    },
   },
   server: {
     port,

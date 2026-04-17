@@ -55,9 +55,13 @@ class AgentState(TypedDict, total=False):
     diagrams: list[dict]
     last_quiz_questions: str | None
 
+    # --- Artifacts ---
+    artifact_paths: list[dict]
+
     # --- Metadata ---
     tool_calls: list[dict]
     online_mode: bool
+    thread_id: str
 
     # --- Dropdown Routing ---
     mode: str

@@ -4,15 +4,18 @@ Chat submission and Server-Sent Events streaming endpoints.
 Protocol:
     1. Frontend  POST /api/chat receives {thread_id, message_id}
     2. Frontend  GET  /api/stream/{thread_id}  gets SSE event stream
-       Events: chunk | tool_call | thinking | done | error
+       Events: chunk | node_start | tool_call | thinking | artifact | done | error
 
 Rationale:
     - `POST /api/chat` validates input and stores a "pending stream" keyed by `thread_id`.
     - `GET /api/stream/{thread_id}` pops the pending entry, runs the
       LangGraph agent graph via `astream_events(version="v2")`, and
-      yields SSE events.
+      yields SSE events for EVERY path (streaming and batch alike).
+    - node_start events are emitted when each graph node begins, this drives the frontend progress timeline for all agentic modes.
+    - For batch intents the LLM token stream is suppressed; only the
+      final response chunk is emitted after the graph completes.
     - Concurrency guard: only one active stream per `thread_id`.
-    - The generator always emits `{type: "done" | "error"}`, the frontend uses it to close `EventSource`.
+    - Always emits `{type: "done" | "error"}` at the end.
 """
 
 from __future__ import annotations
@@ -35,16 +38,41 @@ log = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["chat"])
 
-
-_REALTIME_STREAM_NODES: frozenset[str] = frozenset({
-    "general", "reasoning", "thinking",
-})
-
-_BATCH_EMIT_INTENTS: frozenset[str] = frozenset({
+_BATCH_INTENTS: frozenset[str] = frozenset({
     "explain", "diagram", "quiz", "roadmap", "research", "fix",
 })
 
 _STALE_PENDING_TTL: float = 60.0
+
+_NODE_LABELS: dict[str, str] = {
+    "router":            "🧭 Routing request…",
+    "retrieval":         "📚 Retrieving course materials…",
+    "reasoning":         "🧠 Reasoning through content…",
+    "response_generator":"✍️ Formatting response…",
+    "quiz":              "🧩 Generating quiz…",
+    "diagram":           "📊 Building diagram…",
+    "planner":           "📅 Building study plan…",
+    "research":          "🔬 Researching topic…",
+    "code_fix":          "🔧 Analysing code…",
+    "general":           "💬 Generating answer…",
+}
+
+# Tool labels
+_TOOL_LABELS: dict[str, str] = {
+    "validate_mermaid":   "🔍 Validating diagram syntax…",
+    "render_mermaid_svg": "🖼️ Rendering diagram…",
+    "search_arxiv":       "📄 Searching arXiv…",
+    "search_web":         "🌐 Searching the web…",
+    "search_wikipedia":   "📖 Searching Wikipedia…",
+    "calculator":         "🔢 Running calculation…",
+    "execute_python":     "⚙️ Executing code…",
+    "export_pdf":         "📋 Generating PDF report…",
+    "export_markdown":    "📝 Saving markdown…",
+    "corpus_search":      "📚 Searching course materials…",
+}
+
+_SKIP_NODES: frozenset[str] = frozenset({"router"})
+
 
 class ChatRequest(BaseModel):
     thread_id: str | None = None
@@ -120,7 +148,7 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
             status_code=409,
             detail="A stream is already active for this thread.",
         )
-    
+
     # Build LangGraph input state
     history: list[dict[str, str]] = request.app.state.thread_messages.get(
         thread_id, []
@@ -136,6 +164,7 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
         "mode": body.mode,
         "course_code": body.course if body.course != "all" else None,
         "online_mode": network.online if network is not None else False,
+        "thread_id": thread_id,
     }
 
     pending[thread_id] = {
@@ -151,7 +180,7 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
 # GET
 @router.get("/stream/{thread_id}")
 async def stream_response(thread_id: str, request: Request) -> StreamingResponse:
-    """SSE endpoint: runs the agent graph and streams token events."""
+    """SSE endpoint: runs the agent graph and streams events."""
 
     active: dict[str, bool] = request.app.state.active_streams
     pending: dict[str, dict[str, Any]] = request.app.state.pending_streams
@@ -171,69 +200,70 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
     for tid in stale:
         pending.pop(tid, None)
         log.info("pending_stream_evicted", evicted_thread_id=tid)
- 
+
     entry = pending.pop(thread_id, None)
     if entry is None:
         raise HTTPException(
             status_code=404,
             detail="No pending stream for this thread.",
         )
- 
+
     active[thread_id] = True
 
     graph = request.app.state.graph
     state_input: dict[str, Any] = entry["state_input"]
     user_message: str = entry["user_message"]
     intent: str = entry["intent"]
-    is_batch: bool = intent in _BATCH_EMIT_INTENTS
+    is_batch: bool = intent in _BATCH_INTENTS
 
     async def _generate():  # noqa: C901
-        accumulated: list[str] = []
+        accumulated_chunks: list[str] = []
+        emitted_nodes: set[str] = set()
 
         try:
-            if is_batch:
-                invoke_task = asyncio.create_task(
-                    graph.ainvoke(state_input)
-                )
-                while not invoke_task.done():
-                    await asyncio.sleep(5)
-                    if not invoke_task.done():
-                        yield ": keepalive\n\n"
+            async for event in graph.astream_events(state_input, version="v2"):
+                kind: str = event["event"]
+                meta: dict[str, Any] = event.get("metadata", {})
+                node: str = meta.get("langgraph_node", "")
 
-                final_state: dict[str, Any] = await invoke_task
+                if kind == "on_chain_start" and node and node not in _SKIP_NODES:
+                    if node not in emitted_nodes:
+                        emitted_nodes.add(node)
+                        label = _NODE_LABELS.get(node, f"⚙️ {node}…")
+                        yield _sse({"type": "node_start", "node": node, "label": label})
+
+                elif kind == "on_tool_start":
+                    tool_name: str = event.get("name", "")
+                    if tool_name:
+                        label = _TOOL_LABELS.get(tool_name, f"🔧 {tool_name}…")
+                        yield _sse({"type": "tool_call", "name": tool_name, "label": label})
+                elif kind == "on_chat_model_stream" and not is_batch:
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk is None:
+                        continue
+                    text: str = getattr(chunk, "content", "") or ""
+                    if not text:
+                        continue
+                    accumulated_chunks.append(text)
+                    yield _sse({"type": "chunk", "text": text})
+
+            if is_batch:
+                final_state: dict[str, Any] = await graph.ainvoke(state_input)
                 response_text: str = final_state.get("response", "")
                 if response_text:
-                    accumulated.append(response_text)
+                    accumulated_chunks = [response_text]
                     yield _sse({"type": "chunk", "text": response_text})
 
-            else:
-                # Real-time streaming path (general / thinking)
-                async for event in graph.astream_events(state_input, version="v2"):
-                    kind: str = event["event"]
-                    meta: dict[str, Any] = event.get("metadata", {})
-                    node: str = meta.get("langgraph_node", "")
+                for art in final_state.get("artifact_paths", []):
+                    yield _sse({
+                        "type": "artifact",
+                        "kind": art.get("kind", "file"),
+                        "filename": art.get("filename", ""),
+                        "path": art.get("path", ""),
+                        "url": f"/api/artifacts/{art.get('filename', '')}",
+                    })
 
-                    if kind == "on_tool_start":
-                        tool_name = event.get("name", "")
-                        if tool_name:
-                            yield _sse({"type": "tool_call", "name": tool_name})
-                        continue
-
-                    if (
-                        kind == "on_chat_model_stream"
-                        and node in _REALTIME_STREAM_NODES
-                    ):
-                        chunk = event.get("data", {}).get("chunk")
-                        if chunk is None:
-                            continue
-                        text: str = getattr(chunk, "content", "") or ""
-                        if not text:
-                            continue
-                        accumulated.append(text)
-                        yield _sse({"type": "chunk", "text": text})
-
-            # Persist to in-memory session store
-            final_content = "".join(accumulated)
+            final_content = "".join(accumulated_chunks)
             messages: dict[str, list[dict[str, str]]] = getattr(
                 request.app.state, "thread_messages", {}
             )
@@ -280,4 +310,3 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
             "Connection": "keep-alive",
         },
     )
-

@@ -16,8 +16,9 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from sage.agents import build_graph
@@ -133,6 +134,28 @@ def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
     app.include_router(sessions_router, prefix="/api")
     app.include_router(documents_router, prefix="/api")
     app.include_router(chat_router, prefix="/api")
+
+    # Artifact file download endpoint
+    _exports_dir = _PROJECT_ROOT / "artifacts" / "data" / "exports"
+
+    @app.get("/api/artifacts/{filename}")
+    async def download_artifact(filename: str) -> FileResponse:
+        """Serve a generated artifact (PDF, SVG, MD) for download."""
+        safe_name = Path(filename).name
+        if not safe_name or safe_name != filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        file_path = _exports_dir / safe_name
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        suffix = file_path.suffix.lower()
+        media_map = {".pdf": "application/pdf", ".svg": "image/svg+xml",
+                     ".md": "text/markdown", ".txt": "text/plain"}
+        media_type = media_map.get(suffix, "application/octet-stream")
+        return FileResponse(
+            path=str(file_path),
+            media_type=media_type,
+            filename=safe_name,
+        )
 
     # SPA static-file mount
     if _FRONTEND_DIST.is_dir():

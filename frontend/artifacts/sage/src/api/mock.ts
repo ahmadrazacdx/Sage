@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 
+export const IS_MOCK_ENABLED = import.meta.env.DEV && import.meta.env.VITE_USE_MOCK === "true";
+
 // Mock Data
 export const MOCK_SESSIONS = [
   { thread_id: "aaa00001", title: "Binary Search Trees", last_message_preview: "A BST is a tree where...", updated_at: new Date().toISOString() },
@@ -36,9 +38,8 @@ export const MOCK_MESSAGES: Record<string, any[]> = {
 
 // Simulated fetch override for development
 export function initMocks() {
-    // Always enable mocks in demo mode (VITE_USE_MOCK=true or not explicitly disabled)
-  if (import.meta.env.VITE_USE_MOCK === 'false') return;
-  console.log("🛠️ Sage Mock API Layer Initialized");
+  if (!IS_MOCK_ENABLED) return;
+  console.log("Sage mock API layer initialized");
 
   const originalFetch = window.fetch;
   
@@ -73,7 +74,15 @@ export function initMocks() {
       return jsonResponse(MOCK_DOCUMENTS);
     }
     if (url.includes('/api/chat') && method === 'POST') {
-      const body = JSON.parse(init?.body as string || '{}');
+      let body: { thread_id?: string } = {};
+      const rawBody = init?.body;
+      if (typeof rawBody === "string" && rawBody.trim()) {
+        try {
+          body = JSON.parse(rawBody) as { thread_id?: string };
+        } catch {
+          return jsonResponse({ detail: "Invalid chat payload." }, 400);
+        }
+      }
       if (MOCK_STATUS.model_ready === false) {
         return jsonResponse({ detail: 'Model not ready. Please wait.' }, 503);
       }
@@ -93,7 +102,9 @@ export function initMocks() {
 
 type MockStreamEvent =
   | { type: "thinking"; text: string }
-  | { type: "tool_call"; name: string }
+  | { type: "tool_call"; name: string; label?: string }
+  | { type: "node_start"; node: string; label: string }
+  | { type: "artifact"; kind: string; filename: string; path: string; url?: string }
   | { type: "chunk"; text: string }
   | { type: "error"; message: string }
   | { type: "done" };

@@ -261,7 +261,17 @@ def _render_evaluation(ev: QuizEvaluation) -> str:
 
 
 def _looks_like_answers(query: str) -> bool:
-    return bool(_ANSWER_RE.search(query))
+    """Return True only if the query looks like student answers to an existing quiz."""
+    if len(query) > 600:
+        return False
+    matches = _ANSWER_RE.findall(query)
+    if len(matches) < 2:
+        return False
+    lines = [l.strip() for l in query.splitlines() if l.strip()]
+    question_lines = sum(1 for l in lines if l.endswith("?"))
+    if lines and question_lines / len(lines) > 0.4:
+        return False
+    return True
 
 
 def _serialize(questions: list[QuizQuestion]) -> str:

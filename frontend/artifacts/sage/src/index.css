@@ -226,6 +226,8 @@
 
 /* Prose customizations for dark markdown */
 .prose.prose-invert {
+  font-size: 1.2rem;
+  line-height: 1.75;
   --tw-prose-body: #e0e0e0;
   --tw-prose-headings: #f0f0f0;
   --tw-prose-lead: #b0b0b0;

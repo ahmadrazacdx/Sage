@@ -19,9 +19,25 @@ export const SAGE_MODES = [
 export type SageMode = typeof SAGE_MODES[number]["id"];
 
 export const TOOL_NAMES: Record<string, string> = {
-  "corpus_search": "🔍 Searching course materials...",
-  "calculator": "🔢 Running calculation...",
-  "web_search": "🌐 Searching the web...",
-  "arxiv_search": "📄 Searching arXiv...",
-  "sandbox": "⚙️ Executing code..."
+  // Node labels
+  "retrieval": "📚 Retrieving course materials…",
+  "reasoning": "🧠 Reasoning…",
+  "response_generator": "✍️ Formatting response…",
+  "quiz": "🧩 Generating quiz…",
+  "diagram": "📊 Building diagram…",
+  "planner": "📅 Building study plan…",
+  "research": "🔬 Researching topic…",
+  "code_fix": "🔧 Analysing code…",
+  "general": "💬 Generating answer…",
+  // Tool labels
+  "corpus_search": "🔍 Searching course materials…",
+  "validate_mermaid": "🔍 Validating diagram syntax…",
+  "render_mermaid_svg": "🖼️ Rendering diagram SVG…",
+  "search_arxiv": "📄 Searching arXiv…",
+  "search_web": "🌐 Searching the web…",
+  "search_wikipedia": "📖 Searching Wikipedia…",
+  "calculator": "🔢 Running calculation…",
+  "execute_python": "⚙️ Executing code…",
+  "export_pdf": "📋 Generating PDF report…",
+  "export_markdown": "📝 Saving markdown…"
 };

@@ -22,6 +22,8 @@ from sage.prompts import (
     REASONING_EXPLAIN_PROMPT,
     REASONING_THINKING_SYSTEM,
     SYSTEM_PROMPT,
+    SYSTEM_PROMPT_WITH_CITATIONS,
+    THINKING_TOOLS_SYSTEM,
 )
 
 log = structlog.get_logger(__name__)
@@ -139,28 +141,69 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
 
     # Thinking path
     if intent == "thinking":
+        # Bind calculator + web-search tools
+        try:
+            from sage.tools.calculator import calculator
+            from sage.tools.search import search_web
+            thinking_tools = [calculator, search_web]
+        except ImportError:
+            thinking_tools = []
+
+        system_thinking = SYSTEM_PROMPT + REASONING_THINKING_SYSTEM + THINKING_TOOLS_SYSTEM
         prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT + "\n\n" + REASONING_THINKING_SYSTEM),
+            ("system", system_thinking),
             ("human", "{query}"),
         ])
- 
-        try:
-            result = await asyncio.wait_for(
-                (prompt | llm).ainvoke({"query": query}),
-                timeout=cfg.llm_timeout,
-            )
-        except asyncio.TimeoutError:
-            log.error("reasoning_thinking_timeout", timeout=cfg.llm_timeout)
-            return {"response": "The request timed out. Please try again."}
-        except Exception as exc:
-            log.error(
-                "reasoning_thinking_failed",
-                exc_type=type(exc).__name__,
-                exc_msg=str(exc)[:200],
-            )
-            return {"response": "I ran into an issue processing your request. Please try again."}
-        body = _extract_content(result)
-        response = f"{_intro('thinking', query)}\n\n{body}"
+
+        llm_with_tools = llm.bind_tools(thinking_tools) if thinking_tools else llm
+        messages_so_far: list = [{"role": "user", "content": query}]
+        response = ""
+        for _iter in range(3):
+            try:
+                result = await asyncio.wait_for(
+                    (prompt | llm_with_tools).ainvoke({"query": query}),
+                    timeout=cfg.llm_timeout,
+                )
+            except asyncio.TimeoutError:
+                log.error("reasoning_thinking_timeout", timeout=cfg.llm_timeout)
+                return {"response": "The request timed out. Please try again."}
+            except Exception as exc:
+                log.error(
+                    "reasoning_thinking_failed",
+                    exc_type=type(exc).__name__,
+                    exc_msg=str(exc)[:200],
+                )
+                return {"response": "I ran into an issue processing your request. Please try again."}
+
+            tool_calls = getattr(result, "tool_calls", None) or []
+            if not tool_calls:
+                body = _extract_content(result)
+                response = f"{_intro('thinking', query)}\n\n{body}"
+                break
+
+            from langchain_core.messages import ToolMessage
+            tool_msgs: list[ToolMessage] = []
+            for tc in tool_calls:
+                tool_name = tc.get("name", "")
+                tool_args = tc.get("args", {})
+                tc_id = tc.get("id", "")
+                try:
+                    if tool_name == "calculator" and thinking_tools:
+                        tool_result = calculator.invoke(tool_args)
+                    elif tool_name == "search_web" and thinking_tools:
+                        tool_result = await search_web.ainvoke(tool_args)
+                    else:
+                        tool_result = f"Tool {tool_name!r} not available."
+                except Exception as te:
+                    tool_result = f"Tool error: {te}"
+                tool_msgs.append(ToolMessage(content=str(tool_result), tool_call_id=tc_id))
+
+            messages_so_far.extend([result, *tool_msgs])
+            prompt = ChatPromptTemplate.from_messages(messages_so_far)  # type: ignore[arg-type]
+        else:
+            body = _extract_content(result)  # type: ignore[possibly-undefined]
+            response = f"{_intro('thinking', query)}\n\n{body}"
+
         log.info(
             "reasoning_thinking_complete",
             response_len=len(response),
@@ -189,7 +232,7 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         )
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT + "\n\n" + REASONING_EXPLAIN_PROMPT),
+        ("system", SYSTEM_PROMPT_WITH_CITATIONS + "\n\n" + REASONING_EXPLAIN_PROMPT),
         ("human", human_msg),
     ])
  

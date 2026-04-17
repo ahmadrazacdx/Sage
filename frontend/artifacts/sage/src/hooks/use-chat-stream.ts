@@ -1,7 +1,20 @@
 import { useState, useCallback, useRef } from "react";
-import { mockStream } from "@/api/mock";
+import { IS_MOCK_ENABLED, mockStream } from "@/api/mock";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListSessionsQueryKey } from "@workspace/api-client-react";
+
+export type StreamStep = {
+  id: string;
+  label: string;
+  status: "active" | "done";
+};
+
+export type ArtifactInfo = {
+  kind: string;
+  filename: string;
+  path: string;
+  url?: string;
+};
 
 export interface StreamState {
   isStreaming: boolean;
@@ -9,6 +22,9 @@ export interface StreamState {
   thinking: string;
   activeTool: string | null;
   error: string | null;
+  steps: StreamStep[];
+  artifact: ArtifactInfo | null;
+  activeMode: string | null;
 }
 
 export function useChatStream() {
@@ -18,6 +34,9 @@ export function useChatStream() {
     thinking: "",
     activeTool: null,
     error: null,
+    steps: [],
+    artifact: null,
+    activeMode: null,
   });
   
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -25,7 +44,16 @@ export function useChatStream() {
   const streamedContentRef = useRef("");
   const queryClient = useQueryClient();
 
-  const startStream = useCallback((threadId: string, onComplete?: (finalContent: string) => void) => {
+  const startStream = useCallback((threadId: string, activeMode?: string, onComplete?: (finalContent: string) => void) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    if (cancelMockRef.current) {
+      cancelMockRef.current();
+      cancelMockRef.current = null;
+    }
+
     streamedContentRef.current = "";
     setStreamState({
       isStreaming: true,
@@ -33,24 +61,52 @@ export function useChatStream() {
       thinking: "",
       activeTool: null,
       error: null,
+      steps: [],
+      artifact: null,
+      activeMode: activeMode || null,
     });
 
-    if (import.meta.env.VITE_USE_MOCK !== 'false') {
+    if (IS_MOCK_ENABLED) {
       cancelMockRef.current = mockStream((chunk) => {
         streamedContentRef.current += chunk;
         setStreamState(prev => ({ ...prev, content: prev.content + chunk }));
       }, () => {
         const finalContent = streamedContentRef.current;
         cancelMockRef.current = null;
-        setStreamState(prev => ({ ...prev, isStreaming: false, content: "", thinking: "", activeTool: null }));
+        setStreamState(prev => ({ 
+          ...prev, 
+          isStreaming: false, 
+          content: "", 
+          thinking: "", 
+          activeTool: null,
+          steps: prev.steps.map(s => ({ ...s, status: "done" }))
+        }));
         queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
         onComplete?.(finalContent);
       }, (data) => {
         setStreamState(prev => {
           if (data.type === 'chunk') return prev;
           if (data.type === 'thinking') return { ...prev, thinking: prev.thinking + data.text + "\n" };
-          if (data.type === 'tool_call') return { ...prev, activeTool: data.name };
-          if (data.type === 'error') return { ...prev, error: data.message, isStreaming: false };
+          if (data.type === 'node_start') {
+             const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
+             newSteps.push({ id: data.node, label: data.label, status: "active" });
+             return { ...prev, steps: newSteps, activeTool: null };
+          }
+          if (data.type === 'tool_call') {
+             const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
+             newSteps.push({ id: `tool-${data.name}-${Date.now()}`, label: data.label || `🔧 ${data.name}...`, status: "active" });
+             return { ...prev, steps: newSteps, activeTool: data.name };
+          }
+          if (data.type === 'artifact') return { ...prev, artifact: data };
+          if (data.type === 'error') {
+            return {
+              ...prev,
+              error: data.message,
+              isStreaming: false,
+              activeTool: null,
+              steps: prev.steps.map(s => ({ ...s, status: "done" }))
+            };
+          }
           return prev;
         });
       });
@@ -65,8 +121,16 @@ export function useChatStream() {
         const data = JSON.parse(e.data);
         if (data.type === 'done') {
           es.close();
+          eventSourceRef.current = null;
           const finalContent = streamedContentRef.current;
-          setStreamState(prev => ({ ...prev, isStreaming: false, content: "", thinking: "", activeTool: null }));
+          setStreamState(prev => ({ 
+            ...prev, 
+            isStreaming: false, 
+            content: "", 
+            thinking: "", 
+            activeTool: null,
+            steps: prev.steps.map(s => ({ ...s, status: "done" }))
+          }));
           queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
           onComplete?.(finalContent);
           return;
@@ -79,21 +143,54 @@ export function useChatStream() {
             return { ...prev, content: prev.content + chunkText };
           }
           if (data.type === 'thinking') return { ...prev, thinking: prev.thinking + data.text + "\n" };
-          if (data.type === 'tool_call') return { ...prev, activeTool: data.name ?? data.tool_name ?? null };
+          if (data.type === 'node_start') {
+             const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
+             newSteps.push({ id: data.node, label: data.label, status: "active" });
+             return { ...prev, steps: newSteps, activeTool: null };
+          }
+          if (data.type === 'tool_call') {
+             const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
+             newSteps.push({ id: `tool-${data.name}-${Date.now()}`, label: data.label || `🔧 ${data.name}...`, status: "active" });
+             return { ...prev, steps: newSteps, activeTool: data.name ?? data.tool_name ?? null };
+          }
+          if (data.type === 'artifact') return { ...prev, artifact: data };
           if (data.type === 'error') {
             es.close();
-            return { ...prev, error: data.message ?? data.text ?? "An error occurred.", isStreaming: false };
+            eventSourceRef.current = null;
+            return {
+              ...prev,
+              error: data.message ?? data.text ?? "An error occurred.",
+              isStreaming: false,
+              activeTool: null,
+              steps: prev.steps.map(s => ({ ...s, status: "done" }))
+            };
           }
           return prev;
         });
       } catch (err) {
         console.error("Failed to parse SSE message", err);
+        es.close();
+        eventSourceRef.current = null;
+        setStreamState(prev => ({
+          ...prev,
+          error: "Received malformed stream data from server.",
+          isStreaming: false,
+          activeTool: null,
+          steps: prev.steps.map(s => ({ ...s, status: "done" }))
+        }));
       }
     };
 
     es.onerror = () => {
       es.close();
-      setStreamState(prev => ({ ...prev, error: "Connection lost.", isStreaming: false }));
+      eventSourceRef.current = null;
+      setStreamState(prev => ({
+        ...prev,
+        error: "Connection lost.",
+        isStreaming: false,
+        activeTool: null,
+        steps: prev.steps.map(s => ({ ...s, status: "done" }))
+      }));
     };
   }, [queryClient]);
 
@@ -106,7 +203,14 @@ export function useChatStream() {
       cancelMockRef.current();
       cancelMockRef.current = null;
     }
-    setStreamState(prev => ({ ...prev, isStreaming: false, content: "", thinking: "", activeTool: null }));
+    setStreamState(prev => ({
+      ...prev,
+      isStreaming: false,
+      content: "",
+      thinking: "",
+      activeTool: null,
+      steps: prev.steps.map(s => ({ ...s, status: "done" }))
+    }));
   }, []);
 
   return { streamState, startStream, stopStream };

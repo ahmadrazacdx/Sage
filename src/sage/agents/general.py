@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 import structlog
@@ -14,6 +15,17 @@ from sage.config import get_settings
 from sage.prompts import SYSTEM_PROMPT
 
 log = structlog.get_logger(__name__)
+
+_RE_HALLUCINATED_KU = re.compile(r"\s*\[KU\d+\]", re.IGNORECASE)
+_RE_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+
+
+def _clean_general_output(text: str) -> str:
+    """Remove think blocks and hallucinated [KU#] citation tags."""
+    text = _RE_THINK_BLOCK.sub("", text)
+    text = text.replace("<think>", "").replace("</think>", "")
+    text = _RE_HALLUCINATED_KU.sub("", text)
+    return text.strip()
 
 
 async def general_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
@@ -42,8 +54,9 @@ async def general_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         )
         return {"response": "I ran into an issue. Please try again."}
 
-    content: str = (
+    raw: str = (
         result.content if hasattr(result, "content") else str(result)
     ) or ""
+    content = _clean_general_output(raw)
     log.info("general_node_complete", response_len=len(content))
     return {"response": content}
