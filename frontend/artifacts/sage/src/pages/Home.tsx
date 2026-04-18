@@ -54,7 +54,7 @@ export default function Home() {
 
   const { streamState, startStream, stopStream } = useChatStream();
 
-  const { data: status } = useGetStatus({ query: { queryKey: getGetStatusQueryKey(), refetchInterval: 5000 } });
+  const { data: status } = useGetStatus({ query: { queryKey: getGetStatusQueryKey(), refetchInterval: 2000 } });
 
   const { data: historyMessages } = useGetSessionMessages(currentThreadId || "", {
     query: {
@@ -234,7 +234,7 @@ export default function Home() {
           {!hasMessages ? (
             <WelcomeScreen name={userName} />
           ) : (
-            <div className="max-w-[680px] mx-auto w-full px-4 py-8 flex flex-col gap-6">
+            <div className="w-full max-w-[980px] mx-auto px-4 md:px-8 py-8 flex flex-col gap-6">
               {displayMessages.map((msg, idx) => (
                 <motion.div
                   initial={{ opacity: 0, y: 6 }}
@@ -245,10 +245,10 @@ export default function Home() {
                 >
                   {msg.role === 'user' ? (
                     <div className="user-bubble px-5 py-3.5 max-w-[80%] shadow-md">
-                      <p className="whitespace-pre-wrap text-[#e0e0e0]">{msg.content}</p>
+                      <p className="whitespace-pre-wrap text-[#e0e0e0] text-[1.2rem] leading-[1.75]">{msg.content}</p>
                     </div>
                   ) : (
-                    <div className="flex gap-4 max-w-full overflow-hidden flex-1">
+                    <div className="flex gap-4 max-w-full flex-1">
                       <div className="w-8 h-8 shrink-0 rounded-full bg-sidebar border border-sidebar-border flex items-center justify-center mt-1">
                         <GraduationCap className="w-4 h-4 text-primary" />
                       </div>
@@ -274,7 +274,7 @@ export default function Home() {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.15, ease: "easeOut" }}
-                  className="flex w-full justify-start gap-4 overflow-hidden flex-1"
+                  className="flex w-full justify-start gap-4 flex-1"
                 >
                   <div className="relative w-8 h-8 shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mt-1">
                     {showThinkingSpinner && (
@@ -334,7 +334,7 @@ export default function Home() {
               )}
 
               {submitError && (
-                <div className="text-error text-sm p-3 bg-error/10 border border-error/20 rounded-lg max-w-[680px]">
+                <div className="text-error text-sm p-3 bg-error/10 border border-error/20 rounded-lg">
                   ⚠️ {submitError}
                 </div>
               )}

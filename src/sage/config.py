@@ -228,7 +228,7 @@ class NetworkSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     force_offline: bool = False
-    check_interval: int = Field(default=60, ge=5)
+    check_interval: int = Field(default=5, ge=5)
     timeout: float = Field(default=2.0, ge=0.5, le=30.0)
 
 

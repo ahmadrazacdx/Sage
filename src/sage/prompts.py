@@ -302,7 +302,7 @@ ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
     5. known_topics → session_type "review", ≤30 min, not a full study block.
     6. Give proportionally more time to weak_topics and difficulty=3 topics.
     7. Insert a checkpoint every 3–4 days: "By Day N you should be able to …"
-    8. Reference Knowledge Unit IDs (knowledge_unit_refs[]) wherever relevant.
+    8. Use Knowledge Units only for grounding the schedule; do not surface KU IDs in the markdown output.
     9. End with exactly 3 self_assessment_questions spanning the full scope.
    10. checkpoints must be objects with keys: after_day (int), milestone (str). NEVER return checkpoint strings.
  

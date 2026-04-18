@@ -4,6 +4,8 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
 import { Check, Copy } from "lucide-react";
@@ -79,6 +81,66 @@ export function splitMarkdownAndSvgSegments(content: string): MarkdownSegment[] 
   }
 
   return segments;
+}
+
+function escapeHtmlCell(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function tabBlockToHtmlTable(lines: string[]): string {
+  if (lines.length < 2) return lines.join("\n");
+
+  const rows = lines
+    .map((line) => line.split("\t").map((cell) => escapeHtmlCell(cell.trim())))
+    .filter((cells) => cells.length > 1 && cells.some((cell) => cell.length > 0));
+
+  if (rows.length < 2) return lines.join("\n");
+
+  const header = rows[0];
+  const bodyRows = rows.slice(1);
+  const thead = `<thead><tr>${header.map((cell) => `<th>${cell || "&nbsp;"}</th>`).join("")}</tr></thead>`;
+  const tbody = `<tbody>${bodyRows
+    .map((cells) => `<tr>${cells.map((cell) => `<td>${cell || "&nbsp;"}</td>`).join("")}</tr>`)
+    .join("")}</tbody>`;
+
+  return `<table>${thead}${tbody}</table>`;
+}
+
+function normalizePlannerTables(content: string): string {
+  const lines = content.split("\n");
+  const output: string[] = [];
+  let i = 0;
+  let inCodeFence = false;
+
+  while (i < lines.length) {
+    const current = lines[i] ?? "";
+    if (/^\s*```/.test(current)) {
+      inCodeFence = !inCodeFence;
+      output.push(current);
+      i += 1;
+      continue;
+    }
+
+    if (!inCodeFence && current.includes("\t")) {
+      const block: string[] = [];
+      while (i < lines.length && (lines[i] ?? "").includes("\t")) {
+        block.push(lines[i] ?? "");
+        i += 1;
+      }
+      output.push(tabBlockToHtmlTable(block));
+      continue;
+    }
+
+    output.push(current);
+    i += 1;
+  }
+
+  return output.join("\n");
 }
 
 export function sanitizeSvgMarkup(rawSvg: string): string | null {
@@ -379,8 +441,19 @@ interface MarkdownProps {
   enableMermaid?: boolean;
 }
 
+const MARKDOWN_SANITIZE_SCHEMA = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames || []), "details", "summary"],
+  attributes: {
+    ...(defaultSchema.attributes || {}),
+    details: ["open"],
+    summary: [],
+  },
+};
+
 export const Markdown = ({ content, className, enableMermaid = true }: MarkdownProps) => {
-  const segments = useMemo(() => splitMarkdownAndSvgSegments(content), [content]);
+  const normalizedContent = useMemo(() => normalizePlannerTables(content), [content]);
+  const segments = useMemo(() => splitMarkdownAndSvgSegments(normalizedContent), [normalizedContent]);
 
   return (
     <div className={cn("prose prose-invert max-w-none break-words", className)}>
@@ -404,7 +477,7 @@ export const Markdown = ({ content, className, enableMermaid = true }: MarkdownP
           <ReactMarkdown
             key={`md-${index}`}
             remarkPlugins={[remarkGfm, remarkMath] as any}
-            rehypePlugins={[rehypeKatex, rehypeHighlight] as any}
+            rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA], rehypeKatex, rehypeHighlight] as any}
             components={{
               pre({ children }: any) {
                 // Avoid react-markdown's default outer <pre> so custom blocks are not double wrapped.
@@ -468,6 +541,64 @@ export const Markdown = ({ content, className, enableMermaid = true }: MarkdownP
                     className="max-w-full rounded-lg border border-border"
                     {...props}
                   />
+                );
+              },
+              table({ className: tableClassName, children, ...props }: any) {
+                return (
+                  <div className="my-2 w-full overflow-x-auto">
+                    <table
+                      className={cn("w-full min-w-max border-collapse", tableClassName)}
+                      {...props}
+                    >
+                      {children}
+                    </table>
+                  </div>
+                );
+              },
+              th({ className: thClassName, children, ...props }: any) {
+                return (
+                  <th
+                    className={cn(
+                      "px-2 py-1.5 text-left font-semibold",
+                      thClassName,
+                    )}
+                    {...props}
+                  >
+                    {children}
+                  </th>
+                );
+              },
+              td({ className: tdClassName, children, ...props }: any) {
+                return (
+                  <td
+                    className={cn("px-2 py-1.5 align-top", tdClassName)}
+                    {...props}
+                  >
+                    {children}
+                  </td>
+                );
+              },
+              details({ className: detailsClassName, children, ...props }: any) {
+                return (
+                  <details
+                    className={cn(
+                      "my-2",
+                      detailsClassName,
+                    )}
+                    {...props}
+                  >
+                    {children}
+                  </details>
+                );
+              },
+              summary({ className: summaryClassName, children, ...props }: any) {
+                return (
+                  <summary
+                    className={cn("cursor-pointer font-semibold", summaryClassName)}
+                    {...props}
+                  >
+                    {children}
+                  </summary>
                 );
               },
             }}

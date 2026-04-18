@@ -92,7 +92,7 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
   };
 
   return (
-    <div className="relative w-full max-w-[680px] mx-auto">
+    <div className="relative w-full max-w-[980px] mx-auto px-4 md:px-8">
       <div className="flex items-center gap-2 mb-2 px-1">
         <div className="inline-flex items-center gap-1.5 bg-sidebar border border-sidebar-border rounded-full px-2.5 py-1 text-xs text-foreground/90">
           <span className="text-muted-foreground">Mode:</span>

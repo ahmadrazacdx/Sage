@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, Plus, File, Trash2, GraduationCap, ChevronLeft, ChevronDown, ChevronRight, Info, CheckCircle2, Loader2, Menu } from "lucide-react";
+import { MessageSquare, Plus, File, Trash2, GraduationCap, ChevronLeft, ChevronDown, ChevronRight, Info, Menu, Wifi, WifiOff, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { 
   useListSessions, 
@@ -301,15 +301,15 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
       {/* Footer Status */}
       <div className="p-4 border-t border-sidebar-border shrink-0 bg-sidebar">
         <div className="flex items-center justify-center gap-2 text-xs font-medium text-center">
-          {status?.model_ready ? (
+          {status?.network_online ? (
             <>
-              <CheckCircle2 className="w-4 h-4 text-success" />
-              <span className="text-foreground/80">Ready</span>
+              <Wifi className="w-4 h-4 text-success" />
+              <span className="text-foreground/80">Online</span>
             </>
           ) : (
             <>
-              <Loader2 className="w-4 h-4 text-warning animate-spin" />
-              <span className="text-warning">Getting Things Ready...</span>
+              <WifiOff className="w-4 h-4 text-error" />
+              <span className="text-foreground/80">Offline</span>
             </>
           )}
         </div>

@@ -233,6 +233,7 @@
 .prose.prose-invert {
   font-size: 1.2rem;
   line-height: 1.75;
+  overflow-wrap: anywhere;
   --tw-prose-body: #e0e0e0;
   --tw-prose-headings: #f0f0f0;
   --tw-prose-lead: #b0b0b0;
@@ -249,6 +250,15 @@
   --tw-prose-pre-bg: #1a1b1e;
   --tw-prose-th-borders: #333;
   --tw-prose-td-borders: #2a2a2a;
+}
+
+.prose p {
+  white-space: pre-wrap;
+}
+
+.prose.prose-invert :where(p, ul, ol, blockquote, pre, table, details, h1, h2, h3, h4) {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .prose pre {
@@ -270,10 +280,26 @@
 .prose table {
   border-collapse: collapse;
   width: 100%;
+  min-width: max-content;
+  table-layout: auto;
 }
 
 .prose table th {
-  background: rgba(255,255,255,0.05);
+  background: transparent;
+}
+
+.prose th,
+.prose td {
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  padding: 0.38rem 0.5rem;
+}
+
+.prose details {
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Center display equations while keeping inline math flow intact. */
