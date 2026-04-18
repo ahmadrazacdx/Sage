@@ -6,16 +6,13 @@ import { FirstRun } from "@/components/setup/FirstRun";
 import { ModelLoading } from "@/components/setup/ModelLoading";
 import { useChatStream } from "@/hooks/use-chat-stream";
 import { useGetStatus, useGetSessionMessages, useSubmitChat, type SystemStatus } from "@workspace/api-client-react";
-import { GraduationCap, BrainCircuit, X, Info, Github, Building2, Cpu, Database, WifiOff, ShieldCheck, FileDown } from "lucide-react";
+import { GraduationCap, Loader2, X, Info, Github, Building2, Cpu, Database, WifiOff, ShieldCheck, FileDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TOOL_NAMES, type SageMode } from "@/lib/utils";
+import { type SageMode } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListSessionsQueryKey, getGetStatusQueryKey, getGetSessionMessagesQueryKey } from "@workspace/api-client-react";
 
 const Markdown = lazy(() => import("@/components/Markdown").then((m) => ({ default: m.Markdown })));
-const TypewriterMarkdown = lazy(() =>
-  import("../components/TypewriterMarkdown").then((m) => ({ default: m.TypewriterMarkdown })),
-);
 const ProgressTimeline = lazy(() =>
   import("../components/ProgressTimeline").then((m) => ({ default: m.ProgressTimeline })),
 );
@@ -24,6 +21,19 @@ interface LocalMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+const TIMELINE_MODES = new Set<SageMode>(["quiz", "roadmap", "explain"]);
+
+const BACKEND_MODE_MAP: Record<SageMode, string> = {
+  general: "general",
+  explain: "explain",
+  thinking: "thinking",
+  quiz: "quiz",
+  diagram: "diagram",
+  roadmap: "roadmap",
+  fix: "fix",
+  research: "research",
+};
 
 export default function Home() {
   const [userName, setUserName] = useState<string | null>(null);
@@ -108,6 +118,7 @@ export default function Home() {
     setSubmitError(null);
     setStoppedManually(false);
     setIsStreamDone(false);
+    const backendMode = BACKEND_MODE_MAP[mode] ?? mode;
 
     const baseMessages: LocalMessage[] = historyList && canUseHistory
       ? historyList
@@ -116,7 +127,7 @@ export default function Home() {
 
     try {
       const response = await submitChat.mutateAsync({
-        data: { thread_id: currentThreadId, message, mode, course }
+        data: { thread_id: currentThreadId, message, mode: backendMode, course }
       });
 
       setCurrentThreadId(response.thread_id);
@@ -180,6 +191,12 @@ export default function Home() {
     ? historyList
     : optimisticMessages;
 
+  const timelineVisible =
+    TIMELINE_MODES.has((streamState.activeMode as SageMode) || "general") &&
+    (streamState.isStreaming || streamState.error) &&
+    streamState.steps?.length > 0;
+  const showThinkingSpinner = streamState.isStreaming && streamState.activeMode === "thinking";
+
   const hasMessages = displayMessages.length > 0 || streamState.isStreaming || !!streamState.content;
 
   return (
@@ -242,16 +259,9 @@ export default function Home() {
                             ⚠️ An error occurred processing this response.
                           </div>
                         ) : (
-                          // If this is the last message and it's explain mode, use typewriter
-                          idx === displayMessages.length - 1 && streamState.activeMode === "explain" ? (
-                            <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{msg.content}</p>}>
-                              <TypewriterMarkdown content={msg.content} speed={15} />
-                            </Suspense>
-                          ) : (
-                            <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{msg.content}</p>}>
-                              <Markdown content={msg.content} />
-                            </Suspense>
-                          )
+                          <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{msg.content}</p>}>
+                            <Markdown content={msg.content} />
+                          </Suspense>
                         )}
                       </div>
                     </div>
@@ -266,29 +276,14 @@ export default function Home() {
                   transition={{ duration: 0.15, ease: "easeOut" }}
                   className="flex w-full justify-start gap-4 overflow-hidden flex-1"
                 >
-                  <div className="w-8 h-8 shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mt-1">
+                  <div className="relative w-8 h-8 shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mt-1">
+                    {showThinkingSpinner && (
+                      <Loader2 className="absolute -inset-1.5 w-11 h-11 text-primary/40 animate-spin" />
+                    )}
                     <GraduationCap className="w-4 h-4 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0 pt-1 flex flex-col gap-2">
-                    {streamState.activeTool && (
-                      <div className="text-xs font-medium text-muted-foreground animate-pulse flex items-center gap-1.5">
-                        {TOOL_NAMES[streamState.activeTool] || `🔧 Using ${streamState.activeTool}...`}
-                      </div>
-                    )}
-
-                    {streamState.thinking && (
-                      <details className="text-sm bg-sidebar border border-sidebar-border rounded-lg group cursor-pointer overflow-hidden mb-1">
-                        <summary className="px-4 py-2.5 font-medium text-muted-foreground hover:text-foreground list-none flex items-center gap-2">
-                          <BrainCircuit className="w-4 h-4" />
-                          <span>Thought process</span>
-                        </summary>
-                        <div className="px-4 pb-3 text-muted-foreground whitespace-pre-wrap font-mono text-xs border-t border-sidebar-border pt-2">
-                          {streamState.thinking}
-                        </div>
-                      </details>
-                    )}
-
-                    {streamState.steps?.length > 0 && (
+                    {timelineVisible && (
                       <Suspense fallback={null}>
                         <ProgressTimeline steps={streamState.steps} isComplete={!streamState.isStreaming} />
                       </Suspense>
@@ -299,17 +294,19 @@ export default function Home() {
                         ⚠️ {streamState.error}
                       </div>
                     ) : (
-                      <div className={streamState.isStreaming && !streamState.content ? "typing-cursor-empty" : (streamState.isStreaming ? "typing-cursor" : "")}>
+                      <div
+                        className={
+                          streamState.isStreaming && !streamState.content
+                            ? (streamState.activeMode === "thinking" ? "" : "typing-cursor-empty")
+                            : (streamState.isStreaming ? "typing-cursor" : "")
+                        }
+                      >
                         {streamState.content ? (
                           <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{streamState.content}</p>}>
                             <Markdown content={streamState.content} enableMermaid={!streamState.isStreaming} />
                           </Suspense>
-                        ) : streamState.isStreaming ? (
-                          streamState.activeMode === "thinking" ? (
-                            <span className="text-muted-foreground text-sm">Thinking...</span>
-                          ) : (
-                            <span className="text-muted-foreground text-sm flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-primary animate-pulse" /></span>
-                          )
+                        ) : streamState.isStreaming && streamState.activeMode === "thinking" ? (
+                          <span className="text-muted-foreground text-sm">Thinking...</span>
                         ) : null}
                       </div>
                     )}

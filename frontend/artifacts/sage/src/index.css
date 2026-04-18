@@ -203,12 +203,17 @@
 }
 
 /* Typing cursor animation */
-.typing-cursor::after {
+.typing-cursor .prose > *:last-child {
+  margin-bottom: 0;
+}
+
+.typing-cursor .prose > *:last-child::after {
   content: '▍';
   display: inline-block;
   animation: blink 1s step-start infinite;
   color: hsl(var(--primary));
-  margin-left: 1px;
+  margin-left: 2px;
+  vertical-align: baseline;
 }
 
 /* Typing cursor for when there's no content yet */
@@ -269,6 +274,27 @@
 
 .prose table th {
   background: rgba(255,255,255,0.05);
+}
+
+/* Center display equations while keeping inline math flow intact. */
+.katex-display,
+.prose .katex-display {
+  display: block !important;
+  margin: 1.15rem auto !important;
+  text-align: center !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+
+.katex-display > .katex,
+.prose .katex-display > .katex {
+  display: inline-block !important;
+  max-width: 100%;
+}
+
+.prose p:has(.katex-display),
+.prose div:has(.katex-display) {
+  text-align: center;
 }
 
 /* Message slide-up animation */

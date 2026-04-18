@@ -28,10 +28,13 @@ MODE_TO_INTENT: dict[str, str] = {
     "general":    "general",
     "thinking":   "thinking",
     "explain":    "explain",
+    "quiz":       "quiz",
     "quiz me":    "quiz",
     "diagram":    "diagram",
+    "roadmap":    "roadmap",
     "study plan": "roadmap",
     "research":   "research",
+    "fix":        "fix",
     "code fix":   "fix",
 }
 
@@ -43,9 +46,7 @@ async def router_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     mode = mode_raw.lower().strip()
 
     query: str = state.get("query", "")
-
-    # Map the dropdown selection directly to an intent
-    mapped_intent = MODE_TO_INTENT.get(mode, "general")
+    mapped_intent = MODE_TO_INTENT.get(mode, mode if mode in VALID_INTENTS else "general")
 
     log.info(
         "router_explicit",

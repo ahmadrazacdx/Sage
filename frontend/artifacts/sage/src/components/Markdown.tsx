@@ -6,6 +6,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
+import { Check, Copy } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ const DANGEROUS_SVG_TAGS = new Set([
 ]);
 const URL_ATTRS = new Set(["href", "xlink:href", "src"]);
 const MAX_SVG_CHARS = 500_000;
+const COPY_FEEDBACK_MS = 1400;
 
 type MarkdownSegment =
   | { type: "markdown"; content: string }
@@ -130,6 +132,125 @@ export function sanitizeSvgMarkup(rawSvg: string): string | null {
 function isSafeImageSource(src: string | undefined): boolean {
   if (!src) return false;
   return isSafeUrl(src);
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
+
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to legacy copy path.
+    }
+  }
+
+  if (typeof document === "undefined") return false;
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+  }
+
+  return copied;
+}
+
+function languageLabel(language: string): string {
+  if (!language) return "code";
+  if (language === "plaintext") return "text";
+  return language;
+}
+
+interface CodeBlockProps {
+  language: string;
+  className?: string;
+  codeText: string;
+  children: ReactNode;
+}
+
+const CodeBlock = ({ language, className, codeText, children }: CodeBlockProps) => {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(codeText);
+    if (!ok) return;
+
+    setCopied(true);
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+    }
+    timerRef.current = window.setTimeout(() => {
+      setCopied(false);
+      timerRef.current = null;
+    }, COPY_FEEDBACK_MS);
+  };
+
+  return (
+    <div className="my-5 overflow-hidden rounded-xl border border-border/80 bg-[#111317]">
+      <div className="flex items-center justify-between border-b border-border/70 bg-[#1b1f27] px-3 py-2">
+        <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+          {languageLabel(language)}
+        </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-white/[0.03] px-2.5 py-1 text-xs font-medium text-foreground/90 transition-colors hover:bg-white/[0.08]"
+          aria-label="Copy code"
+        >
+          {copied ? (
+            <>
+              <Check className="h-3.5 w-3.5" />
+              Copied
+            </>
+          ) : (
+            <>
+              <Copy className="h-3.5 w-3.5" />
+              Copy
+            </>
+          )}
+        </button>
+      </div>
+
+      <pre className="!m-0 !max-w-none !overflow-x-auto !rounded-none !border-0 !bg-transparent px-4 py-3">
+        <code className={className}>{children}</code>
+      </pre>
+    </div>
+  );
+};
+
+function flattenText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(flattenText).join("");
+  }
+  if (React.isValidElement(node)) {
+    const childProps = node.props as { children?: ReactNode };
+    return flattenText(childProps.children ?? "");
+  }
+  return "";
 }
 
 const SandboxedSvg = ({ svg, title }: { svg: string; title: string }) => {
@@ -285,12 +406,24 @@ export const Markdown = ({ content, className, enableMermaid = true }: MarkdownP
             remarkPlugins={[remarkGfm, remarkMath] as any}
             rehypePlugins={[rehypeKatex, rehypeHighlight] as any}
             components={{
-              code({ className: codeClassName, children, ...props }: any) {
-                const match = /language-(\w+)/.exec(codeClassName || "");
+              pre({ children }: any) {
+                // Avoid react-markdown's default outer <pre> so custom blocks are not double wrapped.
+                return <>{children}</>;
+              },
+              code({ inline, className: codeClassName, children, ...props }: any) {
+                const match = /language-([A-Za-z0-9_+-]+)/.exec(codeClassName || "");
                 const language = match ? match[1] : "";
+                const codeString = flattenText(children).replace(/\n$/, "");
+
+                if (inline) {
+                  return (
+                    <code className={codeClassName} {...props}>
+                      {children}
+                    </code>
+                  );
+                }
 
                 if (language === "mermaid" && enableMermaid) {
-                  const codeString = String(children).replace(/\n$/, "");
                   return (
                     <MermaidErrorBoundary code={codeString}>
                       <MermaidRender code={codeString} />
@@ -299,9 +432,9 @@ export const Markdown = ({ content, className, enableMermaid = true }: MarkdownP
                 }
 
                 return (
-                  <code className={codeClassName} {...props}>
+                  <CodeBlock language={language} className={codeClassName} codeText={codeString}>
                     {children}
-                  </code>
+                  </CodeBlock>
                 );
               },
               a({ className: aClassName, children, href, ...props }: any) {

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -41,8 +42,13 @@ router = APIRouter(tags=["chat"])
 _BATCH_INTENTS: frozenset[str] = frozenset({
     "explain", "diagram", "quiz", "roadmap", "research", "fix",
 })
+_NON_STREAMING_INTENTS: frozenset[str] = _BATCH_INTENTS
+_TYPEWRITER_INTENTS: frozenset[str] = frozenset({"explain"})
 
 _STALE_PENDING_TTL: float = 60.0
+_TYPEWRITER_TARGET_CHARS_PER_CHUNK: int = 28
+_TYPEWRITER_MIN_TOTAL_DELAY_S: float = 0.25
+_TYPEWRITER_MAX_TOTAL_DELAY_S: float = 1.20
 
 _NODE_LABELS: dict[str, str] = {
     "router":            "🧭 Routing request…",
@@ -72,6 +78,9 @@ _TOOL_LABELS: dict[str, str] = {
 }
 
 _SKIP_NODES: frozenset[str] = frozenset({"router"})
+_RE_THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.IGNORECASE | re.DOTALL)
+_THINK_OPEN_TAG = "<think>"
+_THINK_CLOSE_TAG = "</think>"
 
 
 class ChatRequest(BaseModel):
@@ -91,6 +100,196 @@ def _short_id() -> str:
 
 def _sse(data: dict[str, Any]) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _canonical_tool_name(tool_name: str) -> str:
+    """Normalize third-party tool names to stable UI-facing names."""
+    raw = (tool_name or "").strip()
+    key = raw.lower()
+
+    aliases: dict[str, str] = {
+        "duckduckgo_results_json": "search_web",
+        "duckduckgo_results": "search_web",
+        "duckduckgo_search": "search_web",
+    }
+    if key in aliases:
+        return aliases[key]
+    if "duckduckgo" in key:
+        return "search_web"
+    return raw
+
+
+def _tool_label(canonical_name: str, raw_name: str) -> str:
+    """Return a readable progress label for known and unknown tools."""
+    if canonical_name in _TOOL_LABELS:
+        return _TOOL_LABELS[canonical_name]
+
+    lowered = (raw_name or canonical_name).lower()
+    if "wiki" in lowered:
+        return _TOOL_LABELS.get("search_wikipedia", "📖 Searching Wikipedia…")
+    if "arxiv" in lowered:
+        return _TOOL_LABELS.get("search_arxiv", "📄 Searching arXiv…")
+    if "search" in lowered:
+        return _TOOL_LABELS.get("search_web", "🌐 Searching the web…")
+    return "⚙️ Running tool…"
+
+
+def _resolve_node_name(event: dict[str, Any], meta: dict[str, Any]) -> str:
+    """Resolve graph node name from LangGraph v2 event payloads."""
+    node = str(meta.get("langgraph_node", "") or "").strip()
+    if node:
+        return node
+
+    event_name = str(event.get("name", "") or "").strip()
+    if event_name in _NODE_LABELS:
+        return event_name
+    return ""
+
+
+def _split_for_typewriter(text: str) -> list[str]:
+    """Split final response into readable chunks for gradual UI reveal."""
+    if not text:
+        return []
+
+    chunks: list[str] = []
+    parts = re.split(r"(\s+)", text)
+    buffer: list[str] = []
+    buffer_len = 0
+
+    for part in parts:
+        if not part:
+            continue
+        buffer.append(part)
+        buffer_len += len(part)
+
+        if buffer_len < _TYPEWRITER_TARGET_CHARS_PER_CHUNK:
+            continue
+
+        should_flush = part.isspace() or part.endswith((".", "!", "?", ",", ";", ":"))
+        if should_flush:
+            chunks.append("".join(buffer))
+            buffer = []
+            buffer_len = 0
+
+    if buffer:
+        chunks.append("".join(buffer))
+    return chunks
+
+
+def _typewriter_delay_seconds(text_len: int, chunk_count: int) -> float:
+    """Compute a tiny per-chunk delay while keeping total added latency bounded."""
+    if text_len <= 0 or chunk_count <= 1:
+        return 0.0
+
+    total_delay = max(
+        _TYPEWRITER_MIN_TOTAL_DELAY_S,
+        min(_TYPEWRITER_MAX_TOTAL_DELAY_S, text_len / 1500.0),
+    )
+    return total_delay / chunk_count
+
+
+def _split_thinking_response(text: str) -> tuple[str, str]:
+    """Split combined '<think>...</think> + answer' payload into two channels."""
+    if not text:
+        return "", ""
+
+    traces = [
+        block.strip() for block in _RE_THINK_BLOCK.findall(text) if block and block.strip()
+    ]
+
+    visible = _RE_THINK_BLOCK.sub("", text)
+    visible = visible.replace("<think>", "").replace("</think>", "").strip()
+
+    # Handle malformed output where only a closing tag is present.
+    if not traces and "</think>" in text:
+        before, _sep, after = text.partition("</think>")
+        fallback_trace = before.replace("<think>", "").strip()
+        if fallback_trace:
+            traces = [fallback_trace]
+        visible = after.replace("<think>", "").replace("</think>", "").strip()
+
+    return "\n\n".join(traces), visible
+
+
+def _strip_partial_tag_suffix(text: str, tag: str) -> tuple[str, str]:
+    """Keep trailing partial tag bytes in carry so split tags are not leaked."""
+    max_overlap = min(len(text), len(tag) - 1)
+    for overlap in range(max_overlap, 0, -1):
+        if text.endswith(tag[:overlap]):
+            return text[:-overlap], text[-overlap:]
+    return text, ""
+
+
+def _consume_thinking_chunk(
+    text: str,
+    *,
+    in_think: bool,
+    seen_think_marker: bool,
+) -> tuple[list[str], list[str], bool, str, bool]:
+    """Split streamed model text into thinking and visible-answer fragments."""
+    thinking_parts: list[str] = []
+    answer_parts: list[str] = []
+    remaining = text
+    carry = ""
+
+    while remaining:
+        if in_think:
+            close_idx = remaining.find(_THINK_CLOSE_TAG)
+            if close_idx == -1:
+                safe, carry = _strip_partial_tag_suffix(remaining, _THINK_CLOSE_TAG)
+                if safe:
+                    thinking_parts.append(safe)
+                return thinking_parts, answer_parts, in_think, carry, seen_think_marker
+
+            if close_idx > 0:
+                thinking_parts.append(remaining[:close_idx])
+            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG):]
+            in_think = False
+            seen_think_marker = True
+            continue
+
+        open_idx = remaining.find(_THINK_OPEN_TAG)
+        close_idx = remaining.find(_THINK_CLOSE_TAG)
+
+        # Handle malformed output where thinking text ends with a stray closing marker.
+        if open_idx == -1 and close_idx != -1 and not seen_think_marker:
+            if close_idx > 0:
+                thinking_parts.append(remaining[:close_idx])
+            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG):]
+            seen_think_marker = True
+            continue
+
+        if open_idx == -1:
+            safe, carry = _strip_partial_tag_suffix(remaining, _THINK_OPEN_TAG)
+            if safe:
+                answer_parts.append(safe)
+            return thinking_parts, answer_parts, in_think, carry, seen_think_marker
+
+        if open_idx > 0:
+            answer_parts.append(remaining[:open_idx])
+        remaining = remaining[open_idx + len(_THINK_OPEN_TAG):]
+        in_think = True
+        seen_think_marker = True
+
+    return thinking_parts, answer_parts, in_think, carry, seen_think_marker
+
+
+def _flush_thinking_carry(carry: str, *, in_think: bool) -> tuple[str, str]:
+    """Finalize buffered trailing data at end of stream."""
+    if not carry:
+        return "", ""
+
+    cleaned = carry.replace(_THINK_OPEN_TAG, "").replace(_THINK_CLOSE_TAG, "")
+    if not cleaned:
+        return "", ""
+    if in_think:
+        return cleaned, ""
+
+    # Drop an incomplete opening/closing tag fragment if it is only marker bytes.
+    lower_cleaned = cleaned.lower().strip()
+    if _THINK_OPEN_TAG.startswith(lower_cleaned) or _THINK_CLOSE_TAG.startswith(lower_cleaned):
+        return "", ""
+    return "", cleaned
 
 
 def _title_from_message(text: str) -> str:
@@ -214,17 +413,21 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
     state_input: dict[str, Any] = entry["state_input"]
     user_message: str = entry["user_message"]
     intent: str = entry["intent"]
-    is_batch: bool = intent in _BATCH_INTENTS
+    stream_tokens: bool = intent not in _NON_STREAMING_INTENTS
 
     async def _generate():  # noqa: C901
         accumulated_chunks: list[str] = []
         emitted_nodes: set[str] = set()
+        final_state_from_events: dict[str, Any] | None = None
+        thinking_in_block = False
+        seen_think_marker = False
+        thinking_carry = ""
 
         try:
             async for event in graph.astream_events(state_input, version="v2"):
                 kind: str = event["event"]
                 meta: dict[str, Any] = event.get("metadata", {})
-                node: str = meta.get("langgraph_node", "")
+                node = _resolve_node_name(event, meta)
 
                 if kind == "on_chain_start" and node and node not in _SKIP_NODES:
                     if node not in emitted_nodes:
@@ -233,28 +436,110 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                         yield _sse({"type": "node_start", "node": node, "label": label})
 
                 elif kind == "on_tool_start":
-                    tool_name: str = event.get("name", "")
-                    if tool_name:
-                        label = _TOOL_LABELS.get(tool_name, f"🔧 {tool_name}…")
-                        yield _sse({"type": "tool_call", "name": tool_name, "label": label})
-                elif kind == "on_chat_model_stream" and not is_batch:
+                    raw_tool_name: str = event.get("name", "")
+                    if raw_tool_name:
+                        canonical = _canonical_tool_name(raw_tool_name)
+                        label = _tool_label(canonical, raw_tool_name)
+                        yield _sse({
+                            "type": "tool_call",
+                            "name": canonical,
+                            "raw_name": raw_tool_name,
+                            "label": label,
+                        })
+                elif kind == "on_chat_model_stream" and stream_tokens:
                     chunk = event.get("data", {}).get("chunk")
                     if chunk is None:
                         continue
                     text: str = getattr(chunk, "content", "") or ""
                     if not text:
                         continue
-                    accumulated_chunks.append(text)
-                    yield _sse({"type": "chunk", "text": text})
+                    if intent == "thinking":
+                        merged = f"{thinking_carry}{text}"
+                        _, answer_parts, thinking_in_block, thinking_carry, seen_think_marker = (
+                            _consume_thinking_chunk(
+                                merged,
+                                in_think=thinking_in_block,
+                                seen_think_marker=seen_think_marker,
+                            )
+                        )
 
-            if is_batch:
-                final_state: dict[str, Any] = await graph.ainvoke(state_input)
-                response_text: str = final_state.get("response", "")
+                        answer_text = "".join(answer_parts)
+                        if answer_text:
+                            accumulated_chunks.append(answer_text)
+                            yield _sse({"type": "chunk", "text": answer_text})
+                    else:
+                        accumulated_chunks.append(text)
+                        yield _sse({"type": "chunk", "text": text})
+                elif kind == "on_chain_end":
+                    output = event.get("data", {}).get("output")
+                    if isinstance(output, dict) and (
+                        "response" in output or "artifact_paths" in output
+                    ):
+                        final_state_from_events = output
+
+            final_state: dict[str, Any] | None = final_state_from_events
+
+            if intent == "thinking" and stream_tokens:
+                _, tail_answer = _flush_thinking_carry(
+                    thinking_carry,
+                    in_think=thinking_in_block,
+                )
+                if tail_answer:
+                    accumulated_chunks.append(tail_answer)
+                    yield _sse({"type": "chunk", "text": tail_answer})
+
+            if stream_tokens and not accumulated_chunks and final_state is not None:
+                response_text = str(final_state.get("response", "") or "")
                 if response_text:
+                    if intent == "thinking":
+                        _, visible_answer = _split_thinking_response(response_text)
+                        if visible_answer:
+                            accumulated_chunks.append(visible_answer)
+                            yield _sse({"type": "chunk", "text": visible_answer})
+                    else:
+                        accumulated_chunks.append(response_text)
+                        yield _sse({"type": "chunk", "text": response_text})
+
+                for art in final_state.get("artifact_paths", []):
+                    yield _sse({
+                        "type": "artifact",
+                        "kind": art.get("kind", "file"),
+                        "filename": art.get("filename", ""),
+                        "path": art.get("path", ""),
+                        "url": f"/api/artifacts/{art.get('filename', '')}",
+                    })
+
+            if not stream_tokens:
+                if final_state is None:
+                    log.warning(
+                        "stream_missing_final_state",
+                        thread_id=thread_id,
+                        intent=intent,
+                    )
+                    final_state = await graph.ainvoke(state_input)
+
+                response_text = str(final_state.get("response", "") or "")
+                artifact_paths = final_state.get("artifact_paths", [])
+
+                if intent == "thinking":
+                    _, visible_answer = _split_thinking_response(response_text)
+                    if visible_answer:
+                        accumulated_chunks = [visible_answer]
+                        yield _sse({"type": "chunk", "text": visible_answer})
+                elif response_text and intent in _TYPEWRITER_INTENTS:
+                    chunks = _split_for_typewriter(response_text)
+                    delay_s = _typewriter_delay_seconds(len(response_text), len(chunks))
+                    accumulated_chunks = []
+                    for chunk in chunks:
+                        accumulated_chunks.append(chunk)
+                        yield _sse({"type": "chunk", "text": chunk})
+                        if delay_s > 0:
+                            await asyncio.sleep(delay_s)
+                elif response_text:
                     accumulated_chunks = [response_text]
                     yield _sse({"type": "chunk", "text": response_text})
 
-                for art in final_state.get("artifact_paths", []):
+                for art in artifact_paths:
                     yield _sse({
                         "type": "artifact",
                         "kind": art.get("kind", "file"),
