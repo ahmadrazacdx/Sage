@@ -134,10 +134,10 @@
 )[
   // Dark navy top band
   #block(
-    width: 100%, height: 42%,
+    width: 100%,
     fill: sage-dark,
   )[
-    #v(1fr)
+    #v(4.5cm)
     #pad(x: 3cm)[
       // Decorative accent line
       #block(height: 4pt, width: 6cm, fill: sage-accent)

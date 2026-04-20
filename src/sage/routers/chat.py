@@ -521,7 +521,14 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                 response_text = str(final_state.get("response", "") or "")
                 artifact_paths = final_state.get("artifact_paths", [])
 
-                if intent == "thinking":
+                if intent == "research" and artifact_paths:
+                    short_msg = response_text or (
+                        "I have completed your research report. "
+                        "Use the download button below to get the PDF."
+                    )
+                    accumulated_chunks = [short_msg]
+                    yield _sse({"type": "chunk", "text": short_msg})
+                elif intent == "thinking":
                     _, visible_answer = _split_thinking_response(response_text)
                     if visible_answer:
                         accumulated_chunks = [visible_answer]

@@ -339,16 +339,21 @@ RESEARCH_REPORT_PROMPT: str = textwrap.dedent("""\
     Sources (pre-digested by subtopic):
     {sources}
  
+    Available References (use ONLY these):
+    {source_references}
+ 
     Rules:
     1. Structure strictly as: Abstract → Introduction → [subtopic sections] → Key Findings → Contradictions & Open Questions → Conclusion → References
-    2. Every factual claim: cite with [N]. No uncited assertions.
+    2. Every factual claim: cite with [N] matching the numbers above. No uncited assertions.
     3. Formal academic tone. No colloquialisms.
     4. Math in LaTeX: inline $...$ or display $$...$$.
     5. Where sources contradict, note the disagreement explicitly.
     6. Identify ≥1 open research question or knowledge gap.
     7. 400–800 words (excluding references). Cover every required section.
-    8. References — one per line, no exceptions: [N] Author(s). Title. Venue. Year.
- 
+    8. References section: copy the Available References above VERBATIM. Do NOT fabricate, rephrase, or invent any references. One per line: [N] Title. source.
+    9. HEADING FORMAT: Open the report with `# {title}` on its own line. Mark every section
+    with a Markdown ATX heading: `## Abstract`, `## Introduction`, etc.
+    NEVER use bold (`**text**`) as a heading substitute — bold is for inline emphasis only.
     Report title: {title}
 """)
 
@@ -404,7 +409,6 @@ CODE_FIX_EXPLANATION_PROMPT: str = textwrap.dedent("""\
     ### Why It Happened
     ### The Fix (Diff)
     ### Best Practice
-    ### Key Concept [KU#] - omit section if no KU applies
 
     STRICT GROUNDING RULES — violations make the explanation wrong:
     1. "### What Was Wrong" MUST describe the exact error stated in `diagnosis.root_cause`.
@@ -414,7 +418,7 @@ CODE_FIX_EXPLANATION_PROMPT: str = textwrap.dedent("""\
     3. "### Why It Happened" MUST be consistent with `execution_result`.
        If `execution_result` contains a `TypeError`, do NOT claim the code ran successfully.
     4. ≤350 words total.
-    5. Cite relevant KU inline as [KU#]; omit "### Key Concept" section if no KU applies.
+    5. Cite relevant KU inline as [KU#]; omit "### Key Concept" section if no retrieved KU applies.
     6. If `fix_incomplete` or fix_succeeded=False: acknowledge this in "### What Was Wrong"
        and propose the next debug step in "### Best Practice".
 

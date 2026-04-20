@@ -4,7 +4,7 @@ import { Composer } from "@/components/Composer";
 import { WelcomeScreen } from "@/components/chat/WelcomeScreen";
 import { FirstRun } from "@/components/setup/FirstRun";
 import { ModelLoading } from "@/components/setup/ModelLoading";
-import { useChatStream } from "@/hooks/use-chat-stream";
+import { useChatStream, type ArtifactInfo } from "@/hooks/use-chat-stream";
 import { useGetStatus, useGetSessionMessages, useSubmitChat, type SystemStatus } from "@workspace/api-client-react";
 import { GraduationCap, Loader2, X, Info, Github, Building2, Cpu, Database, WifiOff, ShieldCheck, FileDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,9 +20,10 @@ const ProgressTimeline = lazy(() =>
 interface LocalMessage {
   role: "user" | "assistant";
   content: string;
+  artifact?: ArtifactInfo | null;
 }
 
-const TIMELINE_MODES = new Set<SageMode>(["quiz", "roadmap", "explain"]);
+const TIMELINE_MODES = new Set<SageMode>(["quiz", "roadmap", "explain", "research"]);
 
 const BACKEND_MODE_MAP: Record<SageMode, string> = {
   general: "general",
@@ -46,6 +47,7 @@ export default function Home() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [chatResetKey, setChatResetKey] = useState(0);
   const [stoppedManually, setStoppedManually] = useState(false);
+  const [lastCompletedArtifact, setLastCompletedArtifact] = useState<ArtifactInfo | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsName, setSettingsName] = useState("");
 
@@ -100,6 +102,7 @@ export default function Home() {
   const handleSelectThread = useCallback((threadId: string) => {
     setCurrentThreadId(threadId);
     setOptimisticMessages([]);
+    setLastCompletedArtifact(null);
     setIsStreamDone(true);
     setSubmitError(null);
     setStoppedManually(false);
@@ -108,6 +111,7 @@ export default function Home() {
   const handleNewChat = useCallback(() => {
     setCurrentThreadId(null);
     setOptimisticMessages([]);
+    setLastCompletedArtifact(null);
     setIsStreamDone(false);
     setSubmitError(null);
     setStoppedManually(false);
@@ -117,6 +121,7 @@ export default function Home() {
   const handleSend = async (message: string, mode: SageMode, course: string) => {
     setSubmitError(null);
     setStoppedManually(false);
+    setLastCompletedArtifact(null);
     setIsStreamDone(false);
     const backendMode = BACKEND_MODE_MAP[mode] ?? mode;
 
@@ -132,9 +137,18 @@ export default function Home() {
 
       setCurrentThreadId(response.thread_id);
 
-      startStream(response.thread_id, mode, (finalAssistantContent) => {
-        if (finalAssistantContent.trim()) {
-          setOptimisticMessages(prev => [...prev, { role: "assistant", content: finalAssistantContent }]);
+      startStream(response.thread_id, mode, ({ finalContent, artifact }) => {
+        const messageText = finalContent.trim();
+        setLastCompletedArtifact(artifact ?? null);
+        if (messageText || artifact) {
+          setOptimisticMessages(prev => [
+            ...prev,
+            {
+              role: "assistant",
+              content: messageText || "I have completed the report. You can download the PDF below.",
+              artifact,
+            },
+          ]);
         }
         setIsStreamDone(true);
         queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
@@ -188,7 +202,15 @@ export default function Home() {
   const isModelLoading = status?.model_ready !== true;
 
   const displayMessages: LocalMessage[] = canUseHistory && historyList
-    ? historyList
+    ? (() => {
+        if (!lastCompletedArtifact || historyList.length === 0) return historyList;
+        const merged = [...historyList];
+        const lastIdx = merged.length - 1;
+        if (merged[lastIdx]?.role === "assistant") {
+          merged[lastIdx] = { ...merged[lastIdx], artifact: lastCompletedArtifact };
+        }
+        return merged;
+      })()
     : optimisticMessages;
 
   const timelineVisible =
@@ -263,6 +285,25 @@ export default function Home() {
                             <Markdown content={msg.content} />
                           </Suspense>
                         )}
+
+                        {msg.artifact && (
+                          <div className="mt-4 p-4 border border-border rounded-xl bg-sidebar/50 flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <FileDown className="w-5 h-5 text-primary" />
+                                <span className="font-medium">{msg.artifact.filename}</span>
+                              </div>
+                              <a
+                                href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
+                                download={msg.artifact.filename}
+                                target="_blank" rel="noopener noreferrer"
+                                className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                              >
+                                Download {msg.artifact.kind.toUpperCase()}
+                              </a>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -311,24 +352,6 @@ export default function Home() {
                       </div>
                     )}
                     
-                    {streamState.artifact && (
-                      <div className="mt-4 p-4 border border-border rounded-xl bg-sidebar/50 flex flex-col gap-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <FileDown className="w-5 h-5 text-primary" />
-                            <span className="font-medium">{streamState.artifact.filename}</span>
-                          </div>
-                          <a 
-                            href={streamState.artifact.url || `/api/artifacts/${streamState.artifact.filename}`}
-                            download={streamState.artifact.filename}
-                            target="_blank" rel="noopener noreferrer"
-                            className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                          >
-                            Download {streamState.artifact.kind.toUpperCase()}
-                          </a>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </motion.div>
               )}

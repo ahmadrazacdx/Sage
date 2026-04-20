@@ -3,7 +3,13 @@ import { IS_MOCK_ENABLED, mockStream } from "@/api/mock";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListSessionsQueryKey } from "@workspace/api-client-react";
 
-const TIMELINE_MODES: ReadonlySet<string> = new Set(["quiz", "roadmap", "explain"]);
+const TIMELINE_MODES: ReadonlySet<string> = new Set(["quiz", "roadmap", "explain", "research"]);
+
+const RESEARCH_SEARCH_TOOLS: ReadonlySet<string> = new Set([
+  "search_arxiv",
+  "search_web",
+  "search_wikipedia",
+]);
 
 function stripDecorativePrefix(label: string): string {
   return label.replace(/^[^A-Za-z0-9]+\s*/, "").trim();
@@ -65,7 +71,17 @@ function finalAnswerStepLabel(mode: string | null): string {
   if (mode === "explain") return "✍️ Generating final answer…";
   if (mode === "quiz") return "✅ Preparing quiz output…";
   if (mode === "roadmap") return "🗺️ Drafting study plan…";
+  if (mode === "research") return "✅ Finalizing research report…";
   return "✍️ Generating response…";
+}
+
+function hasStepLabel(steps: StreamStep[], label: string): boolean {
+  return steps.some((step) => step.label === label);
+}
+
+function shouldDedupeToolStep(mode: string | null, toolName: string): boolean {
+  if (mode !== "research") return false;
+  return RESEARCH_SEARCH_TOOLS.has(toolName);
 }
 
 export type StreamStep = {
@@ -92,6 +108,11 @@ export interface StreamState {
   activeMode: string | null;
 }
 
+export interface StreamCompletePayload {
+  finalContent: string;
+  artifact: ArtifactInfo | null;
+}
+
 export function useChatStream() {
   const [streamState, setStreamState] = useState<StreamState>({
     isStreaming: false,
@@ -107,9 +128,14 @@ export function useChatStream() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const cancelMockRef = useRef<(() => void) | null>(null);
   const streamedContentRef = useRef("");
+  const latestArtifactRef = useRef<ArtifactInfo | null>(null);
   const queryClient = useQueryClient();
 
-  const startStream = useCallback((threadId: string, activeMode?: string, onComplete?: (finalContent: string) => void) => {
+  const startStream = useCallback((
+    threadId: string,
+    activeMode?: string,
+    onComplete?: (payload: StreamCompletePayload) => void,
+  ) => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
@@ -120,6 +146,7 @@ export function useChatStream() {
     }
 
     streamedContentRef.current = "";
+    latestArtifactRef.current = null;
     setStreamState({
       isStreaming: true,
       content: "",
@@ -163,32 +190,49 @@ export function useChatStream() {
           steps: prev.steps.map(s => ({ ...s, status: "done" }))
         }));
         queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
-        onComplete?.(finalContent);
+        onComplete?.({ finalContent, artifact: latestArtifactRef.current });
       }, (data) => {
         setStreamState(prev => {
           if (data.type === 'chunk') return prev;
           if (data.type === 'thinking') return prev;
           if (data.type === 'node_start') {
              const nodeName = asNonEmptyString(data.node) || "unknown";
+             const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString(data.label));
+             if (hasStepLabel(prev.steps, label)) {
+               return { ...prev, activeTool: null };
+             }
              const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
              newSteps.push({
               id: `${nodeName}-${Date.now()}`,
-              label: normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString(data.label)),
+              label,
               status: "active",
              });
              return { ...prev, steps: newSteps, activeTool: null };
           }
           if (data.type === 'tool_call') {
              const toolName = asNonEmptyString(data.name) || "tool";
+             const label = normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString(data.label));
+             if (shouldDedupeToolStep(prev.activeMode, toolName) && hasStepLabel(prev.steps, label)) {
+               return { ...prev, activeTool: toolName };
+             }
              const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
              newSteps.push({
               id: `tool-${toolName}-${Date.now()}`,
-              label: normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString(data.label)),
+              label,
               status: "active",
              });
              return { ...prev, steps: newSteps, activeTool: toolName };
           }
-          if (data.type === 'artifact') return { ...prev, artifact: data };
+          if (data.type === 'artifact') {
+            const artifact: ArtifactInfo = {
+              kind: asNonEmptyString(data.kind) || "file",
+              filename: asNonEmptyString(data.filename) || "artifact",
+              path: asNonEmptyString(data.path) || "",
+              url: asNonEmptyString(data.url),
+            };
+            latestArtifactRef.current = artifact;
+            return { ...prev, artifact };
+          }
           if (data.type === 'error') {
             return {
               ...prev,
@@ -223,7 +267,7 @@ export function useChatStream() {
             steps: prev.steps.map(s => ({ ...s, status: "done" }))
           }));
           queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
-          onComplete?.(finalContent);
+          onComplete?.({ finalContent, artifact: latestArtifactRef.current });
           return;
         }
 
@@ -250,25 +294,42 @@ export function useChatStream() {
           if (data.type === 'thinking') return prev;
           if (data.type === 'node_start') {
              const nodeName = asNonEmptyString(data.node) || "unknown";
+             const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString(data.label));
+             if (hasStepLabel(prev.steps, label)) {
+               return { ...prev, activeTool: null };
+             }
              const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
              newSteps.push({
                id: `${nodeName}-${Date.now()}`,
-               label: normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString(data.label)),
+               label,
                status: "active",
              });
              return { ...prev, steps: newSteps, activeTool: null };
           }
           if (data.type === 'tool_call') {
              const toolName = asNonEmptyString(data.name) || asNonEmptyString(data.tool_name) || "tool";
+             const label = normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString(data.label));
+             if (shouldDedupeToolStep(prev.activeMode, toolName) && hasStepLabel(prev.steps, label)) {
+               return { ...prev, activeTool: toolName };
+             }
              const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
              newSteps.push({
                id: `tool-${toolName}-${Date.now()}`,
-               label: normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString(data.label)),
+               label,
                status: "active",
              });
              return { ...prev, steps: newSteps, activeTool: toolName };
           }
-          if (data.type === 'artifact') return { ...prev, artifact: data };
+          if (data.type === 'artifact') {
+            const artifact: ArtifactInfo = {
+              kind: asNonEmptyString(data.kind) || "file",
+              filename: asNonEmptyString(data.filename) || "artifact",
+              path: asNonEmptyString(data.path) || "",
+              url: asNonEmptyString(data.url),
+            };
+            latestArtifactRef.current = artifact;
+            return { ...prev, artifact };
+          }
           if (data.type === 'error') {
             es.close();
             eventSourceRef.current = null;
@@ -326,6 +387,7 @@ export function useChatStream() {
       activeTool: null,
       steps: prev.steps.map(s => ({ ...s, status: "done" }))
     }));
+    latestArtifactRef.current = null;
   }, []);
 
   return { streamState, startStream, stopStream };
