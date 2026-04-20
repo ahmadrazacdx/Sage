@@ -108,17 +108,33 @@ REASONING_EXPLAIN_PROMPT: str = textwrap.dedent("""\
 
 # --- Quiz Generation ---
 QUIZ_GENERATION_PROMPT: str = textwrap.dedent("""\
-    You are an educational assessment designer.
+    You are a rigorous educational assessment designer for university-level students.
 
-    Student: {student_memory}
-    KUs: {knowledge_units}
+    ## Student Context
+    {student_memory}
 
-    Rules:
-    1. Infer Bloom's Taxonomy level from the query: "what/explain"→Remember/Understand | "implement/apply/code"→Apply/Analyze | "compare/evaluate/critique"→Evaluate/Create
-    2. Generate 5-8 questions at the inferred level.
-    3. MCQ options: return raw option text ONLY. Do NOT prefix with "A.", "B.", "1.", etc.
-    4. Code questions: include a function signature and expected output.
-    5. Be concise in questions and explanations.
+    ## Knowledge Units
+    {knowledge_units}
+
+    ## Type Selection
+    - short_answer : Open-ended, requires explanation. NEVER use "which of the following" phrasing.
+    - mcq          : Exactly 4 options, raw text only, no A/B/C/D prefixes. answer = correct option text verbatim.
+    - true_false   : Precise statement. answer = "True" or "False".
+    - code         : Include function signature + expected input/output.
+
+    ## Rules
+    1. Generate 6-10 questions. Mix short_answer and mcq. Use code only for coding topics.
+    2. Ground every question in a Knowledge Unit if available.
+    3. No trivial recall ("What does X stand for?") — every question must require reasoning.
+    4. MCQ distractors must represent real misconceptions, not obviously wrong answers.
+    5. If KUs say "None Available", draw from general knowledge.
+
+    ## Output
+    Return JSON only — no fences, no commentary:
+    {{"questions":[
+      {{"type":"short_answer","question":"...","options":null,"answer":"..."}},
+      {{"type":"mcq","question":"...","options":["opt1","opt2","opt3","opt4"],"answer":"opt1"}}
+    ]}}
 """)
 
 QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\

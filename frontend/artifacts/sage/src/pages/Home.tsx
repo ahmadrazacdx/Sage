@@ -23,7 +23,7 @@ interface LocalMessage {
   artifact?: ArtifactInfo | null;
 }
 
-const TIMELINE_MODES = new Set<SageMode>(["quiz", "roadmap", "explain", "research"]);
+const TIMELINE_MODES = new Set<SageMode>(["quiz", "roadmap", "explain", "research", "diagram", "fix"]);
 
 const BACKEND_MODE_MAP: Record<SageMode, string> = {
   general: "general",
@@ -282,7 +282,7 @@ export default function Home() {
                           </div>
                         ) : (
                           <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{msg.content}</p>}>
-                            <Markdown content={msg.content} />
+                            <Markdown content={msg.content} enableMermaid={false} />
                           </Suspense>
                         )}
 
@@ -293,15 +293,38 @@ export default function Home() {
                                 <FileDown className="w-5 h-5 text-primary" />
                                 <span className="font-medium">{msg.artifact.filename}</span>
                               </div>
-                              <a
-                                href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
-                                download={msg.artifact.filename}
-                                target="_blank" rel="noopener noreferrer"
-                                className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                              >
-                                Download {msg.artifact.kind.toUpperCase()}
-                              </a>
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
+                                  target="_blank" rel="noopener noreferrer"
+                                  className="border border-border hover:bg-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                  Open
+                                </a>
+                                <a
+                                  href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
+                                  download={msg.artifact.filename}
+                                  target="_blank" rel="noopener noreferrer"
+                                  className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                  Download {msg.artifact.kind.toUpperCase()}
+                                </a>
+                              </div>
                             </div>
+                            {msg.artifact.kind.toLowerCase() === "svg" && (
+                              <iframe
+                                title={msg.artifact.filename}
+                                src={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
+                                className="w-full h-[360px] rounded-lg border border-border bg-background"
+                              />
+                            )}
+                            {msg.artifact.kind.toLowerCase() === "pdf" && (
+                              <iframe
+                                title={msg.artifact.filename}
+                                src={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
+                                className="w-full h-[420px] rounded-lg border border-border bg-background"
+                              />
+                            )}
                           </div>
                         )}
                       </div>
@@ -344,7 +367,7 @@ export default function Home() {
                       >
                         {streamState.content ? (
                           <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{streamState.content}</p>}>
-                            <Markdown content={streamState.content} enableMermaid={!streamState.isStreaming} />
+                            <Markdown content={streamState.content} enableMermaid={false} />
                           </Suspense>
                         ) : streamState.isStreaming && streamState.activeMode === "thinking" ? (
                           <span className="text-muted-foreground text-sm">Thinking...</span>
@@ -400,7 +423,7 @@ export default function Home() {
               <div className="flex items-center justify-between px-6 py-4 border-b border-sidebar-border">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Info className="w-5 h-5 text-primary" />
-                  About
+                  ABOUT
                 </h2>
                 <button
                   type="button"

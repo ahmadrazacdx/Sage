@@ -3,7 +3,7 @@ import { IS_MOCK_ENABLED, mockStream } from "@/api/mock";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListSessionsQueryKey } from "@workspace/api-client-react";
 
-const TIMELINE_MODES: ReadonlySet<string> = new Set(["quiz", "roadmap", "explain", "research"]);
+const TIMELINE_MODES: ReadonlySet<string> = new Set(["quiz", "roadmap", "explain", "research", "diagram", "fix"]);
 
 const RESEARCH_SEARCH_TOOLS: ReadonlySet<string> = new Set([
   "search_arxiv",
@@ -184,7 +184,7 @@ export function useChatStream() {
         setStreamState(prev => ({ 
           ...prev, 
           isStreaming: false, 
-          content: "", 
+          content: "",
           thinking: prev.thinking,
           activeTool: null,
           steps: prev.steps.map(s => ({ ...s, status: "done" }))
@@ -192,12 +192,27 @@ export function useChatStream() {
         queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
         onComplete?.({ finalContent, artifact: latestArtifactRef.current });
       }, (data) => {
+        const eventType = String((data as { type?: unknown })?.type ?? "");
+        if (eventType === "heartbeat") return;
+        if (eventType === 'artifact') {
+          // Type-narrow for artifact event
+          const artifactData = data as { kind?: string; filename?: string; path?: string; url?: string };
+          const artifact: ArtifactInfo = {
+            kind: asNonEmptyString(artifactData.kind) || "file",
+            filename: asNonEmptyString(artifactData.filename) || "artifact",
+            path: asNonEmptyString(artifactData.path) || "",
+            url: asNonEmptyString(artifactData.url),
+          };
+          latestArtifactRef.current = artifact;
+          setStreamState(prev => ({ ...prev, artifact }));
+          return;
+        }
         setStreamState(prev => {
           if (data.type === 'chunk') return prev;
           if (data.type === 'thinking') return prev;
           if (data.type === 'node_start') {
-             const nodeName = asNonEmptyString(data.node) || "unknown";
-             const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString(data.label));
+             const nodeName = asNonEmptyString((data as { node?: string }).node) || "unknown";
+             const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString((data as { label?: string }).label));
              if (hasStepLabel(prev.steps, label)) {
                return { ...prev, activeTool: null };
              }
@@ -210,8 +225,8 @@ export function useChatStream() {
              return { ...prev, steps: newSteps, activeTool: null };
           }
           if (data.type === 'tool_call') {
-             const toolName = asNonEmptyString(data.name) || "tool";
-             const label = normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString(data.label));
+             const toolName = asNonEmptyString((data as { name?: string }).name) || "tool";
+             const label = normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString((data as { label?: string }).label));
              if (shouldDedupeToolStep(prev.activeMode, toolName) && hasStepLabel(prev.steps, label)) {
                return { ...prev, activeTool: toolName };
              }
@@ -223,20 +238,10 @@ export function useChatStream() {
              });
              return { ...prev, steps: newSteps, activeTool: toolName };
           }
-          if (data.type === 'artifact') {
-            const artifact: ArtifactInfo = {
-              kind: asNonEmptyString(data.kind) || "file",
-              filename: asNonEmptyString(data.filename) || "artifact",
-              path: asNonEmptyString(data.path) || "",
-              url: asNonEmptyString(data.url),
-            };
-            latestArtifactRef.current = artifact;
-            return { ...prev, artifact };
-          }
           if (data.type === 'error') {
             return {
               ...prev,
-              error: data.message,
+              error: (data as { message?: string }).message ?? null,
               isStreaming: false,
               activeTool: null,
               steps: prev.steps.map(s => ({ ...s, status: "done" }))
@@ -254,6 +259,9 @@ export function useChatStream() {
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
+        if (data.type === "heartbeat") {
+          return;
+        }
         if (data.type === 'done') {
           es.close();
           eventSourceRef.current = null;
@@ -261,13 +269,25 @@ export function useChatStream() {
           setStreamState(prev => ({ 
             ...prev, 
             isStreaming: false, 
-            content: "", 
+            content: "",
             thinking: prev.thinking,
             activeTool: null,
             steps: prev.steps.map(s => ({ ...s, status: "done" }))
           }));
           queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
           onComplete?.({ finalContent, artifact: latestArtifactRef.current });
+          return;
+        }
+
+        if (data.type === 'artifact') {
+          const artifact: ArtifactInfo = {
+            kind: asNonEmptyString(data.kind) || "file",
+            filename: asNonEmptyString(data.filename) || "artifact",
+            path: asNonEmptyString(data.path) || "",
+            url: asNonEmptyString(data.url),
+          };
+          latestArtifactRef.current = artifact;
+          setStreamState(prev => ({ ...prev, artifact }));
           return;
         }
 
@@ -319,16 +339,6 @@ export function useChatStream() {
                status: "active",
              });
              return { ...prev, steps: newSteps, activeTool: toolName };
-          }
-          if (data.type === 'artifact') {
-            const artifact: ArtifactInfo = {
-              kind: asNonEmptyString(data.kind) || "file",
-              filename: asNonEmptyString(data.filename) || "artifact",
-              path: asNonEmptyString(data.path) || "",
-              url: asNonEmptyString(data.url),
-            };
-            latestArtifactRef.current = artifact;
-            return { ...prev, artifact };
           }
           if (data.type === 'error') {
             es.close();

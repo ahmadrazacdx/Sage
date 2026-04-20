@@ -4,7 +4,7 @@ Chat submission and Server-Sent Events streaming endpoints.
 Protocol:
     1. Frontend  POST /api/chat receives {thread_id, message_id}
     2. Frontend  GET  /api/stream/{thread_id}  gets SSE event stream
-       Events: chunk | node_start | tool_call | thinking | artifact | done | error
+       Events: chunk | node_start | tool_call | thinking | artifact | heartbeat | done | error
 
 Rationale:
     - `POST /api/chat` validates input and stores a "pending stream" keyed by `thread_id`.
@@ -25,6 +25,7 @@ import json
 import re
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -46,6 +47,7 @@ _NON_STREAMING_INTENTS: frozenset[str] = _BATCH_INTENTS
 _TYPEWRITER_INTENTS: frozenset[str] = frozenset({"explain"})
 
 _STALE_PENDING_TTL: float = 60.0
+_SSE_HEARTBEAT_INTERVAL_S: float = 10.0
 _TYPEWRITER_TARGET_CHARS_PER_CHUNK: int = 28
 _TYPEWRITER_MIN_TOTAL_DELAY_S: float = 0.25
 _TYPEWRITER_MAX_TOTAL_DELAY_S: float = 1.20
@@ -301,8 +303,27 @@ def _title_from_message(text: str) -> str:
     return title
 
 
+def _artifact_payload(raw: dict[str, Any]) -> dict[str, str] | None:
+    """Normalize one artifact record for SSE and session history."""
+    if not isinstance(raw, dict):
+        return None
+    path = str(raw.get("path", "") or "").strip()
+    filename = str(raw.get("filename", "") or "").strip()
+    if not filename and path:
+        filename = Path(path).name
+    if not filename:
+        return None
+    kind = str(raw.get("kind", "file") or "file")
+    return {
+        "kind": kind,
+        "filename": filename,
+        "path": path,
+        "url": f"/api/artifacts/{filename}",
+    }
+
+
 def _build_lc_history(
-    stored: list[dict[str, str]],
+    stored: list[dict[str, Any]],
 ) -> list[HumanMessage | AIMessage]:
     """Convert plain dicts to LangChain message objects."""
     out: list[HumanMessage | AIMessage] = []
@@ -349,7 +370,7 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
         )
 
     # Build LangGraph input state
-    history: list[dict[str, str]] = request.app.state.thread_messages.get(
+    history: list[dict[str, Any]] = request.app.state.thread_messages.get(
         thread_id, []
     )
     lc_messages = _build_lc_history(history)
@@ -419,12 +440,25 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
         accumulated_chunks: list[str] = []
         emitted_nodes: set[str] = set()
         final_state_from_events: dict[str, Any] | None = None
+        latest_artifact: dict[str, str] | None = None
         thinking_in_block = False
         seen_think_marker = False
         thinking_carry = ""
 
         try:
-            async for event in graph.astream_events(state_input, version="v2"):
+            event_iter = graph.astream_events(state_input, version="v2").__aiter__()
+            while True:
+                try:
+                    event = await asyncio.wait_for(
+                        event_iter.__anext__(),
+                        timeout=_SSE_HEARTBEAT_INTERVAL_S,
+                    )
+                except asyncio.TimeoutError:
+                    yield _sse({"type": "heartbeat"})
+                    continue
+                except StopAsyncIteration:
+                    break
+
                 kind: str = event["event"]
                 meta: dict[str, Any] = event.get("metadata", {})
                 node = _resolve_node_name(event, meta)
@@ -501,13 +535,11 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                         yield _sse({"type": "chunk", "text": response_text})
 
                 for art in final_state.get("artifact_paths", []):
-                    yield _sse({
-                        "type": "artifact",
-                        "kind": art.get("kind", "file"),
-                        "filename": art.get("filename", ""),
-                        "path": art.get("path", ""),
-                        "url": f"/api/artifacts/{art.get('filename', '')}",
-                    })
+                    payload = _artifact_payload(art)
+                    if payload is None:
+                        continue
+                    latest_artifact = payload
+                    yield _sse({"type": "artifact", **payload})
 
             if not stream_tokens:
                 if final_state is None:
@@ -547,22 +579,26 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                     yield _sse({"type": "chunk", "text": response_text})
 
                 for art in artifact_paths:
-                    yield _sse({
-                        "type": "artifact",
-                        "kind": art.get("kind", "file"),
-                        "filename": art.get("filename", ""),
-                        "path": art.get("path", ""),
-                        "url": f"/api/artifacts/{art.get('filename', '')}",
-                    })
+                    payload = _artifact_payload(art)
+                    if payload is None:
+                        continue
+                    latest_artifact = payload
+                    yield _sse({"type": "artifact", **payload})
 
             final_content = "".join(accumulated_chunks)
-            messages: dict[str, list[dict[str, str]]] = getattr(
+            messages: dict[str, list[dict[str, Any]]] = getattr(
                 request.app.state, "thread_messages", {}
             )
             thread_msgs = messages.setdefault(thread_id, [])
             thread_msgs.append({"role": "user", "content": user_message})
-            if final_content:
-                thread_msgs.append({"role": "assistant", "content": final_content})
+            if final_content or latest_artifact:
+                assistant_message: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": final_content,
+                }
+                if latest_artifact:
+                    assistant_message["artifact"] = latest_artifact
+                thread_msgs.append(assistant_message)
 
             thread_meta: dict[str, dict[str, Any]] = getattr(
                 request.app.state, "thread_meta", {}

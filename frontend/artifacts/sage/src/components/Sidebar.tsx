@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, Plus, File, Trash2, GraduationCap, ChevronLeft, ChevronDown, ChevronRight, Info, Menu, Wifi, WifiOff, Loader2 } from "lucide-react";
+import { MessageSquare, Plus, File, Trash2, GraduationCap, ChevronLeft, ChevronDown, ChevronRight, Info, Menu, Wifi, WifiOff, Loader2, FileDown, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { 
   useListSessions, 
@@ -11,7 +11,7 @@ import {
   type SystemStatus
 } from "@workspace/api-client-react";
 import { differenceInCalendarDays } from "date-fns";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getListSessionsQueryKey, getListDocumentsQueryKey } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -25,9 +25,27 @@ interface SidebarProps {
   status?: SystemStatus;
 }
 
+type ExportArtifact = {
+  kind: string;
+  filename: string;
+  size_bytes: number;
+  created_at: string;
+  date_label: string;
+  url: string;
+};
+
 export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSettings, isCollapsed, setCollapsed, status }: SidebarProps) {
   const { data: sessions } = useListSessions();
   const { data: documents } = useListDocuments();
+  const { data: exportArtifacts, isLoading: exportsLoading } = useQuery({
+    queryKey: ["exports-artifacts"],
+    queryFn: async () => {
+      const res = await fetch("/api/artifacts");
+      if (!res.ok) throw new Error("Failed to load exports.");
+      return (await res.json()) as ExportArtifact[];
+    },
+    refetchInterval: 15000,
+  });
   type SessionItem = NonNullable<typeof sessions>[number];
   type SessionGroups = {
     today: SessionItem[];
@@ -45,6 +63,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [docsExpanded, setDocsExpanded] = useState(false);
+  const [exportsExpanded, setExportsExpanded] = useState(false);
 
   const getErrorMessage = (error: unknown, fallback: string): string => {
     if (typeof error === "object" && error !== null) {
@@ -66,6 +85,21 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
 
     return acc;
   }, { today: [], yesterday: [], week: [], lastMonth: [] } as SessionGroups);
+
+  const groupedExports = (exportArtifacts || []).reduce((acc, item) => {
+    if (!acc[item.date_label]) {
+      acc[item.date_label] = [];
+    }
+    acc[item.date_label].push(item);
+    return acc;
+  }, {} as Record<string, ExportArtifact[]>);
+
+  const formatSize = (bytes: number): string => {
+    if (!Number.isFinite(bytes) || bytes < 1024) return `${Math.max(0, Math.round(bytes))} B`;
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
@@ -289,11 +323,66 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
 
           <button
             type="button"
+            onClick={() => setExportsExpanded((prev) => !prev)}
+            className={cn(
+              "w-full mt-3 flex items-center justify-between px-3 py-2.5 rounded-xl border transition-colors",
+              exportsExpanded
+                ? "bg-primary/12 border-primary/35"
+                : "bg-white/[0.03] border-sidebar-border hover:bg-white/[0.06]"
+            )}
+          >
+            <div className="flex items-center gap-2.5">
+              <FileDown className="w-4 h-4 text-primary" />
+              <span className="text-xs font-extrabold tracking-wider text-foreground uppercase">EXPORTS</span>
+              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-primary/15 text-primary text-[10px] font-bold">
+                {exportArtifacts?.length ?? 0}
+              </span>
+            </div>
+            {exportsExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          </button>
+
+          {exportsExpanded && (
+            <div className="mt-2 space-y-2">
+              {exportsLoading && (
+                <div className="flex items-center gap-2 text-xs text-primary bg-primary/10 p-2 rounded-lg">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Loading exports...
+                </div>
+              )}
+              {!exportsLoading && (exportArtifacts?.length ?? 0) === 0 && (
+                <div className="text-xs text-muted-foreground italic px-1 py-2 text-center">No exports yet</div>
+              )}
+              {!exportsLoading && Object.entries(groupedExports).map(([dateLabel, items]) => (
+                <div key={dateLabel} className="space-y-1">
+                  <div className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase px-1">{dateLabel}</div>
+                  {items.map((item) => (
+                    <a
+                      key={`${item.filename}-${item.created_at}`}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={item.filename}
+                      className="group flex items-center gap-2 px-2 py-1.5 text-xs rounded-md hover:bg-white/5 transition-colors"
+                    >
+                      <File className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate flex-1" title={item.filename}>{item.filename}</span>
+                      <span className="text-[10px] text-muted-foreground uppercase">{item.kind}</span>
+                      <span className="text-[10px] text-muted-foreground">{formatSize(item.size_bytes)}</span>
+                      <Download className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </a>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
             onClick={onOpenSettings}
             className="w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-sidebar-border text-sm text-foreground/90 hover:bg-white/[0.08] transition-colors"
           >
             <Info className="w-4 h-4 text-primary" />
-            <span className="font-semibold tracking-wide">About</span>
+            <span className="font-semibold tracking-wide">ABOUT</span>
           </button>
         </div>
       </div>
