@@ -97,16 +97,10 @@ def _build_response(mermaid_code: str, svg_data: str, export_filename: str | Non
             else "Diagram rendered successfully."
         )
         parts.append(caption)
-        parts.append(
-            "\n<details><summary>Mermaid source</summary>\n\n"
-            f"```text\n{mermaid_code}\n```\n"
-            "</details>"
-        )
     else:
-        parts.append(
-            "*SVG render/export unavailable. Mermaid source is shown below.*"
-        )
-        parts.append(f"```text\n{mermaid_code}\n```")
+        parts.append("*SVG render/export unavailable. Mermaid source is shown below.*")
+
+    parts.append(f"\n**Mermaid source**\n\n```text\n{mermaid_code}\n```")
     return "\n".join(parts)
 
 async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:

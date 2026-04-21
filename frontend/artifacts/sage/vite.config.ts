@@ -29,11 +29,19 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
     proxy: {
-      "/api": "http://localhost:8765",
+      "/api": {
+        target: "http://localhost:8765",
+        changeOrigin: true,
+        ws: true,
+        configure: (proxy) => {
+          proxy.on("error", () => {
+        });
+      },
     },
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
+  },
+  fs: {
+    strict: true,
+    deny: ["**/.*"],
     },
   },
   preview: {

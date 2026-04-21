@@ -287,44 +287,24 @@ export default function Home() {
                         )}
 
                         {msg.artifact && (
-                          <div className="mt-4 p-4 border border-border rounded-xl bg-sidebar/50 flex flex-col gap-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <FileDown className="w-5 h-5 text-primary" />
-                                <span className="font-medium">{msg.artifact.filename}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <a
-                                  href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
-                                  target="_blank" rel="noopener noreferrer"
-                                  className="border border-border hover:bg-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                                >
-                                  Open
-                                </a>
-                                <a
-                                  href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
-                                  download={msg.artifact.filename}
-                                  target="_blank" rel="noopener noreferrer"
-                                  className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                                >
-                                  Download {msg.artifact.kind.toUpperCase()}
-                                </a>
-                              </div>
-                            </div>
-                            {msg.artifact.kind.toLowerCase() === "svg" && (
-                              <iframe
-                                title={msg.artifact.filename}
-                                src={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
-                                className="w-full h-[360px] rounded-lg border border-border bg-background"
-                              />
-                            )}
-                            {msg.artifact.kind.toLowerCase() === "pdf" && (
-                              <iframe
-                                title={msg.artifact.filename}
-                                src={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
-                                className="w-full h-[420px] rounded-lg border border-border bg-background"
-                              />
-                            )}
+                          <div className="mt-4 px-4 py-3 border border-border rounded-xl bg-sidebar/50 flex items-center gap-3">
+                            <FileDown className="w-4 h-4 text-primary shrink-0" />
+                            <span className="text-sm font-medium truncate flex-1">{msg.artifact.filename}</span>
+                            <a
+                              href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="border border-border hover:bg-white/10 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
+                            >
+                              Open
+                            </a>
+                            <a
+                              href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
+                              download={msg.artifact.filename}
+                              className="bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
+                            >
+                              Download {msg.artifact.kind.toUpperCase()}
+                            </a>
                           </div>
                         )}
                       </div>
