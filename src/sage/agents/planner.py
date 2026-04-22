@@ -22,7 +22,7 @@ import warnings
 import structlog
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from sage.agents.state import AgentState
 from sage.config import get_settings
@@ -31,6 +31,7 @@ from sage.prompts import (
     ROADMAP_SCHEDULE_PROMPT,
     SYSTEM_PROMPT,
 )
+from sage.utils import ainvoke_structured_with_fallback
 
 log = structlog.get_logger(__name__)
 
@@ -68,6 +69,18 @@ def _normalize_schedule(
         seen.add(day.day)
         topics = [_clean(t) for t in day.topics if _clean(t)] or ["Review and consolidation"]
         activities = [_clean(a) for a in day.activities if _clean(a)] or ["Review key concepts"]
+        checkpoint_raw: str | None
+        if isinstance(day.checkpoint, dict):
+            checkpoint_raw = str(
+                day.checkpoint.get("milestone")
+                or day.checkpoint.get("checkpoint")
+                or day.checkpoint.get("label")
+                or ""
+            )
+        elif day.checkpoint is None:
+            checkpoint_raw = None
+        else:
+            checkpoint_raw = str(day.checkpoint)
         cleaned.append(
             ScheduleDay(
                 day=day.day,
@@ -76,7 +89,7 @@ def _normalize_schedule(
                 hours=max(0.5, float(day.hours)),
                 activities=activities,
                 knowledge_unit_refs=[r.strip() for r in day.knowledge_unit_refs if r.strip()],
-                checkpoint=_clean(day.checkpoint) if day.checkpoint else None,
+                checkpoint=_clean(checkpoint_raw) if checkpoint_raw else None,
             )
         )
  
@@ -121,40 +134,100 @@ def _normalize_schedule(
 
 class TopicInfo(BaseModel):
     name: str
-    difficulty: int = Field(ge=1, le=3)
-    estimated_hours: float = Field(ge=0.5)
+    difficulty: int = Field(default=2, ge=1, le=3)
+    estimated_hours: float = Field(default=2.0, ge=0.5)
     prerequisites: list[str] = Field(default_factory=list)
 
 
 class RoadmapAnalysis(BaseModel):
-    subject: str
-    timeline_days: int = Field(ge=1)
-    scope: str
+    subject: str = "Study Plan"
+    timeline_days: int = Field(default=14, ge=1)
+    scope: str = "full course"
     daily_hours_available: float = Field(default=3.0, ge=0.5)
     known_topics: list[str] = Field(default_factory=list)
     weak_topics: list[str] = Field(default_factory=list)
     topics: list[TopicInfo] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        out.setdefault("subject", out.get("topic") or out.get("course") or "Study Plan")
+        out.setdefault("scope", out.get("goal") or out.get("exam_type") or "full course")
+        out.setdefault(
+            "timeline_days",
+            out.get("days") or out.get("timeline") or out.get("duration_days") or 14,
+        )
+        out.setdefault(
+            "daily_hours_available",
+            out.get("daily_hours") or out.get("hours_per_day") or 3.0,
+        )
+        if "topics" not in out:
+            out["topics"] = out.get("study_topics") or out.get("modules") or []
+        return out
+
 
 class ScheduleDay(BaseModel):
-    day: int
-    session_type: str
-    topics: list[str]
-    hours: float
+    day: int = 1
+    session_type: str = "study"
+    topics: list[str] = Field(default_factory=list)
+    hours: float = 1.0
     activities: list[str] = Field(default_factory=list)
     knowledge_unit_refs: list[str] = Field(default_factory=list)
-    checkpoint: str | None = None
+    checkpoint: str | dict[str, Any] | None = None
 
 
 class Checkpoint(BaseModel):
-    after_day: int
-    milestone: str
+    after_day: int = 1
+    milestone: str = "Progress checkpoint"
 
 
 class RoadmapSchedule(BaseModel):
-    schedule: list[ScheduleDay]
+    schedule: list[ScheduleDay] = Field(default_factory=list)
     checkpoints: list[Checkpoint] = Field(default_factory=list)
     self_assessment_questions: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        if "schedule" not in out:
+            for alias in ("plan", "daily_plan", "daily_schedule", "days"):
+                maybe = out.get(alias)
+                if isinstance(maybe, list):
+                    out["schedule"] = maybe
+                    break
+        if "checkpoints" not in out:
+            maybe_cp = out.get("checkpoint") or out.get("milestones")
+            if isinstance(maybe_cp, list):
+                out["checkpoints"] = maybe_cp
+        if "self_assessment_questions" not in out:
+            for alias in ("self_assessment", "assessment_questions", "questions"):
+                maybe_q = out.get(alias)
+                if isinstance(maybe_q, list):
+                    out["self_assessment_questions"] = maybe_q
+                    break
+        return out
+
+    @field_validator("checkpoints", mode="before")
+    @classmethod
+    def _coerce_checkpoints(cls, v: Any) -> Any:
+        if not isinstance(v, list):
+            return v
+        out: list[dict[str, Any]] = []
+        for idx, item in enumerate(v, start=1):
+            if isinstance(item, str):
+                out.append({"after_day": idx, "milestone": item})
+            elif isinstance(item, dict):
+                cp = dict(item)
+                cp.setdefault("after_day", idx)
+                cp.setdefault("milestone", "Progress checkpoint")
+                out.append(cp)
+        return out
 
 _SCOPE_PHRASE: dict[str, str] = {
     "midterm": "your midterm",
@@ -427,10 +500,14 @@ async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     last_exc: Exception | None = None
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            chain = analysis_prompt | llm.with_structured_output(RoadmapAnalysis)
-            analysis = await asyncio.wait_for(
-                chain.ainvoke({"query": query, "student_memory": student_memory}),
-                timeout=cfg.llm_timeout,
+            analysis = await ainvoke_structured_with_fallback(
+                prompt=analysis_prompt,
+                llm=llm,
+                schema=RoadmapAnalysis,
+                payload={"query": query, "student_memory": student_memory},
+                timeout_s=cfg.llm_timeout,
+                logger=log,
+                event_prefix="roadmap_analysis",
             )  # type: ignore
             log.info(
                 "roadmap_analysis_complete",
@@ -474,10 +551,14 @@ async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             schedule_llm = llm.bind(temperature=_SCHEDULE_TEMPERATURE)
-            chain = schedule_prompt | schedule_llm.with_structured_output(RoadmapSchedule)
-            schedule = await asyncio.wait_for(
-                chain.ainvoke({"analysis": analysis_json, "knowledge_units": ku_text}),
-                timeout=schedule_timeout,
+            schedule = await ainvoke_structured_with_fallback(
+                prompt=schedule_prompt,
+                llm=schedule_llm,
+                schema=RoadmapSchedule,
+                payload={"analysis": analysis_json, "knowledge_units": ku_text},
+                timeout_s=schedule_timeout,
+                logger=log,
+                event_prefix="roadmap_schedule",
             )  # type: ignore
             log.info(
                 "roadmap_schedule_complete",

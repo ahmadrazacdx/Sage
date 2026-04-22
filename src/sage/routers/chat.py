@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
 from sage.agents import VALID_INTENTS
+from sage.utils import close_unbalanced_fenced_blocks, strip_think_markers
 
 log = structlog.get_logger(__name__)
 
@@ -303,6 +304,15 @@ def _title_from_message(text: str) -> str:
     return title
 
 
+def _sanitize_markdown_response(text: str, *, strip_think: bool = True) -> str:
+    """Normalize assistant markdown to avoid renderer breakage in the UI."""
+    cleaned = text or ""
+    if strip_think:
+        cleaned = strip_think_markers(cleaned)
+    cleaned = close_unbalanced_fenced_blocks(cleaned)
+    return cleaned
+
+
 def _artifact_payload(raw: dict[str, Any]) -> dict[str, str] | None:
     """Normalize one artifact record for SSE and session history."""
     if not isinstance(raw, dict):
@@ -531,6 +541,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                             accumulated_chunks.append(visible_answer)
                             yield _sse({"type": "chunk", "text": visible_answer})
                     else:
+                        response_text = _sanitize_markdown_response(response_text)
                         accumulated_chunks.append(response_text)
                         yield _sse({"type": "chunk", "text": response_text})
 
@@ -551,6 +562,8 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                     final_state = await graph.ainvoke(state_input)
 
                 response_text = str(final_state.get("response", "") or "")
+                if response_text and intent != "thinking":
+                    response_text = _sanitize_markdown_response(response_text)
                 artifact_paths = final_state.get("artifact_paths", [])
 
                 if intent == "research" and artifact_paths:

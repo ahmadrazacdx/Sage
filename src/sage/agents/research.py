@@ -29,7 +29,7 @@ import structlog
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from sage.agents.state import AgentState
 from sage.config import get_settings
@@ -39,6 +39,7 @@ from sage.prompts import (
     RESEARCH_REVIEW_PROMPT,
 )
 from sage.tools.export import export_markdown, export_pdf
+from sage.utils import ainvoke_structured_with_fallback, strip_think_markers
 
 log = structlog.get_logger(__name__)
 
@@ -150,13 +151,59 @@ class SubtopicQueries(BaseModel):
 
 class Subtopic(BaseModel):
     name: str
-    description: str
-    queries: SubtopicQueries
+    description: str = ""
+    queries: SubtopicQueries = Field(default_factory=SubtopicQueries)
 
 
 class ResearchPlan(BaseModel):
     title: str
     subtopics: list[Subtopic]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_shape(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        out = dict(data)
+        if "subtopics" not in out:
+            for alias in ("topics", "sections", "plan"):
+                maybe = out.get(alias)
+                if isinstance(maybe, list):
+                    out["subtopics"] = maybe
+                    break
+
+        normalized: list[dict[str, Any]] = []
+        for raw in out.get("subtopics", []) or []:
+            if isinstance(raw, str):
+                normalized.append(
+                    {
+                        "name": raw,
+                        "description": "",
+                        "queries": SubtopicQueries().model_dump(),
+                    }
+                )
+                continue
+
+            if not isinstance(raw, dict):
+                continue
+
+            item = dict(raw)
+            queries = item.get("queries")
+            if not isinstance(queries, dict):
+                queries = {
+                    "academic": str(item.get("academic") or item.get("academic_query") or ""),
+                    "web": str(item.get("web") or item.get("web_query") or ""),
+                    "encyclopedia": str(
+                        item.get("encyclopedia") or item.get("wikipedia") or item.get("wiki") or ""
+                    ),
+                }
+            item["queries"] = queries
+            item.setdefault("description", "")
+            normalized.append(item)
+
+        out["subtopics"] = normalized
+        return out
 
 
 class SubtopicCoverage(BaseModel):
@@ -341,6 +388,67 @@ def _build_source_references(all_sources: list[dict[str, Any]]) -> str:
     return "\n".join(refs)
 
 
+def _fallback_research_plan(query: str, max_subtopics: int) -> ResearchPlan:
+    """Build a deterministic search plan when structured planning fails."""
+    q = query.strip() or "the requested topic"
+    templates = [
+        (
+            f"Foundations of {q}",
+            f"Core definitions and background for {q}.",
+            {
+                "academic": f"{q} fundamentals survey",
+                "web": f"{q} overview",
+                "encyclopedia": q,
+            },
+        ),
+        (
+            f"Recent advances in {q}",
+            f"Recent methods, results, and trends for {q}.",
+            {
+                "academic": f"{q} recent advances survey 2024 2025",
+                "web": f"latest developments in {q}",
+                "encyclopedia": q,
+            },
+        ),
+        (
+            f"Applications of {q}",
+            f"Practical uses and real-world deployment of {q}.",
+            {
+                "academic": f"{q} applications survey",
+                "web": f"real world applications of {q}",
+                "encyclopedia": q,
+            },
+        ),
+        (
+            f"Limitations and risks in {q}",
+            f"Known weaknesses, risks, and tradeoffs in {q}.",
+            {
+                "academic": f"{q} limitations challenges survey",
+                "web": f"limitations of {q}",
+                "encyclopedia": q,
+            },
+        ),
+        (
+            f"Open problems in {q}",
+            f"Current research gaps and unresolved questions in {q}.",
+            {
+                "academic": f"{q} open problems future work survey",
+                "web": f"open research questions in {q}",
+                "encyclopedia": q,
+            },
+        ),
+    ]
+
+    picked = templates[: max(1, max_subtopics)]
+    return ResearchPlan(
+        title=f"Research survey on {q}"[:120],
+        subtopics=[
+            Subtopic(name=name, description=desc, queries=SubtopicQueries(**queries))
+            for name, desc, queries in picked
+        ],
+    )
+
+
 async def _search_source(
     tool_fn: Any,
     query: str,
@@ -426,6 +534,7 @@ async def _digest_subtopic(
     try:
         result = await asyncio.wait_for(llm.ainvoke(prompt_text), timeout=timeout)
         digest = result.content if isinstance(result, AIMessage) else str(result)
+        digest = strip_think_markers(digest)
         log.info("digest_ok", subtopic=subtopic.name[:40],
                  words=len(digest.split()), ctx=budget.ctx_size)
         return digest.strip()
@@ -531,17 +640,22 @@ async def research_node(
     plan_prompt = ChatPromptTemplate.from_messages([
         ("human", RESEARCH_PLAN_PROMPT),
     ])
-    plan_chain = plan_prompt | _no_think(llm).with_structured_output(ResearchPlan)
 
     plan: ResearchPlan | None = None
     for attempt in range(1, _MAX_PLAN_RETRIES + 1):
         try:
-            plan = await asyncio.wait_for(
-                plan_chain.ainvoke({
+            plan = await ainvoke_structured_with_fallback(
+                prompt=plan_prompt,
+                llm=_no_think(llm),
+                schema=ResearchPlan,
+                payload={
                     "query": query,
                     "max_subtopics": budget.max_subtopics,
-                }),
-                timeout=timeout,
+                },
+                timeout_s=timeout,
+                logger=log,
+                event_prefix="research_plan",
+                prefer_raw_json=True,
             )
             if len(plan.subtopics) > budget.max_subtopics:
                 plan = ResearchPlan(
@@ -559,10 +673,8 @@ async def research_node(
             log.warning("research_plan_retry", attempt=attempt, exc=str(exc)[:200])
 
     if plan is None:
-        return {
-            "response": "I was unable to create a research plan. Please try again.",
-            "research_plan": None,
-        }
+        log.warning("research_plan_fallback", query_preview=query[:80])
+        plan = _fallback_research_plan(query, budget.max_subtopics)
 
     # Phase 2: Parallel multi-source search
     try:
@@ -636,6 +748,7 @@ async def research_node(
             if isinstance(report_result, AIMessage)
             else str(report_result)
         )
+        report = strip_think_markers(report)
         report = _force_replace_references(report, source_refs)
         report = _normalize_references_section(report)
     except Exception as exc:
@@ -651,7 +764,6 @@ async def research_node(
     review_prompt = ChatPromptTemplate.from_messages([
         ("human", RESEARCH_REVIEW_PROMPT),
     ])
-    review_chain  = review_prompt | _no_think(llm).with_structured_output(ResearchReview)
     max_iters     = int(getattr(cfg, "research_max_iters", 2))
 
     for review_iter in range(1, max_iters + 1):
@@ -666,9 +778,15 @@ async def research_node(
             review_report = report
         try:
             review_timeout = min(float(timeout), 90.0)  # cap so a slow reviewer can't double overall latency
-            review: ResearchReview = await asyncio.wait_for(
-                review_chain.ainvoke({"report": review_report}),
-                timeout=review_timeout,
+            review: ResearchReview = await ainvoke_structured_with_fallback(
+                prompt=review_prompt,
+                llm=_no_think(llm),
+                schema=ResearchReview,
+                payload={"report": review_report},
+                timeout_s=review_timeout,
+                logger=log,
+                event_prefix="research_review",
+                prefer_raw_json=True,
             )
             log.info(
                 "research_review_complete",
@@ -706,6 +824,7 @@ async def research_node(
                 if isinstance(report_result, AIMessage)
                 else str(report_result)
             )
+            report = strip_think_markers(report)
             report = _force_replace_references(report, source_refs)
             report = _normalize_references_section(report)
             log.info("research_report_revised", iteration=review_iter)

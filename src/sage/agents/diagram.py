@@ -31,8 +31,13 @@ from sage.prompts import (
 )
 from sage.tools.export import reserve_export_path
 from sage.tools.mermaid import render_mermaid_svg, validate_mermaid
+from sage.utils import extract_fenced_block, strip_think_markers
 
 log = structlog.get_logger(__name__)
+
+_MERMAID_START_RE = re.compile(
+    r"(?m)^\s*(?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|mindmap|journey|timeline|gitGraph)\b"
+)
 
 
 def _format_knowledge_units(kus: list[dict]) -> str:
@@ -50,15 +55,20 @@ def _to_str(result: Any) -> str:
 
 
 def _strip_fences(text: str) -> str:
-    """Remove markdown code fences the LLM may wrap around Mermaid output."""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    return text
+    """Extract clean Mermaid code from potentially noisy model output."""
+    cleaned = strip_think_markers(text).strip()
+
+    fenced = extract_fenced_block(cleaned, preferred_languages={"mermaid"})
+    if fenced is None:
+        fenced = extract_fenced_block(cleaned)
+    if fenced:
+        cleaned = fenced
+
+    match = _MERMAID_START_RE.search(cleaned)
+    if match is not None:
+        cleaned = cleaned[match.start():]
+
+    return cleaned.strip()
 
 def _slugify_query(query: str) -> str:
     """Derive a filesystem-safe short slug from the user query."""

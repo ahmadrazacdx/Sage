@@ -29,6 +29,12 @@ from sage.prompts import (
     CODE_FIX_SYSTEM_PROMPT,
 )
 from sage.tools.sandbox import execute_python
+from sage.utils import (
+    ainvoke_structured_with_fallback,
+    close_unbalanced_fenced_blocks,
+    extract_fenced_block,
+    strip_think_markers,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -66,11 +72,22 @@ class Diagnosis(BaseModel):
     confidence: str = "medium"
 
 def _strip_code_fences(text: str) -> str:
-    """Remove markdown code fences from LLM-generated code."""
-    text = text.strip()
-    text = re.sub(r"^```\w*\n", "", text)
-    text = re.sub(r"\n```\s*$", "", text)
-    return text.strip()
+    """Extract executable code from noisy LLM output."""
+    cleaned = strip_think_markers(text)
+    fenced = extract_fenced_block(cleaned, preferred_languages={"python", "py"})
+    candidate = fenced if fenced is not None else cleaned
+    candidate = re.sub(r"^```\w*\n", "", candidate)
+    candidate = re.sub(r"\n```\s*$", "", candidate)
+    return candidate.strip()
+
+
+def _fenced_block(text: str, language: str = "") -> str:
+    """Wrap text in a markdown fence that cannot be broken by embedded backticks."""
+    body = text.rstrip("\n")
+    max_backtick_run = max((len(m.group(0)) for m in re.finditer(r"`+", body)), default=0)
+    fence = "`" * max(3, max_backtick_run + 1)
+    opener = f"{fence}{language}".rstrip() + "\n"
+    return f"{opener}{body}\n{fence}"
 
 
 def _detect_non_python(code: str) -> str | None:
@@ -183,10 +200,14 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            chain = diag_prompt | llm.with_structured_output(Diagnosis)
-            diagnosis = await asyncio.wait_for(
-                chain.ainvoke({"code": query, "error": "See code and user message above"}),
-                timeout=cfg.llm_timeout,
+            diagnosis = await ainvoke_structured_with_fallback(
+                prompt=diag_prompt,
+                llm=llm,
+                schema=Diagnosis,
+                payload={"code": query, "error": "See code and user message above"},
+                timeout_s=cfg.llm_timeout,
+                logger=log,
+                event_prefix="code_fix_diagnosis",
             )
             log.info(
                 "code_fix_diagnosis",
@@ -256,6 +277,7 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                 timeout=cfg.llm_timeout,
             )
             fixed_code = _strip_code_fences(_extract_text(fix_result))
+            fixed_code = strip_think_markers(fixed_code)
         except (asyncio.TimeoutError, TimeoutError):
             log.warning("code_fix_gen_timeout", attempt=attempt)
             continue
@@ -316,6 +338,8 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
             timeout=cfg.llm_timeout,
         )
         explanation = _extract_text(explain_result)
+        explanation = strip_think_markers(explanation)
+        explanation = close_unbalanced_fenced_blocks(explanation)
         explanation = re.sub(
             r"\n{1,3}###\s+Key Concept[^\n]*\n+(?:None|N/A)[.\s]*$",
             "",
@@ -359,16 +383,16 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
 
     if fixed_code:
         if fix_succeeded:
-            parts.append(f"### Fixed Code\n```python\n{fixed_code}\n```")
+            parts.append(f"### Fixed Code\n{_fenced_block(fixed_code, 'python')}")
         else:
             parts.append(
                 f"### Last Attempted Fix (did not pass verification)\n"
-                f"```python\n{fixed_code}\n```\n"
+                f"{_fenced_block(fixed_code, 'python')}\n"
                 f"*This fix failed sandbox verification. Review the error above.*"
             )
 
     if execution_result:
-        parts.append(f"### Execution Result\n```\n{execution_result}\n```")
+        parts.append(f"### Execution Result\n{_fenced_block(execution_result)}")
 
     if explanation:
         parts.append(explanation)

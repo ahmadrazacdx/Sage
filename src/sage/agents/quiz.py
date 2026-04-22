@@ -28,6 +28,7 @@ from sage.prompts import (
     QUIZ_GENERATION_PROMPT,
     QUIZ_EVALUATION_PROMPT,
 )
+from sage.utils import strip_think_markers
 
 log = structlog.get_logger(__name__)
 
@@ -138,11 +139,88 @@ _JSON_FENCE_RE: re.Pattern[str] = re.compile(
     r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE
 )
 
+
+def _content_to_text(content: Any) -> str:
+    """Normalise provider-specific message content into plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("content") or ""
+                if text:
+                    parts.append(str(text))
+            else:
+                text = getattr(item, "text", "")
+                if text:
+                    parts.append(str(text))
+        return "\n".join(parts)
+    return str(content)
+
+
+def _balanced_json_candidate(text: str) -> str | None:
+    """Return the first balanced JSON object/array found in text."""
+    start = -1
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i, ch in enumerate(text):
+        if start == -1:
+            if ch in "[{":
+                start = i
+                depth = 1
+            continue
+
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+
+    return None
+
 def _extract_json(raw: Any) -> str:
-    """Extract JSON string from AIMessage or plain str, stripping fences."""
-    text = raw.content if isinstance(raw, AIMessage) else str(raw)
-    m = _JSON_FENCE_RE.search(text)
-    return m.group(1).strip() if m else text.strip()
+    """Extract the most likely JSON payload from model output."""
+    if isinstance(raw, AIMessage):
+        text = _content_to_text(raw.content)
+    elif isinstance(raw, dict):
+        text = _content_to_text(raw.get("content", raw))
+    else:
+        text = _content_to_text(getattr(raw, "content", raw))
+
+    text = (strip_think_markers(text) or text).strip()
+    if not text:
+        return ""
+
+    fence_matches = [m.group(1).strip() for m in _JSON_FENCE_RE.finditer(text)]
+    for candidate in fence_matches:
+        if candidate.startswith("{") or candidate.startswith("["):
+            return candidate
+        nested = _balanced_json_candidate(candidate)
+        if nested:
+            return nested
+
+    if text.startswith("{") or text.startswith("["):
+        return text
+
+    nested = _balanced_json_candidate(text)
+    return nested or text
 
 def _parse_quiz(raw: Any) -> QuizOutput:
     data = json.loads(_extract_json(raw))

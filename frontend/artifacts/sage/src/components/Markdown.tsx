@@ -487,8 +487,11 @@ export const Markdown = ({ content, className, enableMermaid = true }: MarkdownP
                 const match = /language-([A-Za-z0-9_+-]+)/.exec(codeClassName || "");
                 const language = match ? match[1] : "";
                 const codeString = flattenText(children).replace(/\n$/, "");
+                const isInlineCode =
+                  inline === true ||
+                  (!language && !/\n/.test(codeString) && codeString.trim().length > 0);
 
-                if (inline) {
+                if (isInlineCode) {
                   return (
                     <code className={codeClassName} {...props}>
                       {children}

@@ -17,21 +17,21 @@ from __future__ import annotations
 import asyncio
 import re
 from typing import Dict, Any, List, Optional
+import warnings
 
 import structlog
 from langchain_core.tools import tool
 
 from sage.config import get_settings
-from langchain_community.retrievers import WikipediaRetriever, ArxivRetriever
-from langchain_community.tools import DuckDuckGoSearchResults
-from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-
-import warnings
-from bs4 import GuessedAtParserWarning
+try:
+    from bs4 import GuessedAtParserWarning
+except ImportError:
+    GuessedAtParserWarning = None  # type: ignore[assignment]
 
 
 log = structlog.get_logger(__name__)
-warnings.filterwarnings("ignore", category=GuessedAtParserWarning)
+if GuessedAtParserWarning is not None:
+    warnings.filterwarnings("ignore", category=GuessedAtParserWarning)
 
 # --- Constants ---
 _MAX_QUERY_LENGTH: int = 500
@@ -89,6 +89,8 @@ async def search_arxiv(query: str) -> Dict[str, Any]:
         return _error("Empty search query")
 
     try:
+        from langchain_community.retrievers import ArxivRetriever
+
         retriever = ArxivRetriever(
             top_k_results=cfg.max_results,
             load_max_docs=cfg.max_results,
@@ -148,6 +150,9 @@ async def search_web(query: str) -> Dict[str, Any]:
         return _error("Empty search query")
 
     try:
+        from langchain_community.tools import DuckDuckGoSearchResults
+        from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+
         wrapper = DuckDuckGoSearchAPIWrapper(
             max_results=cfg.max_results,
         )
@@ -201,6 +206,8 @@ async def search_wikipedia(query: str) -> Dict[str, Any]:
         return _error("Empty search query")
 
     try:
+        from langchain_community.retrievers import WikipediaRetriever
+
         retriever = WikipediaRetriever(
             top_k_results=min(cfg.max_results, 3),
             load_max_docs=min(cfg.max_results, 3),
