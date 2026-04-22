@@ -316,6 +316,12 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
             timeout=cfg.llm_timeout,
         )
         explanation = _extract_text(explain_result)
+        explanation = re.sub(
+            r"\n{1,3}###\s+Key Concept[^\n]*\n+(?:None|N/A)[.\s]*$",
+            "",
+            explanation,
+            flags=re.IGNORECASE,
+        ).rstrip()
     except (asyncio.TimeoutError, TimeoutError):
         log.error("code_fix_explain_timeout")
         explanation = (
@@ -355,8 +361,6 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         if fix_succeeded:
             parts.append(f"### Fixed Code\n```python\n{fixed_code}\n```")
         else:
-            # Do not present broken code as a solution; show it as a
-            # last-attempt reference with an explicit caveat.
             parts.append(
                 f"### Last Attempted Fix (did not pass verification)\n"
                 f"```python\n{fixed_code}\n```\n"

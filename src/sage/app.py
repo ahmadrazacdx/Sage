@@ -12,12 +12,14 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from sage.agents import build_graph
@@ -25,6 +27,7 @@ from sage.config import get_settings
 from sage.database import init_db
 from sage.llm import create_llm
 from sage.network import NetworkMonitor
+from sage.tools.export import resolve_export_output_dir
 
 log = structlog.get_logger(__name__)
 
@@ -63,7 +66,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.network = network
 
     # In-memory stores
-    thread_messages: dict[str, list[dict[str, str]]] = {}
+    thread_messages: dict[str, list[dict[str, Any]]] = {}
     thread_meta: dict[str, dict[str, Any]] = {}
     pending_streams: dict[str, dict[str, Any]] = {}
     active_streams: dict[str, bool] = {}
@@ -133,6 +136,65 @@ def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
     app.include_router(sessions_router, prefix="/api")
     app.include_router(documents_router, prefix="/api")
     app.include_router(chat_router, prefix="/api")
+
+    # Artifact endpoints
+    _exports_dir = resolve_export_output_dir()
+
+    @app.get("/api/artifacts")
+    async def list_artifacts() -> list[dict[str, Any]]:
+        """List generated exports (SVG/PDF/MD/TXT), newest first."""
+        kind_map = {
+            ".pdf": "pdf",
+            ".svg": "svg",
+            ".md": "md",
+            ".txt": "txt",
+        }
+        if not _exports_dir.exists():
+            return []
+
+        artifacts: list[dict[str, Any]] = []
+        for file_path in sorted(
+            (p for p in _exports_dir.iterdir() if p.is_file()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        ):
+            suffix = file_path.suffix.lower()
+            kind = kind_map.get(suffix)
+            if kind is None:
+                continue
+
+            stat = file_path.stat()
+            created_at = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+            local_created = created_at.astimezone()
+            artifacts.append({
+                "kind": kind,
+                "filename": file_path.name,
+                "size_bytes": stat.st_size,
+                "created_at": created_at.isoformat(),
+                "date_label": local_created.strftime("%A, %B %d, %Y"),
+                "url": f"/api/artifacts/{file_path.name}",
+            })
+
+        return artifacts
+
+    @app.get("/api/artifacts/{filename}")
+    async def download_artifact(filename: str) -> FileResponse:
+        """Serve a generated artifact (PDF, SVG, MD) for download."""
+        safe_name = Path(filename).name
+        if not safe_name or safe_name != filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        file_path = _exports_dir / safe_name
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        suffix = file_path.suffix.lower()
+        media_map = {".pdf": "application/pdf", ".svg": "image/svg+xml",
+                     ".md": "text/markdown", ".txt": "text/plain"}
+        media_type = media_map.get(suffix, "application/octet-stream")
+        return FileResponse(
+            path=str(file_path),
+            media_type=media_type,
+            filename=safe_name,
+        )
 
     # SPA static-file mount
     if _FRONTEND_DIST.is_dir():

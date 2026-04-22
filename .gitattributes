@@ -1,0 +1,30 @@
+# Normalize text files to LF in the repository and working tree by default.
+* text=auto eol=lf
+
+# Preserve CRLF for Windows-native scripts.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+
+# Keep POSIX shell scripts on LF.
+*.sh text eol=lf
+
+# Keep common binary assets untouched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.ico binary
+*.zip binary
+*.gz binary
+*.7z binary
+*.mp4 binary
+*.mov binary
+*.gguf binary

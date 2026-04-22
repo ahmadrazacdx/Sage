@@ -40,6 +40,11 @@ _ANSWER_RE: re.Pattern[str] = re.compile(
     r"^\s*(?:q\s*)?[1-9]\d*\s*[\.\):\-]\s*\S",
     re.IGNORECASE | re.MULTILINE,
 )
+_MCQ_PHRASE_RE: re.Pattern[str] = re.compile(
+    r"\b(which of the following|which one of the following|select the correct|"
+    r"which is\b|which are\b|which statement)",
+    re.IGNORECASE,
+)
 
 _GEN_PROMPT = ChatPromptTemplate.from_messages([
     ("system", QUIZ_GENERATION_PROMPT),
@@ -66,7 +71,6 @@ class QuizQuestion(BaseModel):
         default="", description="Correct-answer rationale with [KU#] references"
     )
     bloom_level: str = Field(default="Understand", description="Bloom's taxonomy level")
-
 
 class QuizOutput(BaseModel):
     """Structured output: list of quiz questions."""
@@ -118,21 +122,36 @@ _NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 def _gen_chain(llm: Any) -> Any:
-    """Structured generation chain (cached per LLM instance)."""
     key = (id(llm), "gen")
     if key not in _chain_cache:
-        no_think_llm = llm.bind(extra_body=_NO_THINK)
-        _chain_cache[key] = _GEN_PROMPT | no_think_llm.with_structured_output(QuizOutput)
+        _chain_cache[key] = _GEN_PROMPT | llm.bind(extra_body=_NO_THINK)
     return _chain_cache[key]
 
 
 def _eval_chain(llm: Any) -> Any:
-    """Structured evaluation chain (cached per LLM instance)."""
     key = (id(llm), "eval")
     if key not in _chain_cache:
-        no_think_llm = llm.bind(extra_body=_NO_THINK)
-        _chain_cache[key] = _EVAL_PROMPT | no_think_llm.with_structured_output(QuizEvaluation)
+        _chain_cache[key] = _EVAL_PROMPT | llm.bind(extra_body=_NO_THINK)
     return _chain_cache[key]
+
+_JSON_FENCE_RE: re.Pattern[str] = re.compile(
+    r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE
+)
+
+def _extract_json(raw: Any) -> str:
+    """Extract JSON string from AIMessage or plain str, stripping fences."""
+    text = raw.content if isinstance(raw, AIMessage) else str(raw)
+    m = _JSON_FENCE_RE.search(text)
+    return m.group(1).strip() if m else text.strip()
+
+def _parse_quiz(raw: Any) -> QuizOutput:
+    data = json.loads(_extract_json(raw))
+    return QuizOutput(**data)
+
+
+def _parse_evaluation(raw: Any) -> QuizEvaluation:
+    data = json.loads(_extract_json(raw))
+    return QuizEvaluation(**data)
 
 def _format_kus(kus: list[dict]) -> str:
     """Render knowledge units as a numbered list for prompt injection."""
@@ -146,7 +165,6 @@ def _format_kus(kus: list[dict]) -> str:
 
 
 def _validate_quiz(quiz: QuizOutput | None) -> QuizOutput:
-    """Post-validate structured quiz; assigns sequential IDs and normalises type."""
     if quiz is None:
         raise ValueError("Structured output returned None.")
     quiz.questions = [q for q in quiz.questions if q.question.strip()]
@@ -155,13 +173,12 @@ def _validate_quiz(quiz: QuizOutput | None) -> QuizOutput:
     for i, q in enumerate(quiz.questions):
         q.id = i + 1
         q.type = q.type.lower().strip() if q.type else "short_answer"
-        if q.type in {"mcq", "short_answer", "true_false", "code"}:
-            pass
-        else:
+        if q.type not in {"mcq", "short_answer", "true_false", "code"}:
             q.type = "short_answer"
-            
-        q.question = re.sub(r"^(\*\*?Q\d+\*\*?|Question\s*\d+|Q\d+)[\.\:\-\s]*", "", q.question, flags=re.IGNORECASE).strip()
-        
+        q.question = re.sub(
+            r"^(\*\*?Q\d+\*\*?|Question\s*\d+|Q\d+)[\.\:\-\s]*", "",
+            q.question, flags=re.IGNORECASE,
+        ).strip()
         if q.type == "mcq" and q.options:
             q.options = [re.sub(r"^([A-Za-z0-9][\.\)\-])\s+", "", opt).strip() for opt in q.options]
             try:
@@ -170,8 +187,19 @@ def _validate_quiz(quiz: QuizOutput | None) -> QuizOutput:
                     q.answer = q.options[0]
             except (ValueError, TypeError):
                 pass
-    return quiz
 
+        if q.type == "short_answer" and _MCQ_PHRASE_RE.search(q.question):
+            if q.options and len(q.options) >= 2:
+                q.type = "mcq"
+                log.warning("quiz_question_type_promoted", id=q.id)
+            else:
+                q.question = ""
+    quiz.questions = [q for q in quiz.questions if q.question.strip()]
+    if not quiz.questions:
+        raise ValueError("All questions were discarded after validation.")
+    for i, q in enumerate(quiz.questions):
+        q.id = i + 1
+    return quiz
 
 def _validate_evaluation(ev: QuizEvaluation, prior: list[QuizQuestion]) -> QuizEvaluation:
     """Post-validate evaluation, assigning proper IDs and native scores."""
@@ -192,30 +220,70 @@ def _validate_evaluation(ev: QuizEvaluation, prior: list[QuizQuestion]) -> QuizE
         ev.percentage = 0.0
     return ev
 
+_INTRO: dict[str, str] = {
+    "Multiple Choice": "Here's a multiple choice quiz on {topic}. Select the best answer for each question.",
+    "Short Answer": "Here's a short answer quiz on {topic}. Write a concise but complete response for each question.",
+    "True / False": "Here's a true/false quiz on {topic}. Decide whether each statement is correct.",
+    "Code": "Here's a coding quiz on {topic}. Write or trace code as required by each question.",
+    "Mixed": "Here's a mixed quiz on {topic}, covering different question types to test your understanding from multiple angles.",
+}
 
-def _render_quiz(quiz: QuizOutput) -> str:
-    """Render quiz questions as student-facing markdown."""
-    q_types = {q.type for q in quiz.questions}
-    type_str = "multiple-choice" if "mcq" in q_types and len(q_types) == 1 else \
-               "short-answer" if "short_answer" in q_types and len(q_types) == 1 else \
-               "mixed-format"
-               
-    intro = (
-        f"Here is your {type_str} quiz to test your understanding of the material. "
-        "Take your time to think through each question carefully. "
-        "When you're ready, simply reply with your numbered answers, and we can review them together!"
+_OUTRO = (
+    "Take your time — there's no rush. "
+    "When you're ready, reply with your numbered answers "
+    "and I'll give you detailed feedback on each one."
+)
+
+def _infer_topic(quiz: QuizOutput) -> str:
+    first = quiz.questions[0].question if quiz.questions else ""
+    words = first.split()
+    return " ".join(words[:4]).rstrip(".,?:") + "..." if len(words) > 4 else first
+
+
+_TYPE_LABEL: dict[str, str] = {
+    "mcq": "Multiple Choice",
+    "short_answer": "Short Answer",
+    "true_false": "True / False",
+    "code": "Code",
+}
+
+def _render_quiz(quiz: QuizOutput, topic: str = "") -> str:
+    type_counts = {q.type for q in quiz.questions}
+    n = len(quiz.questions)
+    format_label = (
+        _TYPE_LABEL.get(next(iter(type_counts)), "Quiz")
+        if len(type_counts) == 1
+        else "Mixed"
     )
-    
-    lines: list[str] = [intro, "\n## Quiz\n"]
-    for q in quiz.questions:
-        lines.append(f"**Q{q.id}** ({q.type})")
-        lines.append(f"{q.question}\n")
-        if q.type == "mcq" and q.options:
-            lines.extend(f"  {chr(65 + i)}. {opt}" for i, opt in enumerate(q.options))
-            lines.append("")
-    lines.append("\n*Reply with your answers to get feedback!*")
-    return "\n".join(lines)
 
+    topic_label = topic.strip() or _infer_topic(quiz)
+    intro = _INTRO.get(format_label, _INTRO["Mixed"]).format(topic=topic_label)
+
+    lines: list[str] = [
+        intro,
+        "",
+        f"## {format_label} Quiz ({n} questions)",
+        "",
+    ]
+
+    for q in quiz.questions:
+        type_label = _TYPE_LABEL.get(q.type, q.type)
+
+        lines.append(f"### Question No: {q.id}")
+        lines.append(q.question)
+        lines.append("")
+
+        if q.type == "mcq" and q.options:
+            for i, opt in enumerate(q.options):
+                lines.append(f"> **{chr(65 + i)}.** {opt}")
+            lines.append("")
+        elif q.type == "true_false":
+            lines.append("> **A.** True")
+            lines.append("> **B.** False")
+            lines.append("")
+
+    lines.append(_OUTRO)
+    return "\n".join(lines)
 
 def _render_evaluation(ev: QuizEvaluation) -> str:
     """Render evaluation results as student-facing markdown."""
@@ -261,7 +329,17 @@ def _render_evaluation(ev: QuizEvaluation) -> str:
 
 
 def _looks_like_answers(query: str) -> bool:
-    return bool(_ANSWER_RE.search(query))
+    """Return True only if the query looks like student answers to an existing quiz."""
+    if len(query) > 600:
+        return False
+    matches = _ANSWER_RE.findall(query)
+    if len(matches) < 2:
+        return False
+    lines = [l.strip() for l in query.splitlines() if l.strip()]
+    question_lines = sum(1 for l in lines if l.endswith("?"))
+    if lines and question_lines / len(lines) > 0.4:
+        return False
+    return True
 
 
 def _serialize(questions: list[QuizQuestion]) -> str:
@@ -349,7 +427,6 @@ async def quiz_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     timeout: int = cfg.llm_timeout
     kus: list[dict] = state.get("knowledge_units", [])
     student_memory: str = state.get("student_memory", "No prior student context available.")
-
     invoke_kwargs = {
         "query": query,
         "knowledge_units": _format_kus(kus),
@@ -358,15 +435,14 @@ async def quiz_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
 
     for attempt in range(1, _MAX_RETRIES + 2):
         try:
-            quiz = _validate_quiz(
-                await asyncio.wait_for(
-                    _gen_chain(llm).ainvoke(invoke_kwargs), timeout=timeout
-                )
+            raw = await asyncio.wait_for(
+                _gen_chain(llm).ainvoke(invoke_kwargs), timeout=timeout
             )
+            quiz = _validate_quiz(_parse_quiz(raw))
             serialized = _serialize(quiz.questions)
             log.info("quiz_generated", question_count=len(quiz.questions), attempt=attempt)
             return {
-                "response": f"{_render_quiz(quiz)}\n\n{_encode_payload(quiz.questions)}",
+                "response": f"{_render_quiz(quiz, topic=query)}\n\n{_encode_payload(quiz.questions)}",
                 "last_quiz_questions": serialized,
                 "tool_calls": [{"tool": "quiz_generation", "questions": len(quiz.questions)}],
             }
@@ -374,7 +450,7 @@ async def quiz_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
             log.warning("quiz_gen_attempt_failed", attempt=attempt, exc=str(exc)[:200])
             if attempt > _MAX_RETRIES:
                 break
-            await asyncio.sleep(3)
+            await asyncio.sleep(2)
 
     log.error("quiz_gen_all_retries_failed")
     return {"response": "Unable to generate a quiz right now. Please try again or refine your topic."}
@@ -410,11 +486,10 @@ async def quiz_evaluate_node(state: AgentState, llm: ChatOpenAI) -> dict[str, An
 
     for attempt in range(1, _MAX_RETRIES + 2):
         try:
-            evaluation: QuizEvaluation | None = await asyncio.wait_for(
+            raw = await asyncio.wait_for(
                 _eval_chain(llm).ainvoke(invoke_kwargs), timeout=timeout
             )
-            if evaluation is None:
-                raise ValueError("Structured output returned None.")
+            evaluation = _parse_evaluation(raw)
             evaluation = _validate_evaluation(evaluation, prior)
             log.info("quiz_evaluated", score=evaluation.score, attempt=attempt)
             return {

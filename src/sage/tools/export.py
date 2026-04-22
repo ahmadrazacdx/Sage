@@ -35,6 +35,7 @@ log = structlog.get_logger(__name__)
 _MAX_CONTENT_LENGTH: int = 10_000
 _MAX_FILENAME_LENGTH: int = 100
 _PDF_TIMEOUT: int = 30
+_DEFAULT_EXPORT_DIR_RELATIVE = Path("artifacts/data/exports")
 
 _UNSAFE_RE = re.compile(
     r"#(include|read|csv|json|yaml|toml|xml|bytes|plugin|sys)\s*[\(\[]",
@@ -58,15 +59,41 @@ def _sanitize_filename(filename: str) -> str:
     clean = re.sub(r'[<>:"/\\|?*]', "_", clean).strip(". ")
     return (clean or "export")[:_MAX_FILENAME_LENGTH]
 
+def sanitize_export_filename(filename: str) -> str:
+    """Public wrapper used by non-tool exporters."""
+    return _sanitize_filename(filename)
+
+
+def _default_documents_export_dir() -> Path:
+    """Return the user-facing default export location."""
+    return Path.home() / "Documents" / "Sage" / "exports"
+
+
+def resolve_export_output_dir() -> Path:
+    """Return the absolute export output directory, creating it if needed."""
+    configured = get_settings().tools.export.output_dir.expanduser()
+    if configured.is_absolute():
+        output_dir = configured
+    elif configured == _DEFAULT_EXPORT_DIR_RELATIVE:
+        output_dir = _default_documents_export_dir()
+    else:
+        from sage.config import _PROJECT_ROOT
+        output_dir = _PROJECT_ROOT / configured
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def reserve_export_path(filename: str, suffix: str) -> Path:
+    """Return a writable non-conflicting export path."""
+    safe_name = sanitize_export_filename(filename)
+    normalized_suffix = suffix if suffix.startswith(".") else f".{suffix}"
+    return _nonconflict_path(resolve_export_output_dir() / f"{safe_name}{normalized_suffix}")
+
 
 def _resolve_output_dir() -> Path:
     """Return the absolute export output directory, creating it if needed."""
-    output_dir = get_settings().tools.export.output_dir
-    if not output_dir.is_absolute():
-        from sage.config import _PROJECT_ROOT
-        output_dir = _PROJECT_ROOT / output_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
-    return output_dir
+    return resolve_export_output_dir()
 
 
 def _resolve_typst_bin() -> str:
@@ -378,8 +405,7 @@ def export_markdown(content: str, filename: str) -> Dict[str, Any]:
     if len(content) > _MAX_CONTENT_LENGTH:
         return _response(False, operation, error=f"Content too long ({len(content)})")
 
-    safe_name = _sanitize_filename(filename)
-    output_path = _nonconflict_path(_resolve_output_dir() / f"{safe_name}.md")
+    output_path = reserve_export_path(filename, ".md")
 
     try:
         output_path.write_text(content, encoding="utf-8")
@@ -429,8 +455,7 @@ async def export_pdf(
     if len(content) > _MAX_CONTENT_LENGTH:
         return _response(False, operation, error=f"Content too long ({len(content)})")
 
-    safe_name = _sanitize_filename(filename)
-    output_path = _nonconflict_path(_resolve_output_dir() / f"{safe_name}.pdf")
+    output_path = reserve_export_path(filename, ".pdf")
 
     tmp_path: Path | None = None
     try:

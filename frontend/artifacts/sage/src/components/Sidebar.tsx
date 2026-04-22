@@ -1,0 +1,408 @@
+import React, { useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { MessageSquare, Plus, File, Trash2, GraduationCap, ChevronLeft, ChevronDown, ChevronRight, Info, Menu, Wifi, WifiOff, Loader2, FileDown, Download } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { 
+  useListSessions, 
+  useDeleteSession, 
+  useListDocuments, 
+  useDeleteDocument, 
+  useUploadDocuments,
+  type SystemStatus
+} from "@workspace/api-client-react";
+import { differenceInCalendarDays } from "date-fns";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getListSessionsQueryKey, getListDocumentsQueryKey } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
+
+interface SidebarProps {
+  currentThreadId: string | null;
+  onSelectThread: (id: string) => void;
+  onNewChat: () => void;
+  onOpenSettings: () => void;
+  isCollapsed: boolean;
+  setCollapsed: (v: boolean) => void;
+  status?: SystemStatus;
+}
+
+type ExportArtifact = {
+  kind: string;
+  filename: string;
+  size_bytes: number;
+  created_at: string;
+  date_label: string;
+  url: string;
+};
+
+export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSettings, isCollapsed, setCollapsed, status }: SidebarProps) {
+  const { data: sessions } = useListSessions();
+  const { data: documents } = useListDocuments();
+  const { data: exportArtifacts, isLoading: exportsLoading } = useQuery({
+    queryKey: ["exports-artifacts"],
+    queryFn: async () => {
+      const res = await fetch("/api/artifacts");
+      if (!res.ok) throw new Error("Failed to load exports.");
+      return (await res.json()) as ExportArtifact[];
+    },
+    refetchInterval: 15000,
+  });
+  type SessionItem = NonNullable<typeof sessions>[number];
+  type SessionGroups = {
+    today: SessionItem[];
+    yesterday: SessionItem[];
+    week: SessionItem[];
+    lastMonth: SessionItem[];
+  };
+  
+  const deleteSession = useDeleteSession();
+  const deleteDocument = useDeleteDocument();
+  const uploadDocuments = useUploadDocuments();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [docsExpanded, setDocsExpanded] = useState(false);
+  const [exportsExpanded, setExportsExpanded] = useState(false);
+
+  const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (typeof error === "object" && error !== null) {
+      const maybeError = error as { message?: string; data?: { detail?: string } };
+      return maybeError.data?.detail ?? maybeError.message ?? fallback;
+    }
+    return fallback;
+  };
+
+  // Group sessions by date
+  const groupedSessions = (sessions || []).reduce((acc, session) => {
+    const updatedAt = new Date(session.updated_at);
+    const daysAgo = differenceInCalendarDays(new Date(), updatedAt);
+
+    if (daysAgo === 0) acc.today.push(session);
+    else if (daysAgo === 1) acc.yesterday.push(session);
+    else if (daysAgo >= 2 && daysAgo <= 7) acc.week.push(session);
+    else if (daysAgo >= 8 && daysAgo <= 30) acc.lastMonth.push(session);
+
+    return acc;
+  }, { today: [], yesterday: [], week: [], lastMonth: [] } as SessionGroups);
+
+  const groupedExports = (exportArtifacts || []).reduce((acc, item) => {
+    if (!acc[item.date_label]) {
+      acc[item.date_label] = [];
+    }
+    acc[item.date_label].push(item);
+    return acc;
+  }, {} as Record<string, ExportArtifact[]>);
+
+  const formatSize = (bytes: number): string => {
+    if (!Number.isFinite(bytes) || bytes < 1024) return `${Math.max(0, Math.round(bytes))} B`;
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
+    setUploading(true);
+    try {
+      const files = Array.from(e.target.files);
+      await uploadDocuments.mutateAsync({ data: { files, course: "all" } });
+      queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+      toast({
+        title: "Upload complete",
+        description: `${files.length} document(s) uploaded successfully.`,
+      });
+    } catch (err) {
+      console.error("Upload failed", err);
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: getErrorMessage(err, "Unable to upload documents. Please try again."),
+      });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const SessionList = ({ title, items }: { title: string, items: typeof sessions }) => {
+    if (!items || items.length === 0) return null;
+    return (
+      <div className="mb-4">
+        <h4 className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase px-3 mb-2">{title}</h4>
+        <div className="space-y-0.5">
+          {items.map(s => (
+            <div key={s.thread_id} className="group relative flex items-center">
+              <button
+                onClick={() => onSelectThread(s.thread_id)}
+                className={cn(
+                  "flex-1 flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-all text-left truncate",
+                  currentThreadId === s.thread_id 
+                    ? "bg-primary/15 text-primary font-medium" 
+                    : "text-foreground/80 hover:bg-white/5 hover:text-foreground"
+                )}
+              >
+                <MessageSquare className="w-4 h-4 shrink-0 opacity-70" />
+                <span className="truncate">{s.title || "New Conversation"}</span>
+              </button>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteSession.mutate({ threadId: s.thread_id }, {
+                    onSuccess: () => {
+                      queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
+                      if (currentThreadId === s.thread_id) onNewChat();
+                      toast({
+                        title: "Conversation deleted",
+                        description: "The selected conversation was removed.",
+                      });
+                    },
+                    onError: (error) => {
+                      toast({
+                        variant: "destructive",
+                        title: "Delete failed",
+                        description: getErrorMessage(error, "Unable to delete this conversation."),
+                      });
+                    }
+                  });
+                }}
+                className="absolute right-2 p-1.5 rounded-md text-muted-foreground hover:text-error hover:bg-error/10 opacity-0 group-hover:opacity-100 transition-all"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  if (isCollapsed) {
+    return (
+      <button 
+        onClick={() => setCollapsed(false)}
+        className="fixed top-4 left-4 z-50 p-2 rounded-xl bg-sidebar border border-sidebar-border shadow-lg text-foreground hover:bg-white/5 transition-colors"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+    );
+  }
+
+  return (
+    <motion.div 
+      initial={{ x: -260 }}
+      animate={{ x: 0 }}
+      exit={{ x: -260 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className="flex flex-col w-[260px] h-screen bg-sidebar border-r border-sidebar-border shrink-0 text-foreground overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between p-4 shrink-0">
+        <div className="flex items-start gap-2">
+          <GraduationCap className="w-6 h-6 text-primary mt-0.5" />
+          <div className="leading-tight">
+            <div className="font-bold text-lg tracking-tight bg-gradient-to-br from-white to-white/60 bg-clip-text text-transparent">Sage</div>
+            <div className="text-[11px] text-muted-foreground">Thal University Bhakkar</div>
+          </div>
+        </div>
+        <button 
+          onClick={() => setCollapsed(true)}
+          className="p-1.5 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* New Chat Button */}
+      <div className="px-3 pb-4 shrink-0">
+        <button 
+          onClick={onNewChat}
+          className="flex items-center gap-2 w-full px-3 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-xl font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <Plus className="w-4 h-4" />
+          New Chat
+        </button>
+      </div>
+
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar pb-4">
+        <div className="px-2">
+          <SessionList title="Today" items={groupedSessions.today} />
+          <SessionList title="Yesterday" items={groupedSessions.yesterday} />
+          <SessionList title="This Week" items={groupedSessions.week} />
+          <SessionList title="Last Month" items={groupedSessions.lastMonth} />
+        </div>
+
+        <div className="px-4 py-4 mt-2">
+          <div className="h-px w-full bg-sidebar-border mb-4" />
+
+          <button
+            type="button"
+            onClick={() => setDocsExpanded((prev) => !prev)}
+            className={cn(
+              "w-full flex items-center justify-between px-3 py-2.5 rounded-xl border transition-colors",
+              docsExpanded
+                ? "bg-primary/12 border-primary/35"
+                : "bg-white/[0.03] border-sidebar-border hover:bg-white/[0.06]"
+            )}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-base leading-none" aria-hidden="true">📁</span>
+              <span className="text-xs font-extrabold tracking-wider text-foreground uppercase">MY DOCS</span>
+              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-primary/15 text-primary text-[10px] font-bold">
+                {documents?.length ?? 0}
+              </span>
+            </div>
+            {docsExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          </button>
+
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            multiple
+            accept=".pdf,.docx,.pptx,.md,.txt"
+            onChange={handleFileUpload}
+          />
+
+          {docsExpanded && (
+            <div className="mt-2">
+              <div className="flex items-center justify-end mb-2">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-1 rounded bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Upload Document"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {uploading && (
+                <div className="flex items-center gap-2 text-xs text-primary bg-primary/10 p-2 rounded-lg mb-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Uploading...
+                </div>
+              )}
+
+              <div className="space-y-1">
+                {documents?.length === 0 && !uploading && (
+                  <div className="text-xs text-muted-foreground italic px-1 py-2 text-center">No documents uploaded</div>
+                )}
+                {documents?.map(doc => (
+                  <div key={doc.file} className="group relative flex items-center gap-2 px-2 py-1.5 text-xs rounded-md hover:bg-white/5 transition-colors">
+                    <File className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate flex-1" title={doc.file}>{doc.file}</span>
+                    <button
+                      onClick={() => {
+                        deleteDocument.mutate({ filename: doc.file }, {
+                          onSuccess: () => {
+                            queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+                            toast({
+                              title: "Document deleted",
+                              description: `${doc.file} was removed successfully.`,
+                            });
+                          },
+                          onError: (error) => {
+                            toast({
+                              variant: "destructive",
+                              title: "Delete failed",
+                              description: getErrorMessage(error, `Unable to delete ${doc.file}.`),
+                            });
+                          },
+                        });
+                      }}
+                      className="p-1 rounded text-muted-foreground hover:text-error opacity-0 group-hover:opacity-100 transition-opacity bg-sidebar"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setExportsExpanded((prev) => !prev)}
+            className={cn(
+              "w-full mt-3 flex items-center justify-between px-3 py-2.5 rounded-xl border transition-colors",
+              exportsExpanded
+                ? "bg-primary/12 border-primary/35"
+                : "bg-white/[0.03] border-sidebar-border hover:bg-white/[0.06]"
+            )}
+          >
+            <div className="flex items-center gap-2.5">
+              <FileDown className="w-4 h-4 text-primary" />
+              <span className="text-xs font-extrabold tracking-wider text-foreground uppercase">EXPORTS</span>
+              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-primary/15 text-primary text-[10px] font-bold">
+                {exportArtifacts?.length ?? 0}
+              </span>
+            </div>
+            {exportsExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          </button>
+
+          {exportsExpanded && (
+            <div className="mt-2 space-y-2">
+              {exportsLoading && (
+                <div className="flex items-center gap-2 text-xs text-primary bg-primary/10 p-2 rounded-lg">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Loading exports...
+                </div>
+              )}
+              {!exportsLoading && (exportArtifacts?.length ?? 0) === 0 && (
+                <div className="text-xs text-muted-foreground italic px-1 py-2 text-center">No exports yet</div>
+              )}
+              {!exportsLoading && Object.entries(groupedExports).map(([dateLabel, items]) => (
+                <div key={dateLabel} className="space-y-1">
+                  <div className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase px-1">{dateLabel}</div>
+                  {items.map((item) => (
+                    <a
+                      key={`${item.filename}-${item.created_at}`}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={item.filename}
+                      className="group flex items-center gap-2 px-2 py-1.5 text-xs rounded-md hover:bg-white/5 transition-colors"
+                    >
+                      <File className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate flex-1" title={item.filename}>{item.filename}</span>
+                      <span className="text-[10px] text-muted-foreground uppercase">{item.kind}</span>
+                      <span className="text-[10px] text-muted-foreground">{formatSize(item.size_bytes)}</span>
+                      <Download className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </a>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="w-full mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-sidebar-border text-sm text-foreground/90 hover:bg-white/[0.08] transition-colors"
+          >
+            <Info className="w-4 h-4 text-primary" />
+            <span className="font-semibold tracking-wide">ABOUT</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Footer Status */}
+      <div className="p-4 border-t border-sidebar-border shrink-0 bg-sidebar">
+        <div className="flex items-center justify-center gap-2 text-xs font-medium text-center">
+          {status?.network_online ? (
+            <>
+              <Wifi className="w-4 h-4 text-success" />
+              <span className="text-foreground/80">Online</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-4 h-4 text-error" />
+              <span className="text-foreground/80">Offline</span>
+            </>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}

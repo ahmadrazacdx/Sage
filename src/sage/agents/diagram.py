@@ -13,6 +13,8 @@ SVG rendering is attempted via `render_mermaid_svg` tool for export.
 from __future__ import annotations
 
 import asyncio
+import re
+from datetime import datetime
 from typing import Any
 
 import structlog
@@ -26,8 +28,8 @@ from sage.prompts import (
     DIAGRAM_DESCRIPTION_PROMPT,
     DIAGRAM_FIX_PROMPT,
     DIAGRAM_MERMAID_PROMPT,
-    SYSTEM_PROMPT,
 )
+from sage.tools.export import reserve_export_path
 from sage.tools.mermaid import render_mermaid_svg, validate_mermaid
 
 log = structlog.get_logger(__name__)
@@ -58,14 +60,47 @@ def _strip_fences(text: str) -> str:
         text = "\n".join(lines).strip()
     return text
 
-def _build_response(mermaid_code: str, svg_data: str) -> str:
+def _slugify_query(query: str) -> str:
+    """Derive a filesystem-safe short slug from the user query."""
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", (query or "").strip().lower()).strip("_")
+    return (slug or "diagram")[:48]
+
+
+def _export_svg_artifact(svg_data: str, query: str) -> dict[str, str] | None:
+    """Persist diagram SVG to exports and return artifact metadata."""
+    if not svg_data.strip():
+        return None
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem = f"diagram_{_slugify_query(query)}_{timestamp}"
+
+    try:
+        output_path = reserve_export_path(stem, ".svg")
+        output_path.write_text(svg_data, encoding="utf-8")
+        return {
+            "kind": "svg",
+            "filename": output_path.name,
+            "path": str(output_path),
+        }
+    except Exception as exc:  # noqa: BLE001
+        log.warning("diagram_svg_export_failed", exc=str(exc)[:200])
+        return None
+
+
+def _build_response(mermaid_code: str, svg_data: str, export_filename: str | None = None) -> str:
     """Compose the final markdown response string."""
-    parts = [f"```mermaid\n{mermaid_code}\n```"]
-    if not svg_data:
-        parts.append(
-            "\n*SVG export unavailable — "
-            "the diagram is displayed above via Mermaid rendering.*"
+    parts: list[str] = []
+    if svg_data:
+        caption = (
+            "Here's your diagram — download it below."
+            if export_filename
+            else "Diagram rendered successfully."
         )
+        parts.append(caption)
+    else:
+        parts.append("*SVG render/export unavailable. Mermaid source is shown below.*")
+
+    parts.append(f"\n**Mermaid source**\n\n```text\n{mermaid_code}\n```")
     return "\n".join(parts)
 
 async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
@@ -87,10 +122,12 @@ async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     ku_text = _format_knowledge_units(kus)
     timeout: float = cfg.llm_timeout
     max_retries: int = cfg.diagram_max_retries
- 
+
+    _no_think = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+    llm = llm.bind(**_no_think)
+
     # Structured description
     desc_prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
         ("human", DIAGRAM_DESCRIPTION_PROMPT),
     ])
     try:
@@ -196,8 +233,19 @@ async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     except Exception as exc:
         log.warning("diagram_svg_render_failed", exc=str(exc)[:200])
  
+    artifact_paths: list[dict[str, str]] = []
+    if svg_data:
+        artifact = _export_svg_artifact(svg_data, query)
+        if artifact:
+            artifact_paths.append(artifact)
+
     return {
-        "response": _build_response(mermaid_code, svg_data),
+        "response": _build_response(
+            mermaid_code,
+            svg_data,
+            artifact_paths[0]["filename"] if artifact_paths else None,
+        ),
         "diagrams": [{"mermaid_code": mermaid_code, "svg_data": svg_data}],
+        "artifact_paths": artifact_paths,
         "tool_calls": [{"tool": "diagram_generation", "validated": validated}],
     }

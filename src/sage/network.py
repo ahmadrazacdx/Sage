@@ -1,7 +1,7 @@
 """
 Async network connectivity monitor for Sage.
 
-Performs a lightweight DNS probe (no HTTP overhead) on startup
+Performs lightweight TCP probes (no HTTP overhead) on startup
 and re-checks periodically.
 
 Usage (during lifespan):
@@ -19,7 +19,6 @@ Usage (during lifespan):
 from __future__ import annotations
 
 import asyncio
-import socket
 
 import structlog
 
@@ -27,18 +26,45 @@ from sage.config import NetworkSettings
 
 log = structlog.get_logger(__name__)
 
+# Probe multiple endpoints in parallel to reduce false negatives on restricted networks.
+_PROBE_ENDPOINTS: tuple[tuple[str, int], ...] = (
+    ("1.1.1.1", 443),
+    ("8.8.8.8", 53),
+    ("1.0.0.1", 443),
+)
 
-async def check_internet(timeout: float = 2.0) -> bool:
-    """Non-blocking DNS probe, resolves "dns.google" on port 443."""
+
+async def _tcp_probe(host: str, port: int, timeout: float) -> bool:
     try:
-        loop = asyncio.get_running_loop()
-        await asyncio.wait_for(
-            loop.getaddrinfo("dns.google", 443),
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
             timeout=timeout,
         )
+        _ = reader
+        writer.close()
+        await writer.wait_closed()
         return True
-    except (asyncio.TimeoutError, socket.gaierror, OSError):
+    except (asyncio.TimeoutError, OSError):
         return False
+
+
+async def check_internet(timeout: float = 2.0) -> bool:
+    """Check internet reachability via parallel TCP probes to known public endpoints."""
+    probes = [
+        asyncio.create_task(_tcp_probe(host, port, timeout), name=f"net-probe-{host}-{port}")
+        for host, port in _PROBE_ENDPOINTS
+    ]
+
+    try:
+        for completed in asyncio.as_completed(probes):
+            if await completed:
+                return True
+        return False
+    finally:
+        for probe in probes:
+            if not probe.done():
+                probe.cancel()
+        await asyncio.gather(*probes, return_exceptions=True)
 
 
 class NetworkMonitor:

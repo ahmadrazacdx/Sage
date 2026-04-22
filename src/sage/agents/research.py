@@ -21,6 +21,8 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import math
+import re
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -43,6 +45,17 @@ log = structlog.get_logger(__name__)
 _MAX_PLAN_RETRIES: int  = 2
 _MAX_ITEM_CHARS: int    = 600
 _TOK_PER_WORD: float    = 1.4
+_REF_SECTION_HEADING_RE = re.compile(
+    r"(?im)^(?:#{1,6}\s*|\*\*\s*)references(?:\s*\*\*)?\s*:?\s*$"
+)
+_REF_ITEM_START_RE = re.compile(r"^\[\d+\]\s+")
+_REF_INITIAL_RUN_RE = re.compile(r"(?:\b[A-Z]\.\s*){12,}")
+_PLACEHOLDER_REF_RE = re.compile(
+    r"(?im)^\[\d+\]\s+(?:Author(?:\(s\)|\s*\d*)?[.,]?\s*)?Title\.\s*Venue\.\s*Year\.\s*$"
+)
+_MAX_REFERENCE_LINE_CHARS = 320
+_MAX_INITIALS_IN_RUN = 8
+_MAX_FALLBACK_REFS = 24
 
 
 def _no_think(llm: ChatOpenAI) -> ChatOpenAI:
@@ -80,15 +93,8 @@ class ContextBudget:
         return int(self.digest_words * _TOK_PER_WORD * 5)  # ~5 chars/word
  
     @classmethod
-    def from_settings(cls) -> "ContextBudget":
-        """Derive budget from the live LLM context window.
-
-        llama.cpp splits ``ctx_size`` evenly across ``--parallel`` slots.
-        All budget limits must be derived from the per-slot budget
-        (``ctx_size // parallel_slots``), not the total KV-cache size.
-
-        Safe to call before the server starts (falls back to 3072 ctx / 1 slot).
-        """
+    def from_settings(cls) -> ContextBudget:
+        """Derive budget from the live LLM context window."""
         llm_cfg = get_settings().llm
         ctx: int = getattr(llm_cfg, "active_context_size", None) or 768
         parallel: int = max(getattr(llm_cfg, "active_parallel_slots", 1), 1)
@@ -181,6 +187,160 @@ def _trim(text: str, max_chars: int, ellipsis: bool = True) -> str:
     return text[:max_chars] + ("…" if ellipsis else "")
 
 
+def _compress_initials_run(match: re.Match[str]) -> str:
+    """Shorten pathological repeated initial sequences in broken references."""
+    initials = re.findall(r"[A-Z]\.", match.group(0))
+    if len(initials) <= _MAX_INITIALS_IN_RUN:
+        return match.group(0)
+    kept = " ".join(initials[:_MAX_INITIALS_IN_RUN])
+    return f"{kept} et al. "
+
+
+def _normalize_references_section(report: str) -> str:
+    """Force one-reference-per-line formatting in the References section."""
+    heading_match = _REF_SECTION_HEADING_RE.search(report)
+    if heading_match is None:
+        return report
+
+    prefix = report[:heading_match.end()]
+    references_raw = report[heading_match.end():].strip()
+    if not references_raw:
+        return report
+
+    # Ensure each [N] marker starts on its own line inside References.
+    references_raw = re.sub(r"(?<!\n)\s*(\[\d+\])\s*", r"\n\1 ", references_raw)
+
+    items: list[str] = []
+    current = ""
+    for raw_line in references_raw.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if _REF_ITEM_START_RE.match(line):
+            if current:
+                items.append(current)
+            current = line
+            continue
+        if current:
+            current = f"{current} {line}"
+
+    if current:
+        items.append(current)
+    if not items:
+        return report
+
+    cleaned_items: list[str] = []
+    for item in items:
+        normalized = " ".join(item.split())
+        normalized = _REF_INITIAL_RUN_RE.sub(_compress_initials_run, normalized)
+        if len(normalized) > _MAX_REFERENCE_LINE_CHARS:
+            normalized = normalized[:_MAX_REFERENCE_LINE_CHARS].rstrip() + "..."
+        cleaned_items.append(normalized)
+
+    return f"{prefix}\n" + "\n".join(cleaned_items)
+
+
+def _build_fallback_references(all_sources: list[dict[str, Any]]) -> list[str]:
+    """Build deterministic references from retrieved source metadata."""
+    refs: list[str] = []
+    seen_titles: set[str] = set()
+    idx = 1
+
+    for src in all_sources:
+        if idx > _MAX_FALLBACK_REFS:
+            break
+        data = src.get("data")
+        if not isinstance(data, dict):
+            continue
+        items = data.get("results", [])
+        if not isinstance(items, list):
+            continue
+
+        source_name = str(src.get("source", "source")).strip() or "source"
+        for item in items:
+            if idx > _MAX_FALLBACK_REFS:
+                break
+            if not isinstance(item, dict):
+                continue
+
+            raw_title = str(item.get("title") or "").strip()
+            if not raw_title:
+                continue
+            title = " ".join(raw_title.split())
+            title_key = title.lower()
+            if title_key in seen_titles:
+                continue
+            seen_titles.add(title_key)
+
+            refs.append(f"[{idx}] {title}. {source_name}.")
+            idx += 1
+
+    return refs
+
+
+def _all_refs_look_fake(references_raw: str) -> bool:
+    """Heuristic: if ≥60% of [N] lines match the generic pattern, treat all as fake."""
+    lines = [
+        line.strip()
+        for line in references_raw.splitlines()
+        if _REF_ITEM_START_RE.match(line.strip())
+    ]
+    if len(lines) < 2:
+        return False
+    fake = sum(
+        1 for line in lines
+        if re.search(r"\bTitle\b.*\bVenue\b.*\bYear\b", line, re.IGNORECASE)
+        or _PLACEHOLDER_REF_RE.match(line)
+    )
+    return fake >= len(lines) * 0.6
+
+
+def _replace_placeholder_references(
+    report: str,
+    all_sources: list[dict[str, Any]],
+) -> str:
+    """Replace generic placeholder references with source-derived references."""
+    heading_match = _REF_SECTION_HEADING_RE.search(report)
+    if heading_match is None:
+        return report
+
+    prefix = report[:heading_match.end()]
+    references_raw = report[heading_match.end():].strip()
+    if not references_raw:
+        return report
+    if not _PLACEHOLDER_REF_RE.search(references_raw) and not _all_refs_look_fake(references_raw):
+        return report
+
+    fallback_refs = _build_fallback_references(all_sources)
+    if not fallback_refs:
+        return report
+    return f"{prefix}\n" + "\n".join(fallback_refs)
+
+
+def _force_replace_references(report: str, source_refs: str) -> str:
+    """Always replace the References section with our deterministic source-derived refs.
+
+    This prevents the LLM from hallucinating or repeating garbled author strings
+    in the references block.  Falls back to the original report when no source
+    refs are available or no References heading is found.
+    """
+    if not source_refs or source_refs.strip() == "No references available.":
+        return report
+    heading_match = _REF_SECTION_HEADING_RE.search(report)
+    if heading_match is None:
+        return report
+    prefix = report[: heading_match.end()]
+    return f"{prefix}\n{source_refs}"
+
+
+def _build_source_references(all_sources: list[dict[str, Any]]) -> str:
+    """Build a deterministic References block from search metadata for prompt injection."""
+    refs = _build_fallback_references(all_sources)
+    if not refs:
+        return "No references available."
+    return "\n".join(refs)
+
+
 async def _search_source(
     tool_fn: Any,
     query: str,
@@ -194,7 +354,7 @@ async def _search_source(
             timeout=timeout,
         )
         return {"source": source_name, "data": result, "error": None}
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.warning("search_timeout", source=source_name, query=query[:60])
         return {"source": source_name, "data": None, "error": f"{source_name} timed out"}
     except Exception as exc:
@@ -304,7 +464,7 @@ async def _run_digest_phase(
  
     # 3. Assemble & safety-trim combined block
     blocks: list[str] = []
-    for (sub, _), digest in zip(subtopic_sources, digests):
+    for (sub, _), digest in zip(subtopic_sources, digests, strict=False):
         if isinstance(digest, Exception):
             log.warning("digest_gather_exc", subtopic=sub.name, exc=str(digest)[:200])
             blocks.append(f"### {sub.name}\n[digest unavailable]")
@@ -422,13 +582,22 @@ async def research_node(
             tagged.append((subtopic.name,
                 _search_source(search_web, q.web, "web", search_cfg.web_timeout)))
         if q.encyclopedia:
-            tagged.append((subtopic.name,
-                _search_source(search_wikipedia, q.encyclopedia, "wikipedia", search_cfg.wiki_timeout)))
+            tagged.append(
+                (
+                    subtopic.name,
+                    _search_source(
+                        search_wikipedia,
+                        q.encyclopedia,
+                        "wikipedia",
+                        search_cfg.wiki_timeout,
+                    ),
+                )
+            )
 
     all_sources: list[dict] = []
     if tagged:
         raw = await asyncio.gather(*[c for _, c in tagged], return_exceptions=True)
-        for (sub_name, _), result in zip(tagged, raw):
+        for (sub_name, _), result in zip(tagged, raw, strict=False):
             if isinstance(result, dict):
                 result["_subtopic"] = sub_name
                 all_sources.append(result)
@@ -445,6 +614,9 @@ async def research_node(
         plan, all_sources, budget, _digest_llm, timeout
     )
 
+    # Build deterministic references from source metadata
+    source_refs = _build_source_references(all_sources)
+
     # Report Writing
     report_prompt = ChatPromptTemplate.from_messages([("human", RESEARCH_REPORT_PROMPT)])
     report_chain = report_prompt | llm
@@ -455,6 +627,7 @@ async def research_node(
             report_chain.ainvoke({
                 "sources": digest_text,
                 "title": plan.title,
+                "source_references": source_refs,
             }),
             timeout=writer_timeout,
         )
@@ -463,6 +636,8 @@ async def research_node(
             if isinstance(report_result, AIMessage)
             else str(report_result)
         )
+        report = _force_replace_references(report, source_refs)
+        report = _normalize_references_section(report)
     except Exception as exc:
         log.error("research_report_failed", exc=str(exc)[:200])
         return {"response": "I was unable to synthesize the research report. Please try again."}
@@ -490,9 +665,10 @@ async def research_node(
         else:
             review_report = report
         try:
+            review_timeout = min(float(timeout), 90.0)  # cap so a slow reviewer can't double overall latency
             review: ResearchReview = await asyncio.wait_for(
                 review_chain.ainvoke({"report": review_report}),
-                timeout=timeout,
+                timeout=review_timeout,
             )
             log.info(
                 "research_review_complete",
@@ -521,6 +697,7 @@ async def research_node(
                 report_chain.ainvoke({
                     "sources": _trim(revision_context, budget.source_char_budget, ellipsis=False),
                     "title": plan.title,
+                    "source_references": source_refs,
                 }),
                 timeout=writer_timeout,
             )
@@ -529,6 +706,8 @@ async def research_node(
                 if isinstance(report_result, AIMessage)
                 else str(report_result)
             )
+            report = _force_replace_references(report, source_refs)
+            report = _normalize_references_section(report)
             log.info("research_report_revised", iteration=review_iter)
 
         except Exception as exc:
@@ -539,11 +718,14 @@ async def research_node(
             )
             break
 
+    artifact_paths: list[dict[str, str]] = []
+    pdf_export_failed = False
+
     # Export markdown
     safe_title = plan.title.replace(" ", "_")[:50]
     export_suffix = f"research_{safe_title}"
     try:
-        export_result = export_markdown.invoke({
+        export_markdown.invoke({
             "content": report,
             "filename": export_suffix,
         })
@@ -558,16 +740,36 @@ async def research_node(
             "subtitle": "AI-Generated Research Report",
             "author": "Sage Research Agent",
         })
-        if pdf_result.get("path"):
-            report += f"\n*PDF saved to: `{pdf_result['path']}`*"
+        pdf_path = str(pdf_result.get("path") or "").strip()
+        if pdf_path:
+            artifact_paths.append({
+                "kind": "pdf",
+                "filename": Path(pdf_path).name,
+                "path": pdf_path,
+            })
         elif pdf_result.get("error"):
+            pdf_export_failed = True
             log.warning("export_pdf_soft_fail", error=pdf_result["error"])
+        else:
+            pdf_export_failed = True
+            log.warning("export_pdf_missing_path")
     except Exception as exc:
+        pdf_export_failed = True
         log.warning("export_pdf_failed", exc=str(exc)[:200])
 
+    response = report
+    if artifact_paths:
+        response = (
+            "I have completed your research report. "
+            "Use the download button below to get the PDF."
+        )
+    elif pdf_export_failed:
+        log.info("research_fallback_text_response")
+
     return {
-        "response": report,
+        "response": response,
         "research_plan": plan.model_dump(),
         "research_sources": all_sources,
         "research_report": report,
+        "artifact_paths": artifact_paths,
     }

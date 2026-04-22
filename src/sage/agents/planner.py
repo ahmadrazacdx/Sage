@@ -280,42 +280,42 @@ def _format_schedule_markdown(
     else:
         lines += [
             "## 📅 Daily Schedule", "",
-            "| Day | Mode | Topics | Hours | Activities | KU Refs |",
-            "| :---: | --- | --- | :---: | --- | :---: |",
+            "| Day | Mode | Topics | Hours | Activities |",
+            "| :---: | --- | --- | :---: | --- |",
         ]
         for day in schedule.schedule:
             icon = _SESSION_ICON.get(day.session_type, "📌")
             mode = f"{icon} **{day.session_type.capitalize()}**"
             topics = "<br>".join(f"• {t}" for t in day.topics)
             activities = "<br>".join(f"▸ {a}" for a in day.activities) if day.activities else "—"
-            ku = " ".join(f"`{k}`" for k in day.knowledge_unit_refs) if day.knowledge_unit_refs else "—"
             lines.append(
-                f"| {day.day} | {mode} | {topics} | **{day.hours}h** | {activities} | {ku} |"
+                f"| {day.day} | {mode} | {topics} | **{day.hours}h** | {activities} |"
             )
             if day.day in cp_map:
-                lines.append(f"| | 🏁 | ***Checkpoint*** | | *{cp_map[day.day]}* | |")
+                lines.append(f"| | 🏁 | ***Checkpoint*** | | *{cp_map[day.day]}* |")
  
     if schedule.checkpoints:
-        lines += ["", "---", "## 🏁 Progress Checkpoints", ""]
+        lines += ["---", "## 🏁 Progress Checkpoints"]
         for cp in schedule.checkpoints:
             lines.append(f"- **After Day {cp.after_day}:** {_escape_md(cp.milestone)}")
  
     if schedule.self_assessment_questions:
         lines += [
-            "", "---", "## 📝 Self-Assessment", "",
-            "> Answer these *before* your final revision day to spot remaining gaps.", "",
+            "---", "## 📝 Self-Assessment",
+            "> Answer these *before* your final revision day to spot remaining gaps.",
         ]
         for i, q in enumerate(schedule.self_assessment_questions, 1):
             lines.append(f"- **Q{i}.** {_escape_md(q)}")
  
     lines += [
-        "", "---",
+        "---",
         f"📊 **{study_days}** study days · **{revision_days}** revision days · "
         f"**{total_hours:.1f}h** total commitment",
     ]
  
     return "\n".join(lines)
- 
+
+
 def _format_knowledge_units(kus: list[dict]) -> str:
     if not kus:
         return "None available."
@@ -323,7 +323,7 @@ def _format_knowledge_units(kus: list[dict]) -> str:
         f"[{ku.get('id', 'KU?')}] {ku.get('claim', ku.get('content', ''))}"
         for ku in kus
     )
- 
+
 
 def _build_fallback_schedule(analysis: RoadmapAnalysis) -> RoadmapSchedule:
     """Deterministic minimal schedule when LLM generation fails."""
@@ -344,15 +344,15 @@ def _build_fallback_schedule(analysis: RoadmapAnalysis) -> RoadmapSchedule:
             checkpoints=[Checkpoint(after_day=1, milestone="Initial learning")],
             self_assessment_questions=[f"What are the main concepts in {analysis.subject}?"],
         )
- 
+
     days_available = analysis.timeline_days
     topics = sorted(analysis.topics, key=lambda t: len(t.prerequisites))
     daily_hours = analysis.daily_hours_available
     topics_per_day = max(1, len(topics) // max(1, days_available - 1))
- 
+
     schedule_days: list[ScheduleDay] = []
     for day in range(1, days_available):
-        day_topics = topics[(day - 1) * topics_per_day: day * topics_per_day]
+        day_topics = topics[(day - 1) * topics_per_day : day * topics_per_day]
         schedule_days.append(
             ScheduleDay(
                 day=day,
@@ -371,11 +371,12 @@ def _build_fallback_schedule(analysis: RoadmapAnalysis) -> RoadmapSchedule:
                 knowledge_unit_refs=[],
                 checkpoint=(
                     f"Understand {', '.join(' '.join(t.name.split()[:2]) for t in day_topics)}"
-                    if day_topics else None
+                    if day_topics
+                    else None
                 ),
             )
         )
- 
+
     schedule_days.append(
         ScheduleDay(
             day=days_available,
@@ -391,7 +392,7 @@ def _build_fallback_schedule(analysis: RoadmapAnalysis) -> RoadmapSchedule:
             checkpoint="Ready for assessment",
         )
     )
- 
+
     return RoadmapSchedule(
         schedule=schedule_days,
         checkpoints=[Checkpoint(after_day=days_available, milestone="Study plan complete")],

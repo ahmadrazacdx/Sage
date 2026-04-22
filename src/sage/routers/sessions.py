@@ -24,6 +24,7 @@ class Session(BaseModel):
 class Message(BaseModel):
     role: str
     content: str
+    artifact: dict[str, str] | None = None
 
 @router.get("/sessions", response_model=list[Session])
 async def list_sessions(request: Request) -> list[Session]:
@@ -41,7 +42,7 @@ async def get_session_messages(
     request: Request,
 ) -> list[Message]:
     """Load the full message history for a past conversation."""
-    messages: dict[str, list[dict[str, str]]] = getattr(
+    messages: dict[str, list[dict[str, Any]]] = getattr(
         request.app.state, "thread_messages", {}
     )
     thread = messages.get(thread_id)

@@ -1,0 +1,16 @@
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {
+    "preinstall": "node -e \"const fs=require('fs');['package-lock.json','yarn.lock'].forEach(f=>{try{fs.unlinkSync(f)}catch{}});const ua=process.env.npm_config_user_agent||'';if(!ua.includes('pnpm')){console.error('Please use pnpm.');process.exit(1)}\"",
+    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+  },
+  "private": true,
+  "devDependencies": {
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.2"
+  }
+}
