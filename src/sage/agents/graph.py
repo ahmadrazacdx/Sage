@@ -45,18 +45,25 @@ def _route_post_reasoning(state: AgentState) -> str:
     return "response_generator" if state.get("intent") == "explain" else END
 
 
-def build_graph(llm: ChatOpenAI) -> CompiledStateGraph:
+def build_graph(
+    llm: ChatOpenAI,
+    checkpointer: Any | None = None,
+) -> CompiledStateGraph:
     """Assemble, compile, and return the Sage agent graph.
 
     Args:
         llm: The `ChatOpenAI` instance pointed at the local
              llama-server.  Created once by `create_llm(port)`
              in `sage.llm` and passed here during startup.
+        checkpointer: Optional LangGraph checkpointer for state
+             persistence.  When provided, every graph invocation
+             with a `thread_id` config will automatically save
+             and restore state across restarts.
 
     Returns:
         A compiled `CompiledStateGraph` with all nodes error-bounded
         and edges wired per the topology in the module docstring.
-        Ready for `await graph.ainvoke(state)`.
+        Ready for `await graph.ainvoke(state, config)`.
     """
     graph = StateGraph(AgentState)
 
@@ -119,13 +126,19 @@ def build_graph(llm: ChatOpenAI) -> CompiledStateGraph:
     graph.add_edge("research",          END)
     graph.add_edge("code_fix",          END)
 
-    # Compile
-    compiled = graph.compile()
+    # Compile with optional checkpointer.
+    compiled = graph.compile(checkpointer=checkpointer)
+
+    persistence_note = (
+        f"Checkpointer active ({type(checkpointer).__name__})"
+        if checkpointer is not None
+        else "No checkpointer — state is ephemeral."
+    )
 
     log.info(
         "graph_compiled",
         nodes=len(compiled.nodes),
-        hint="No checkpointer configured — state is ephemeral.",
+        persistence=persistence_note,
     )
 
     return compiled

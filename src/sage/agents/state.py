@@ -62,6 +62,7 @@ class AgentState(TypedDict, total=False):
     tool_calls: list[dict]
     online_mode: bool
     thread_id: str
+    history_summary: str
 
     # --- Dropdown Routing ---
     mode: str
