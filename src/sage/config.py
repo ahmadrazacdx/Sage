@@ -54,6 +54,7 @@ class AppSettings(BaseSettings):
     name: str = "Sage"
     data_dir: Path = Path("artifacts/data")
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+    desktop_mode: bool = True
 
 
 class LLMSettings(BaseSettings):
@@ -68,11 +69,17 @@ class LLMSettings(BaseSettings):
     model_name_cpu: str = "Qwen3.5-2B"
     model_name_cuda: str = "Qwen3.5-4B"
     
-    # Active instance configuration dynamically populated by llm.py start_llm_server
+    # Active instance configuration dynamically populated by llm.py
     active_model_path: Path = Path(".")
     active_model_name: str = "uninitialized"
     active_context_size: int = 0
     active_parallel_slots: int = 1
+
+    # Utility model
+    util_model_path: Path = Path("artifacts/models/Qwen3.5-0.8B-Q4_K_M.gguf")
+    util_model_name: str = "Qwen3.5-0.8B"
+    util_context_window: int = Field(default=4096, ge=512, le=16384)
+    util_startup_timeout: float = Field(default=60.0, ge=10.0, le=300.0)
 
     # Per-backend llama-server binaries.
     llama_cpp_cpu_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")
@@ -110,13 +117,7 @@ class LLMSettings(BaseSettings):
 class EmbeddingSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    tier: Literal["lite", "standard"] = "lite"
-    model_lite: Path = Path("artifacts/models/embedding-models/arctic-embed-s")
-    model_standard: Path = Path("artifacts/models/embedding-models/arctic-embed-m-v2")
-
-    @property
-    def active_model(self) -> Path:
-        return self.model_lite if self.tier == "lite" else self.model_standard
+    embed_model: Path = Path("artifacts/models/embedding-models/bge-small-en-v1.5")
 
 
 class RAGSettings(BaseSettings):
@@ -164,7 +165,6 @@ class AgentSettings(BaseSettings):
 
     max_input_tokens: int = Field(default=2000, ge=256)
     max_history_tokens: int = Field(default=800, ge=128)
-    max_conversations: int = Field(default=100, ge=1)
     llm_timeout: int = Field(default=180, ge=10)
     research_writer_timeout: int = Field(default=300, ge=30)
     diagram_max_retries: int = Field(default=3, ge=1, le=10)
@@ -240,6 +240,20 @@ class UISettings(BaseSettings):
     browser_auto_open: bool = True
 
 
+class MemorySettings(BaseSettings):
+    """Long-term semantic memory configuration."""
+
+    model_config = SettingsConfigDict(extra="ignore")
+
+    max_memories: int = Field(default=1000, ge=10)
+    extraction_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    dedup_similarity: float = Field(default=0.88, ge=0.5, le=1.0)
+    search_top_k: int = Field(default=5, ge=1, le=20)
+    search_min_score: float = Field(default=0.25, ge=0.0, le=1.0)
+    compress_after_turns: int = Field(default=6, ge=2, le=20)
+    max_history_tokens: int = Field(default=800, ge=128, le=8192)
+
+
 class InstitutionSettings(BaseSettings):
     """Identity and program registry loaded from institution.toml."""
 
@@ -277,6 +291,7 @@ class Settings(BaseSettings):
     corpus: CorpusSettings = CorpusSettings()
     network: NetworkSettings = NetworkSettings()
     ui: UISettings = UISettings()
+    memory: MemorySettings = MemorySettings()
     institution: InstitutionSettings = InstitutionSettings()
 
 
@@ -317,6 +332,7 @@ def get_settings() -> Settings:
         corpus=CorpusSettings(**raw.get("corpus", {})),
         network=NetworkSettings(**raw.get("network", {})),
         ui=UISettings(**raw.get("ui", {})),
+        memory=MemorySettings(**raw.get("memory", {})),
         institution=InstitutionSettings(**inst_raw),
     )
 

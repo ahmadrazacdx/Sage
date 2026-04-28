@@ -1,9 +1,10 @@
 # Sage — Default System Configuration
 
 [app]
-name      = "Sage"
-data_dir  = "artifacts/data"
-log_level = "info"
+name         = "Sage"
+data_dir     = "artifacts/data"
+log_level    = "info"
+desktop_mode = true
 
 [llm]
 model_path_cpu  = "artifacts/models/Qwen3.5-2B-Q4_K_M.gguf"
@@ -13,6 +14,12 @@ model_name_cuda = "Qwen3.5-4B"
 llama_cpp_cpu_bin  = "artifacts/servers/cpu/llama-server.exe"
 llama_cpp_cuda_bin = "artifacts/servers/cuda/llama-server.exe"
 llama_cpp_vulkan_bin = "artifacts/servers/vulkan/llama-server.exe"
+
+# Utility model
+util_model_path = "artifacts/models/Qwen3.5-0.8B-Q4_K_M.gguf"
+util_model_name = "Qwen3.5-0.8B"
+util_context_window  = 2000
+util_startup_timeout = 40.0
 
 # Hardware auto-scaling
 gpu_layers     = "auto"
@@ -54,10 +61,18 @@ wal_mode = true
 [agent]
 max_input_tokens    = 2000
 max_history_tokens  = 600
-max_conversations   = 100
 llm_timeout         = 180
 diagram_max_retries = 3
 research_max_iters  = 2
+
+[memory]
+max_memories           = 1000
+extraction_threshold   = 0.6
+dedup_similarity       = 0.88
+search_top_k           = 5
+search_min_score       = 0.25
+compress_after_turns   = 6
+max_history_tokens     = 800
 
 [tools.sandbox]
 timeout         = 10
