@@ -550,7 +550,8 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
         """Ensure llama-server is terminated when the parent receives SIGTERM."""
         _terminate_process(proc)
 
-    signal.signal(signal.SIGTERM, _sigterm_handler)
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _sigterm_handler)
 
     _wait_for_server(port, proc, stderr_lines, timeout_s=cfg.startup_timeout)
     _warmup_server(port)
@@ -704,5 +705,110 @@ def _with_thinking(llm: ChatOpenAI, budget: int) -> ChatOpenAI:
         extra_body={
             "chat_template_kwargs": {"enable_thinking": True},
             "thinking_budget": budget,
+        }
+    )
+
+
+# --- Utility Model Server ---
+def start_utility_server() -> tuple[subprocess.Popen[bytes], int]:
+    """Spawn a llama-server for utility model."""
+    cfg = get_settings().llm
+    util_model: Path = cfg.util_model_path
+    if not util_model.is_absolute():
+        from sage.config import _PROJECT_ROOT
+        util_model = _PROJECT_ROOT / util_model
+
+    if not util_model.exists():
+        log.warning(
+            "utility_model_not_found",
+            path=str(util_model),
+            hint="Utility model not available. Memory extraction will "
+                 "fall back to the primary model.",
+        )
+        raise FileNotFoundError(
+            f"Utility model GGUF not found at: {util_model}\n"
+            "Place the utility model at the configured util_model_path."
+        )
+    cpu_bin = cfg.llama_cpp_cpu_bin
+    if not cpu_bin.is_absolute():
+        from sage.config import _PROJECT_ROOT
+        cpu_bin = _PROJECT_ROOT / cpu_bin
+
+    if not _binary_installation_ok(cpu_bin, backend="cpu"):
+        raise FileNotFoundError(
+            f"CPU llama-server needed for utility model, "
+            f"but installation incomplete at: {cpu_bin.parent}"
+        )
+
+    _kill_orphaned_servers(util_model)
+    port = _find_free_port()
+    ctx_size = cfg.util_context_window
+
+    cmd = [
+        str(cpu_bin),
+        "--model", str(util_model),
+        "--host", _LLAMA_SERVER_HOST,
+        "--port", str(port),
+        "--threads", "2",
+        "--threads-batch", "4",
+        "--batch-size", "512",
+        "--ubatch-size", "128",
+        "--ctx-size", str(ctx_size),
+        "--n-gpu-layers", "0",
+        "--parallel", "1",
+        "--cache-type-k", "q4_0",
+        "--cache-type-v", "q4_0",
+        "--cont-batching",
+        "--jinja",
+        "--reasoning-budget", "0",
+        "--reasoning-format", "none",
+    ]
+
+    log.info(
+        "utility_server_starting",
+        port=port,
+        model=util_model.name,
+        ctx_size=ctx_size,
+    )
+
+    _win_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        creationflags=_win_flags,
+    )
+
+    stderr_lines = _start_stderr_drain(proc)
+    atexit.register(_terminate_process, proc)
+
+    _wait_for_server(
+        port, proc, stderr_lines,
+        timeout_s=cfg.util_startup_timeout,
+    )
+    _warmup_server(port)
+
+    log.info("utility_server_ready", port=port, model=util_model.name)
+    return proc, port
+
+
+def create_utility_llm(port: int) -> ChatOpenAI:
+    """Return a ChatOpenAI instance for utility model."""
+    cfg = get_settings().llm
+
+    llm = ChatOpenAI(
+        base_url=f"http://{_LLAMA_SERVER_HOST}:{port}/v1",
+        api_key="local",
+        model=cfg.util_model_name,
+        temperature=0.1,
+        max_tokens=512,
+        streaming=False,
+        timeout=60,
+    )
+
+    return llm.bind(
+        extra_body={
+            "chat_template_kwargs": {"enable_thinking": False},
         }
     )

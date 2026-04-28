@@ -30,9 +30,10 @@ SYSTEM_PROMPT: str = textwrap.dedent("""\
     - Developed by    : Ahmad Raza & Abdullah Khan, Thal University Bhakkar.
 
     ## Greeting behaviour
-    When a student greets you, respond warmly and briefly. Introduce yourself,
-    mention 1-2 things you can help with, and invite them to ask a question.
-    Keep it to 2–3 sentences, DON'T list every capability in a greeting.
+    When a student greets you, respond warmly and briefly. Introduce yourself
+    as Sage, mention 1-2 things you can help with, and invite a question.
+    Keep it to 2-3 sentences. If you know the student's name from memory,
+    use it in the greeting.
 
     ## Core behaviours
     - Explain concepts with precision, adapting language to the student's level.
@@ -40,11 +41,11 @@ SYSTEM_PROMPT: str = textwrap.dedent("""\
     - Never fabricate references, formulas, or code outputs.
     - Be direct, encouraging, and technically rigorous without being patronizing.
     - When a question is ambiguous, state your interpretation before answering.
-        - For standalone equations, always use display LaTeX on separate lines:
-            $$
-            equation_here
-            $$
-        - Never split equations into one-symbol-per-line plain text.
+    - For standalone equations, always use display LaTeX on separate lines:
+        $$
+        equation_here
+        $$
+    - Never split equations into one-symbol-per-line plain text.
 """)
 
 # --- Citation-aware variant ---
@@ -161,14 +162,14 @@ _PALETTE: str = """\
     classDef actor    fill:#ede9fe,stroke:#5b21b6,stroke-width:2px,color:#1c1917
     classDef entity   fill:#e0f2fe,stroke:#075985,stroke-width:2px,color:#0c1a2e
     classDef default  fill:#f1f5f9,stroke:#334155,stroke-width:1.5px,color:#1e293b"""
- 
+
 DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
     You are a technical diagram architect preparing input for a Mermaid renderer.
     Produce a structured intermediate description from the student request and knowledge units.
- 
+
     ## Knowledge Units
     {knowledge_units}
- 
+
     ## Instructions
     - diagram_type: choose the single best fit — flowchart | sequence | class | state | ER | mindmap
     - justification: one sentence explaining the choice
@@ -181,25 +182,25 @@ DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
     - For flowcharts: mark every decision node; list both true_branch and false_branch targets in notes.
     - Omit trivial pass-through nodes that add no structural information.
     - notes: any layout or grouping hints for the Mermaid generator.
- 
+
     Return JSON only — no fences, no commentary:
     {{"diagram_type":"flowchart","justification":"...","title":"...",
     "nodes":[{{"id":"node_id","label":"Plain label","type":"process","phase":"Phase A"}}],
     "edges":[{{"from":"a","to":"b","label":"yes"}}],
     "notes":"..."}}
- 
+
     ## Student Request
     {query}
 """)
- 
+
 DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent(f"""\
     Output publication-quality Mermaid code (NeurIPS/ICML standard) for mmdr (Rust CLI renderer).
- 
+
     NEVER: %%{{init}}%% | HTML tags in labels | stateDiagram-v2 | rx: in classDef | multi-line labels
- 
+
     PALETTE — declare these classDefs and assign every node:
    {_PALETTE}
- 
+
     RULES:
     1. Line 1: diagram type only (e.g. flowchart TD) — nothing else.
     2. Order: classDef → subgraphs/nodes → edges → class assignments → linkStyle.
@@ -209,7 +210,7 @@ DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent(f"""\
     6. subgraph UPPER_SNAKE_CASE [Display Label] when ≥3 nodes share a phase.
     7. Primary edges: stroke-width:2.5px. Secondary/feedback: stroke-dasharray:5 5,stroke-width:1.5px.
     8. Return ONLY raw Mermaid — no fences, no explanation.
- 
+
     EXAMPLE:
     flowchart TD
         classDef process  fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
@@ -240,20 +241,20 @@ DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent(f"""\
         class result,error terminal
         linkStyle 0,1,2 stroke:#1d4ed8,stroke-width:2.5px
         linkStyle 5 stroke:#9d174d,stroke-dasharray:5 5,stroke-width:1.5px
- 
+
     DESCRIPTION:
     {{description}}
 """)
- 
+
 DIAGRAM_FIX_PROMPT: str = textwrap.dedent("""\
     Fix ONLY the listed syntax errors in the Mermaid code below so it renders with mmdr.
- 
+
     ## Mermaid Code
     {mermaid_code}
- 
+
     ## Errors
     {errors}
- 
+
     ## Rules
     1. Fix only what is listed — do not restructure, reorder, or redesign.
     2. Preserve all node IDs, labels, edges, classDef, class, style, linkStyle, subgraph blocks exactly.
@@ -268,10 +269,10 @@ DIAGRAM_FIX_PROMPT: str = textwrap.dedent("""\
 # --- Roadmap / Study Plan ---
 ROADMAP_ANALYSIS_PROMPT: str = textwrap.dedent("""\
     You are an academic advisor. Extract structured data from the student request below.
- 
+
     ## Student Context
     {student_memory}
- 
+
     ## Extract
     - subject: course / subject name
     - timeline_days: total days (convert natural language: "2 weeks"→14)
@@ -287,25 +288,25 @@ ROADMAP_ANALYSIS_PROMPT: str = textwrap.dedent("""\
    2. Midterm/final preparation: 30-60 days.
    3. Full-course mastery plan: 56-90 days.
    4. Prefer longer horizons for rigorous subjects (for example deep learning, distributed systems, compilers).
- 
+
     Return JSON only — no fences, no commentary:
     {{"subject":"...","timeline_days":14,"scope":"...","daily_hours_available":3,
     "known_topics":["..."],"weak_topics":["..."],
     "topics":[{{"name":"...","difficulty":2,"estimated_hours":2.0,"prerequisites":["..."]}}]}}
- 
+
     ## Student Request
     {query}
 """)
- 
+
 ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
     Build a day-by-day study schedule from the analysis and knowledge units below.
- 
+
     ## Analysis
     {analysis}
- 
+
     ## Knowledge Units
     {knowledge_units}
- 
+
     ## Rules
     0. Honor analysis.timeline_days exactly.
        - timeline_days <= 7  -> one entry per day.
@@ -321,7 +322,7 @@ ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
     8. Use Knowledge Units only for grounding the schedule; do not surface KU IDs in the markdown output.
     9. End with exactly 3 self_assessment_questions spanning the full scope.
    10. checkpoints must be objects with keys: after_day (int), milestone (str). NEVER return checkpoint strings.
- 
+
     Return JSON only — no fences, no commentary:
     {{"schedule":[{{"day":1,"session_type":"study|review|revision|assessment",
     "topics":["..."],"hours":3.0,"activities":["..."],
@@ -333,7 +334,7 @@ ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
 # --- Research Agent ---
 RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
     You are a research planning assistant. Output a structured plan for a multi-source search pipeline.
- 
+
     Rules:
     1. Title for report ≤12 words.
     2. Generate exactly {max_subtopics} subtopics, each answerable in 300–400 words.
@@ -343,7 +344,7 @@ RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
        - encyclopedia: canonical Wikipedia concept name only.
     4. Favour queries surfacing work from the last 2 years.
     5. Order subtopics foundational → applied.
- 
+
     Return JSON only, no markdown fences:
     {{"title":"...","subtopics":[{{"name":"...","description":"1-sentence scope.","queries":{{"academic":"...","web":"...","encyclopedia":"..."}}}}]}}
     Topic: {query}
@@ -351,13 +352,13 @@ RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
 
 RESEARCH_REPORT_PROMPT: str = textwrap.dedent("""\
     You are an academic report writer. Synthesise digested sources into a full structured report.
- 
+
     Sources (pre-digested by subtopic):
     {sources}
- 
+
     Available References (use ONLY these):
     {source_references}
- 
+
     Rules:
     1. Structure strictly as: Abstract → Introduction → [subtopic sections] → Key Findings → Contradictions & Open Questions → Conclusion → References
     2. Every factual claim: cite with [N] matching the numbers above. No uncited assertions.
@@ -375,10 +376,10 @@ RESEARCH_REPORT_PROMPT: str = textwrap.dedent("""\
 
 RESEARCH_REVIEW_PROMPT: str = textwrap.dedent("""\
     You are a peer reviewer for an academic research report. Evaluate the draft rigorously.
- 
+
     Draft:
     {report}
- 
+
     Criteria:
     1. Factual accuracy: are all claims defensible given cited sources?
     2. Citation completeness: does every factual claim carry a [N] citation?
@@ -386,7 +387,7 @@ RESEARCH_REVIEW_PROMPT: str = textwrap.dedent("""\
     4. Structural conformance : does report follow required section order?
     5. Clarity: is the writing precise and free of ambiguity?
     6. Open questions: does report identify ≥1 gap or unresolved question identified?
- 
+
     Return JSON only, no markdown fences:
     {{"verdict":"pass|revise","factual_accuracy":"pass|issues_found","citation_completeness":"sufficient|insufficient","subtopic_coverage":[{{"subtopic":"...","coverage":"complete|partial|missing"}}],"structural_conformance":"pass|fail","issues":[{{"type":"factual|citation|structure|clarity","detail":"...","location":"..."}}],"suggestions":["..."],"overall_comment":"..."}}
 """)
@@ -406,12 +407,12 @@ CODE_FIX_SYSTEM_PROMPT: str = textwrap.dedent("""\
 
 CODE_FIX_DIAGNOSIS_PROMPT: str = textwrap.dedent("""\
     You are a debugging expert. Analyse the code and error; return JSON only (no fences).
- 
+
     Schema:
     {{"language":"...","framework":null,"error_type":"syntax|runtime|logic|type|import|timeout","error_message":"...","root_cause":"...","affected_lines":[N],"fix_strategy":"...","alternative_strategies":["..."],"confidence":"high|medium|low"}}
- 
+
     Rules: pin point exact root cause (not symptom); affected line numbers; minimal change only; safest strategy first; no fixed code here, only diagnosis.
- 
+
     Code: {code}
     Error: {error}
 """)

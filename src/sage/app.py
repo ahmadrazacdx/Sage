@@ -4,7 +4,7 @@ FastAPI application factory for Sage.
 Usage:
 
     from sage.app import create_app
-    app = create_app(llm_port=port, gpu_info=gpu_info)
+    app = create_app()
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ from fastapi.staticfiles import StaticFiles
 
 from sage.agents import build_graph
 from sage.config import get_settings
-from sage.database import init_db
-from sage.llm import create_llm
+from sage.database import init_db, resolve_db_path
+from sage.llm import create_llm, create_utility_llm, start_llm_server, start_utility_server
 from sage.network import NetworkMonitor
 from sage.tools.export import resolve_export_output_dir
 
@@ -36,68 +36,137 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _FRONTEND_DIST = _PROJECT_ROOT / "frontend" / "artifacts" / "sage" / "dist"
 
 
+async def _heavy_startup(app: FastAPI, checkpointer: Any, cfg: Any) -> None:
+    """LLM server startup & graph compilation."""
+    try:
+        # Start primary LLM server in a thread-pool (blocking I/O).
+        proc, llm_port, gpu_info = await asyncio.to_thread(start_llm_server)
+        app.state.llm_port = llm_port
+        app.state.gpu_info  = gpu_info
+
+        # Start utility server in a thread-pool.
+        utility_port: int | None = None
+        try:
+            _, utility_port = await asyncio.to_thread(start_utility_server)
+        except FileNotFoundError as exc:
+            log.warning(
+                "utility_server_skipped",
+                reason=str(exc)[:200],
+                hint="Memory features will use the primary model as fallback.",
+            )
+        app.state.utility_port = utility_port
+
+        # LLM clients.
+        llm = create_llm(llm_port)
+        app.state.llm = llm
+
+        utility_llm = None
+        if utility_port is not None:
+            utility_llm = create_utility_llm(utility_port)
+        app.state.utility_llm = utility_llm
+
+        # Compile graph with the already-open checkpointer.
+        app.state.graph = build_graph(llm, checkpointer=checkpointer)
+
+        # Signal frontend: model is ready.
+        app.state.model_ready = True
+        log.info(
+            "app_startup_complete",
+            port=cfg.ui.port,
+            checkpointer="AsyncSqliteSaver",
+            utility_model="available" if utility_llm else "unavailable",
+            embedding_model="available" if app.state.embed_model else "unavailable",
+        )
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        log.error(
+            "heavy_startup_failed",
+            exc_type=type(exc).__name__,
+            error=str(exc)[:500],
+        )
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Startup / shutdown sequence.
-
-    Startup (concurrent where safe):
-        1. init_db()       : SQLite schema creation
-        2. NetworkMonitor  : first probe + background poller
-        3. build_graph(llm): compile LangGraph agent graph
-
-    All heavy singletons are stored on `app.state`, routers read
-    them via `request.app.state`.  Nothing is re-initialised per
-    request.
-    """
+    """Startup / shutdown sequence."""
     cfg = get_settings()
 
-    # LLM client
-    llm = create_llm(app.state.llm_port)
-    app.state.llm = llm
+    # --- Instant defaults (< 1 ms) ---
+    app.state.model_ready  = False
+    app.state.llm          = None
+    app.state.utility_llm  = None
+    app.state.graph        = None
+    app.state.llm_port     = None
+    app.state.gpu_info     = {}
+    app.state.utility_port = None
+    app.state.pending_streams  = {}
+    app.state.active_streams   = {}
+    app.state.thread_messages  = {}
+    app.state.embed_model      = None
+    app.state.checkpointer     = None
+    app.state.uploaded_docs    = []
+    app.state._checkpointer_cm = None
+    app.state._heavy_task      = None
 
-    # Concurrent I/O-bound init
+    # Start network monitor — fires first probe concurrently, non-blocking.
     network = NetworkMonitor(cfg.network)
-    await asyncio.gather(
-        init_db(),
-        network.start(),
-    )
-
-    app.state.graph = build_graph(llm)
+    asyncio.create_task(network.start(), name="sage-network-start")
     app.state.network = network
 
-    # In-memory stores
-    thread_messages: dict[str, list[dict[str, Any]]] = {}
-    thread_meta: dict[str, dict[str, Any]] = {}
-    pending_streams: dict[str, dict[str, Any]] = {}
-    active_streams: dict[str, bool] = {}
-    uploaded_docs: list[dict[str, Any]] = []
+    async def _fast_then_heavy() -> None:
+        """Run DB init + checkpointer open + embed probe, then heavy LLM startup."""
+    
+        try:
+            await init_db()
+            log.info("database_ready")
+        except Exception as exc:
+            log.error("init_db_failed", error=str(exc)[:300])
+            return
+        
+        try:
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+            db_path = resolve_db_path()
+            cm = AsyncSqliteSaver.from_conn_string(str(db_path))
+            checkpointer = await cm.__aenter__()
+            app.state.checkpointer     = checkpointer
+            app.state._checkpointer_cm = cm
 
-    app.state.thread_messages = thread_messages
-    app.state.thread_meta = thread_meta
-    app.state.pending_streams = pending_streams
-    app.state.active_streams = active_streams
-    app.state.uploaded_docs = uploaded_docs
-
-    app.state.model_ready = True
-    log.info("app_startup_complete", port=cfg.ui.port)
-
+            heavy_task = asyncio.create_task(
+                _heavy_startup(app, checkpointer, cfg),
+                name="sage-heavy-startup",
+            )
+            app.state._heavy_task = heavy_task
+        except Exception as exc:
+            log.error("checkpointer_open_failed", error=str(exc)[:300])
+    
+    asyncio.create_task(_fast_then_heavy(), name="sage-fast-startup")
     yield
 
-    # Shutdown
+    # --- Shutdown ---
+    heavy_task = app.state._heavy_task
+    if heavy_task is not None and not heavy_task.done():
+        heavy_task.cancel()
+        try:
+            await heavy_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    cm = app.state._checkpointer_cm
+    if cm is not None:
+        try:
+            await cm.__aexit__(None, None, None)
+        except Exception:
+            pass
+
     app.state.model_ready = False
     await network.stop()
     log.info("app_shutdown_complete")
 
+    # Factory
 
-# Factory
-
-def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
-    """Build and return the fully-configured FastAPI application.
-
-    Args:
-        llm_port: TCP port of the running llama-server.
-        gpu_info: Hardware detection dict from `detect_gpu()`.
-    """
+def create_app() -> FastAPI:
+    """Build and return the fully-configured FastAPI application."""
     cfg = get_settings()
 
     app = FastAPI(
@@ -108,12 +177,13 @@ def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
         redoc_url=None,
     )
 
-    # Pre-lifespan state
-    app.state.llm_port = llm_port
-    app.state.gpu_info = gpu_info
+    # Pre-lifespan defaults
+    app.state.llm_port    = None
+    app.state.gpu_info    = {}
+    app.state.utility_port = None
     app.state.model_ready = False
 
-    # CORS — harmless in production (same-origin), required for Vite dev
+    # CORS: harmless in production (same-origin), required for Vite dev.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -124,7 +194,7 @@ def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # API routers
+    # API routers.
     from sage.routers import (
         chat_router,
         documents_router,
@@ -137,7 +207,7 @@ def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
     app.include_router(documents_router, prefix="/api")
     app.include_router(chat_router, prefix="/api")
 
-    # Artifact endpoints
+    # Artifact endpoints.
     _exports_dir = resolve_export_output_dir()
 
     @app.get("/api/artifacts")
@@ -196,7 +266,7 @@ def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
             filename=safe_name,
         )
 
-    # SPA static-file mount
+    # SPA static-file mount.
     if _FRONTEND_DIST.is_dir():
         app.mount(
             "/",
@@ -211,3 +281,4 @@ def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
         )
 
     return app
+    
