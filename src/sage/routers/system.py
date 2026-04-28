@@ -17,8 +17,8 @@ class HealthStatus(BaseModel):
 class SystemStatus(BaseModel):
     model_ready: bool
     model_name: str
-    llm_port: int
-    embedding_tier: str
+    llm_port: int | None = None
+    embedding_model: str
     vectordb_collections: list[str]
     network_online: bool
 
@@ -44,7 +44,7 @@ async def get_status(request: Request) -> SystemStatus:
         model_ready=getattr(request.app.state, "model_ready", False),
         model_name=cfg.llm.active_model_name,
         llm_port=getattr(request.app.state, "llm_port", 0),
-        embedding_tier=cfg.embedding.tier,
+        embedding_model=cfg.embedding.embed_model.name,
         vectordb_collections=[
             cfg.rag.curriculum_collection,
             cfg.rag.user_uploads_collection,

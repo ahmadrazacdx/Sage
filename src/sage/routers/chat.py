@@ -24,7 +24,6 @@ import asyncio
 import json
 import re
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +34,14 @@ from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
 from sage.agents import VALID_INTENTS
+from sage.config import get_settings
+from sage.database import upsert_conversation
+from sage.memory import (
+    compress_history,
+    generate_title,
+    inject_memory_context,
+    post_turn_memory_hook,
+)
 from sage.utils import close_unbalanced_fenced_blocks, strip_think_markers
 
 log = structlog.get_logger(__name__)
@@ -332,18 +339,70 @@ def _artifact_payload(raw: dict[str, Any]) -> dict[str, str] | None:
     }
 
 
-def _build_lc_history(
-    stored: list[dict[str, Any]],
-) -> list[HumanMessage | AIMessage]:
-    """Convert plain dicts to LangChain message objects."""
-    out: list[HumanMessage | AIMessage] = []
-    for m in stored:
-        if m["role"] == "user":
-            out.append(HumanMessage(content=m["content"]))
-        else:
-            out.append(AIMessage(content=m["content"]))
-    return out
+def _max_memory_facts(ctx_size: int) -> int:
+    """Memory fact cap scaled to context window size.
 
+    Mirrors the tier table in general.py so both subsystems agree on budgets.
+    """
+    if ctx_size <= 4_096:
+        return 6
+    if ctx_size <= 8_192:
+        return 12
+    if ctx_size <= 16_384:
+        return 20
+    return 30
+
+
+def _compress_max_tokens(ctx_size: int) -> int:
+    """Max tokens for history compression output, scaled to context size."""
+    if ctx_size <= 4_096:
+        return 300
+    if ctx_size <= 8_192:
+        return 600
+    if ctx_size <= 16_384:
+        return 1_000
+    return 2_000
+
+async def _background_compress(
+    graph: Any,
+    thread_id: str,
+    utility_llm: Any,
+    ctx_size: int,
+) -> None:
+    """Compress old checkpoint messages into a summary; write back to state."""
+    try:
+        config = {"configurable": {"thread_id": thread_id}}
+        snapshot = await graph.aget_state(config)
+        if not snapshot or not snapshot.values:
+            return
+
+        prior_msgs: list = snapshot.values.get("messages", [])
+        max_tok = _compress_max_tokens(ctx_size)
+
+        from langchain_core.messages import SystemMessage as _SM
+        compressed = await compress_history(prior_msgs, utility_llm, max_tokens=max_tok)
+        if not compressed or not isinstance(compressed[0], _SM):
+            return
+
+        summary_text: str = compressed[0].content
+        if not summary_text:
+            return
+
+        await graph.aupdate_state(config, {"history_summary": summary_text})
+        log.info(
+            "history_compressed_background",
+            thread_id=thread_id,
+            prior_msgs=len(prior_msgs),
+            summary_len=len(summary_text),
+            ctx_size=ctx_size,
+        )
+    except Exception as exc:
+        log.warning(
+            "background_compress_failed",
+            thread_id=thread_id,
+            exc_type=type(exc).__name__,
+            error=str(exc)[:200],
+        )
 
 # POST
 @router.post("/chat", response_model=ChatResponse)
@@ -379,29 +438,35 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
             detail="A stream is already active for this thread.",
         )
 
-    # Build LangGraph input state
-    history: list[dict[str, Any]] = request.app.state.thread_messages.get(
-        thread_id, []
-    )
-    lc_messages = _build_lc_history(history)
-    lc_messages.append(HumanMessage(content=body.message))
+    ctx_size  = getattr(get_settings().llm, "active_context_size", 0) or 4_096
+    max_facts = _max_memory_facts(ctx_size)
+
+    student_memory = ""
+    try:
+        student_memory = await inject_memory_context(
+            body.message, max_facts=max_facts
+        )
+    except Exception as exc:
+        log.warning("memory_injection_skipped", error=str(exc)[:100])
 
     network = getattr(request.app.state, "network", None)
 
     state_input: dict[str, Any] = {
-        "messages": lc_messages,
+        "messages": [HumanMessage(content=body.message)],
         "query": body.message,
         "mode": body.mode,
         "course_code": body.course if body.course != "all" else None,
         "online_mode": network.online if network is not None else False,
         "thread_id": thread_id,
+        "student_memory": student_memory,
     }
 
     pending[thread_id] = {
         "state_input": state_input,
         "user_message": body.message,
         "intent": body.mode,
-        "created_at": asyncio.get_event_loop().time(),
+        "created_at": asyncio.get_running_loop().time(),
+        "ctx_size": ctx_size,
     }
 
     return ChatResponse(thread_id=thread_id, message_id=message_id)
@@ -421,7 +486,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
             detail="Stream already active for this thread.",
         )
 
-    now = asyncio.get_event_loop().time()
+    now = asyncio.get_running_loop().time()
     stale = [
         tid for tid, e in pending.items()
         if now - e.get("created_at", now) > _STALE_PENDING_TTL
@@ -444,6 +509,12 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
     state_input: dict[str, Any] = entry["state_input"]
     user_message: str = entry["user_message"]
     intent: str = entry["intent"]
+    ctx_size: int = entry.get("ctx_size", 4_096)
+
+    # LangGraph config
+    graph_config: dict[str, Any] = {
+        "configurable": {"thread_id": thread_id},
+    }
     stream_tokens: bool = intent not in _NON_STREAMING_INTENTS
 
     async def _generate():  # noqa: C901
@@ -456,7 +527,9 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
         thinking_carry = ""
 
         try:
-            event_iter = graph.astream_events(state_input, version="v2").__aiter__()
+            event_iter = graph.astream_events(
+                state_input, config=graph_config, version="v2",
+            ).__aiter__()
             while True:
                 try:
                     event = await asyncio.wait_for(
@@ -559,7 +632,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                         thread_id=thread_id,
                         intent=intent,
                     )
-                    final_state = await graph.ainvoke(state_input)
+                    final_state = await graph.ainvoke(state_input, config=graph_config)
 
                 response_text = str(final_state.get("response", "") or "")
                 if response_text and intent != "thinking":
@@ -599,32 +672,66 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                     yield _sse({"type": "artifact", **payload})
 
             final_content = "".join(accumulated_chunks)
-            messages: dict[str, list[dict[str, Any]]] = getattr(
-                request.app.state, "thread_messages", {}
+
+            # Persist to in-memory store (backward compat + active session cache).
+            thread_messages_store: dict[str, list[dict[str, Any]]] = getattr(
+                request.app.state, "thread_messages", {},
             )
-            thread_msgs = messages.setdefault(thread_id, [])
+            if not isinstance(thread_messages_store, dict):
+                thread_messages_store = {}
+            thread_msgs = thread_messages_store.setdefault(thread_id, [])
             thread_msgs.append({"role": "user", "content": user_message})
             if final_content or latest_artifact:
-                assistant_message: dict[str, Any] = {
+                assistant_msg: dict[str, Any] = {
                     "role": "assistant",
                     "content": final_content,
                 }
                 if latest_artifact:
-                    assistant_message["artifact"] = latest_artifact
-                thread_msgs.append(assistant_message)
+                    assistant_msg["artifact"] = latest_artifact
+                thread_msgs.append(assistant_msg)
 
-            thread_meta: dict[str, dict[str, Any]] = getattr(
-                request.app.state, "thread_meta", {}
-            )
-            existing = thread_meta.get(thread_id, {})
-            thread_meta[thread_id] = {
-                "thread_id": thread_id,
-                "title": existing.get("title") or _title_from_message(user_message),
-                "last_message_preview": (final_content or "")[:100],
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
+            # Persist conversation metadata to SQLite.
+            utility_llm = getattr(request.app.state, "utility_llm", None)
+            is_first_message = len(thread_msgs) <= 2
+
+            # Generate title for new conversations using utility model.
+            title: str | None = None
+            if is_first_message and utility_llm is not None:
+                try:
+                    title = await generate_title(user_message, utility_llm)
+                except Exception:
+                    title = _title_from_message(user_message)
+            elif is_first_message:
+                title = _title_from_message(user_message)
+
+            try:
+                await upsert_conversation(
+                    thread_id,
+                    title=title,
+                    last_message=(final_content or "")[:200],
+                    message_count_delta=2,  # user + assistant
+                )
+            except Exception as exc:
+                log.warning("conversation_upsert_failed", error=str(exc)[:100])
 
             yield _sse({"type": "done"})
+
+            # Fire-and-forget memory extraction in background.
+            _mem_llm = utility_llm or getattr(request.app.state, "llm", None)
+            if user_message and _mem_llm is not None:
+                asyncio.create_task(
+                    post_turn_memory_hook(
+                        user_message=user_message,
+                        assistant_message=final_content,
+                        utility_llm=_mem_llm,
+                    )
+                )
+            
+            turn_number = len(thread_msgs) // 2
+            if turn_number >= 3 and _mem_llm is not None and graph is not None:
+                asyncio.create_task(
+                    _background_compress(graph, thread_id, _mem_llm, ctx_size)
+                )
 
         except asyncio.CancelledError:
             log.info("stream_cancelled", thread_id=thread_id)
