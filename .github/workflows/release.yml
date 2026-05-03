@@ -7,28 +7,148 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  build-installer:
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [fast, pro, fast-lite, pro-lite]
+    runs-on: windows-latest
+    timeout-minutes: 120
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # --- Setup tools ---
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
-      - run: uv sync --all-extras
 
-      # Uncomment when tests are written
-      # - name: Run tests
-      #   run: uv run pytest --cov
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
-      - name: Build
-        run: uv build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Generate checksums
+      # --- Cache artifact downloads ---
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: installer/.cache
+          key: sage-artifacts-${{ matrix.tier }}-${{ hashFiles('installer/build-manifest.json') }}
+          restore-keys: |
+            sage-artifacts-${{ matrix.tier }}-
+
+      # --- Install NSIS ---
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+        shell: cmd
+
+      # --- Frontend dependencies ---
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      # --- Build installer ---
+      - name: Build ${{ matrix.tier }} installer
+        run: .\build.ps1 -Tier ${{ matrix.tier }}
+        shell: pwsh
+
+      # --- Verify installer (basic smoke test) ---
+      - name: Verify installer exists
         run: |
-          cd dist
-          sha256sum * > SHA256SUMS.txt
+          $version = (Get-Content installer/build-manifest.json -Raw | ConvertFrom-Json).app_version
+          $installer = "installer/output/sage-${{ matrix.tier }}-$version-windows-x86_64.exe"
+          if (-not (Test-Path $installer)) { throw "Installer not found: $installer" }
+          $sizeMB = [math]::Round((Get-Item $installer).Length / 1MB, 1)
+          Write-Host "Installer: $installer ($sizeMB MB)"
+        shell: pwsh
+
+      # --- Upload installer artifact ---
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.tier }}
+          path: |
+            installer/output/*.exe
+            installer/output/SHA256SUMS.txt
+          retention-days: 30
+
+  # --- Upload to R2 ---
+  upload-r2:
+    needs: build-installer
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        tier: [fast, pro, fast-lite, pro-lite]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download installer
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-${{ matrix.tier }}
+          path: installer/output
+
+      - name: Install AWS CLI
+        run: |
+          curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+
+      - name: Upload to R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION="auto"
+
+          for f in installer/output/*.exe; do
+            FNAME=$(basename "$f")
+            echo "Uploading $FNAME..."
+            aws s3 cp "$f" "s3://${R2_BUCKET_NAME}/v${VERSION}/${FNAME}" --endpoint-url "$ENDPOINT"
+          done
+
+          if [ -f installer/output/SHA256SUMS.txt ]; then
+            aws s3 cp installer/output/SHA256SUMS.txt \
+              "s3://${R2_BUCKET_NAME}/v${VERSION}/SHA256SUMS.txt" --endpoint-url "$ENDPOINT"
+          fi
+
+  # --- GitHub Release ---
+  create-release:
+    needs: build-installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
 
       - name: Generate changelog
         id: changelog
@@ -42,7 +162,6 @@ jobs:
         with:
           body: ${{ steps.changelog.outputs.content }}
           files: |
-            dist/*.whl
-            dist/*.tar.gz
-            dist/SHA256SUMS.txt
+            installers/**/*.exe
+            installers/**/SHA256SUMS.txt
           generate_release_notes: true

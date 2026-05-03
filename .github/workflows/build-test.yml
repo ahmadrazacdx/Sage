@@ -1,0 +1,63 @@
+name: Build Test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'frontend/**'
+      - 'installer/**'
+      - 'build.ps1'
+      - 'pyproject.toml'
+
+concurrency:
+  group: build-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-dry-run:
+    name: "Build dry-run (fast-lite)"
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Build (dry run)
+        run: .\build.ps1 -Tier fast-lite -DryRun -SkipDownload
+        shell: pwsh
+
+      - name: Validate staging structure
+        run: |
+          $staging = "installer/staging/fast-lite"
+          $required = @(
+            "python/python.exe",
+            "config/default.toml",
+            "config/institution.toml",
+            "frontend/artifacts/sage/dist/index.html",
+            "manifest.json"
+          )
+          foreach ($f in $required) {
+            $path = Join-Path $staging $f
+            if (-not (Test-Path $path)) {
+              throw "Missing required file: $f"
+            }
+          }
+          Write-Host "All required files present"
+        shell: pwsh
