@@ -82,4 +82,8 @@ artifacts/sandbox/data/figures/
 
 artifacts/servers/
 
-installer/
+# Installer artifacts (large/generated)
+installer/staging/
+installer/.cache/
+installer/output/
+installer/*.exe

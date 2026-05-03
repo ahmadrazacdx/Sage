@@ -1,0 +1,11 @@
+# Build artifacts (large, generated)
+staging/
+.cache/
+output/
+
+# NSIS compiled output
+*.exe
+
+# Temp files
+*.tmp
+*.downloading

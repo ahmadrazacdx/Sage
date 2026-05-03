@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "app_version": "0.1.0",
+  "platform": "windows-x86_64",
+  "python_version": "3.12.9",
+
+  "tiers": {
+    "fast":      { "backend": "cpu",  "include_llm_models": true  },
+    "pro":       { "backend": "cuda", "include_llm_models": true  },
+    "fast-lite": { "backend": "cpu",  "include_llm_models": false },
+    "pro-lite":  { "backend": "cuda", "include_llm_models": false }
+  },
+
+  "python_standalone": {
+    "version": "3.12.9",
+    "build_tag": "20250317",
+    "source": "https://github.com/indygreg/python-build-standalone/releases/download/20250317/cpython-3.12.9+20250317-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+    "sha256": "EE338839315BDD8AF5FC935F9595ECA20EBEBDD250726C5816B2D0CF94D1E661",
+    "archive_type": "tar.gz",
+    "strip_prefix": "python"
+  },
+
+  "models": {
+    "llm_cpu": {
+      "filename": "Qwen3.5-2B-Q4_K_M.gguf",
+      "source": "https://huggingface.co/Qwen/Qwen3.5-2B-GGUF/resolve/main/qwen3.5-2b-q4_k_m.gguf",
+      "sha256": "AAF42C8B7C3CAB2BF3D69C355048D4A0EE9973D48F16C731C0520EE914699223",
+      "size_bytes": 1280835840,
+      "install_path": "artifacts/models/Qwen3.5-2B-Q4_K_M.gguf",
+      "tiers": ["fast"]
+    },
+    "llm_gpu": {
+      "filename": "Qwen3.5-4B-Q4_K_M.gguf",
+      "source": "https://huggingface.co/Qwen/Qwen3.5-4B-GGUF/resolve/main/qwen3.5-4b-q4_k_m.gguf",
+      "sha256": "FILL_AFTER_FIRST_DOWNLOAD",
+      "size_bytes": 2740937888,
+      "install_path": "artifacts/models/Qwen3.5-4B-Q4_K_M.gguf",
+      "tiers": ["pro"]
+    },
+    "llm_utility": {
+      "filename": "Qwen3.5-0.8B-Q4_K_M.gguf",
+      "source": "https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/qwen3.5-0.8b-q4_k_m.gguf",
+      "sha256": "BD258782E35F7F458F8ACED1ADC053E6E92E89BC735BA3BE89D38A06121DC517",
+      "install_path": "artifacts/models/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "tiers": ["fast", "pro"]
+    },
+    "embedding": {
+      "filename": "bge-small-en-v1.5-onnx-q",
+      "source": "local",
+      "local_src": "artifacts/models/embedding-models/models--qdrant--bge-small-en-v1.5-onnx-q",
+      "sha256": "SKIP_DIRECTORY",
+      "install_path": "artifacts/models/embedding-models/bge-small-en-v1.5",
+      "tiers": ["fast", "pro", "fast-lite", "pro-lite"],
+      "note": "Source is HuggingFace hub cache layout; staged to flat path expected by config.py"
+    }
+  },
+
+  "binaries": {
+    "llama_cpp_cpu": {
+      "version": "b9010",
+      "source": "https://github.com/ggml-org/llama.cpp/releases/download/b9010/llama-b9010-bin-win-cpu-x64.zip",
+      "sha256": "430F2107D69AA6FE22623FCDCB5A01F5B2126D16F6C2606FB52E5FF4DB09BF90",
+      "install_path": "artifacts/servers/cpu",
+      "keep_patterns": ["llama-server.exe", "*.dll"],
+      "strip_patterns": ["llama-bench*", "llama-cli*", "llama-completion*", "llama-fit*", "llama-gemma*", "llama-gguf*", "llama-imatrix*", "llama-llava*", "llama-minicpm*", "llama-mtmd*", "llama-perplexity*", "llama-quantize*", "llama-qwen*", "llama-results*", "llama-template*", "llama-tokenize*", "llama-tts*", "llama-batched*", "rpc-server*"],
+      "tiers": ["fast", "fast-lite"]
+    },
+    "llama_cpp_cuda": {
+      "version": "b9010",
+      "source": "https://github.com/ggml-org/llama.cpp/releases/download/b9010/llama-b9010-bin-win-cuda-12.4-x64.zip",
+      "sha256": "411C4D17A6505C210F4B977450420F630FBE7D9DB7942DEA809F077976968EF9",
+      "install_path": "artifacts/servers/cuda",
+      "keep_patterns": ["llama-server.exe", "*.dll"],
+      "strip_patterns": ["llama-bench*", "llama-cli*", "llama-completion*", "llama-fit*", "llama-gemma*", "llama-gguf*", "llama-imatrix*", "llama-llava*", "llama-minicpm*", "llama-mtmd*", "llama-perplexity*", "llama-quantize*", "llama-qwen*", "llama-results*", "llama-template*", "llama-tokenize*", "llama-tts*", "llama-batched*", "rpc-server*"],
+      "tiers": ["pro", "pro-lite"]
+    },
+    "typst": {
+      "version": "0.13.1",
+      "source": "https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-pc-windows-msvc.zip",
+      "sha256": "1BFCABE2756657587C5F879041B55265C2A954C2BA8125ADA842D2A33B371695",
+      "install_path": "artifacts/typst",
+      "keep_patterns": ["typst.exe"],
+      "tiers": ["fast", "pro", "fast-lite", "pro-lite"]
+    },
+    "mmdr": {
+      "version": "1.0.0",
+      "source": "local",
+      "sha256": "F534661849CD7C516170FABC223C3479DC7B1823E81B05C5CAA0DBEE1790D345",
+      "install_path": "artifacts/mmdr",
+      "keep_patterns": ["mmdr.exe"],
+      "tiers": ["fast", "pro", "fast-lite", "pro-lite"],
+      "note": "Copied from local artifacts/mmdr/"
+    }
+  }
+}
