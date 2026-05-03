@@ -5,14 +5,15 @@ import { cn } from "@/lib/utils";
 import { 
   useListSessions, 
   useDeleteSession, 
-  useListDocuments, 
-  useDeleteDocument, 
-  useUploadDocuments,
+//   useListDocuments, 
+//   useDeleteDocument, 
+//   useUploadDocuments,
   type SystemStatus
 } from "@workspace/api-client-react";
 import { differenceInCalendarDays } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getListSessionsQueryKey, getListDocumentsQueryKey } from "@workspace/api-client-react";
+// import { getListSessionsQueryKey, getListDocumentsQueryKey } from "@workspace/api-client-react";
+import { getListSessionsQueryKey } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface SidebarProps {
@@ -36,7 +37,7 @@ type ExportArtifact = {
 
 export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSettings, isCollapsed, setCollapsed, status }: SidebarProps) {
   const { data: sessions } = useListSessions();
-  const { data: documents } = useListDocuments();
+  // const { data: documents } = useListDocuments();
   const { data: exportArtifacts, isLoading: exportsLoading } = useQuery({
     queryKey: ["exports-artifacts"],
     queryFn: async () => {
@@ -55,14 +56,14 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
   };
   
   const deleteSession = useDeleteSession();
-  const deleteDocument = useDeleteDocument();
-  const uploadDocuments = useUploadDocuments();
+  // const deleteDocument = useDeleteDocument();
+  // const uploadDocuments = useUploadDocuments();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [docsExpanded, setDocsExpanded] = useState(false);
+  // const fileInputRef = useRef<HTMLInputElement>(null);
+  // const [uploading, setUploading] = useState(false);
+  // const [docsExpanded, setDocsExpanded] = useState(false);
   const [exportsExpanded, setExportsExpanded] = useState(false);
 
   const getErrorMessage = (error: unknown, fallback: string): string => {
@@ -101,6 +102,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
     return `${(kb / 1024).toFixed(1)} MB`;
   };
 
+  /*
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     setUploading(true);
@@ -124,6 +126,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
+  */
 
   const SessionList = ({ title, items }: { title: string, items: typeof sessions }) => {
     if (!items || items.length === 0) return null;
@@ -236,6 +239,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
         <div className="px-4 py-4 mt-2">
           <div className="h-px w-full bg-sidebar-border mb-4" />
 
+          {/*
           <button
             type="button"
             onClick={() => setDocsExpanded((prev) => !prev)}
@@ -320,6 +324,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
               </div>
             </div>
           )}
+          */}
 
           <button
             type="button"

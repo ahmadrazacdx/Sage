@@ -50,8 +50,11 @@ export default function Home() {
   const [lastCompletedArtifact, setLastCompletedArtifact] = useState<ArtifactInfo | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsName, setSettingsName] = useState("");
+  const [modelReady, setModelReady] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef(true);
   const queryClient = useQueryClient();
 
   const { streamState, startStream, stopStream } = useChatStream();
@@ -75,6 +78,26 @@ export default function Home() {
     setIsFirstRunCheckDone(true);
   }, []);
 
+  useEffect(() => {
+    if (status?.model_ready) {
+      setModelReady(true);
+    }
+  }, [status?.model_ready]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+      autoScrollRef.current = nearBottom;
+    };
+
+    handleScroll();
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
   const handleSidebarToggle = (collapsed: boolean) => {
     setSidebarCollapsed(collapsed);
     localStorage.setItem("sage_sidebar_collapsed", String(collapsed));
@@ -94,10 +117,11 @@ export default function Home() {
   }, [settingsName]);
 
   useEffect(() => {
+    if (!autoScrollRef.current) return;
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      messagesEndRef.current.scrollIntoView({ behavior: streamState.isStreaming ? "auto" : "smooth" });
     }
-  }, [historyMessages, optimisticMessages, streamState.content]);
+  }, [historyMessages, optimisticMessages, streamState.content, streamState.isStreaming]);
 
   const handleSelectThread = useCallback((threadId: string) => {
     setCurrentThreadId(threadId);
@@ -199,7 +223,7 @@ export default function Home() {
   if (!isFirstRunCheckDone) return null;
   if (!userName) return <FirstRun onComplete={setUserName} />;
 
-  const isModelLoading = status?.model_ready !== true;
+  const isModelLoading = !modelReady;
 
   const displayMessages: LocalMessage[] = canUseHistory && historyList
     ? (() => {
@@ -252,7 +276,7 @@ export default function Home() {
       )}
 
       <main className="flex-1 flex flex-col h-full relative min-w-0">
-        <div className="flex-1 overflow-y-auto custom-scrollbar pb-36">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar pb-36">
           {!hasMessages ? (
             <WelcomeScreen name={userName} />
           ) : (
@@ -292,18 +316,10 @@ export default function Home() {
                             <span className="text-sm font-medium truncate flex-1">{msg.artifact.filename}</span>
                             <a
                               href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="border border-border hover:bg-white/10 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
-                            >
-                              Open
-                            </a>
-                            <a
-                              href={msg.artifact.url || `/api/artifacts/${msg.artifact.filename}`}
                               download={msg.artifact.filename}
                               className="bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
                             >
-                              Download {msg.artifact.kind.toUpperCase()}
+                              Save {msg.artifact.kind.toUpperCase()}
                             </a>
                           </div>
                         )}
