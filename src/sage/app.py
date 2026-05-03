@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from sage.agents import build_graph
-from sage.config import get_settings
+from sage.config import _PROJECT_ROOT, get_settings
 from sage.database import init_db, resolve_db_path
 from sage.llm import create_llm, create_utility_llm, start_llm_server, start_utility_server
 from sage.network import NetworkMonitor
@@ -31,8 +31,6 @@ from sage.tools.export import resolve_export_output_dir
 
 log = structlog.get_logger(__name__)
 
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _FRONTEND_DIST = _PROJECT_ROOT / "frontend" / "artifacts" / "sage" / "dist"
 
 

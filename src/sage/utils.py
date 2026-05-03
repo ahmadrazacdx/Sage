@@ -48,23 +48,43 @@ def configure_logging(level: str = "info") -> None:
         return
 
     import logging as _stdlib_logging
+    import os
+    from pathlib import Path
 
     _level = getattr(_stdlib_logging, level.upper(), _stdlib_logging.INFO)
+    
+    processors = [
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+    ]
 
-    structlog.configure(
-        processors=[
-            structlog.stdlib.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.StackInfoRenderer(),
+    sage_home = os.environ.get("SAGE_HOME")
+    if sage_home:
+        log_file = Path(sage_home) / "logs" / "sage.log"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        processors.append(structlog.processors.JSONRenderer())
+        structlog.configure(
+            processors=processors,
+            wrapper_class=structlog.make_filtering_bound_logger(_level),
+            context_class=dict,
+            logger_factory=structlog.WriteLoggerFactory(file=log_file.open("a", encoding="utf-8")),
+            cache_logger_on_first_use=True,
+        )
+    else:
+        processors.append(
             structlog.dev.ConsoleRenderer()
             if level == "debug"
-            else structlog.processors.JSONRenderer(),
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(_level),
-        context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
-        cache_logger_on_first_use=True,
-    )
+            else structlog.processors.JSONRenderer()
+        )
+        structlog.configure(
+            processors=processors,
+            wrapper_class=structlog.make_filtering_bound_logger(_level),
+            context_class=dict,
+            logger_factory=structlog.PrintLoggerFactory(),
+            cache_logger_on_first_use=True,
+        )
 
     _LOGGING_CONFIGURED = True
 

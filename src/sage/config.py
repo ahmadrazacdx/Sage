@@ -13,6 +13,7 @@ Usage anywhere in the codebase:
 
 from __future__ import annotations
 
+import os
 import tomllib
 from functools import lru_cache
 from pathlib import Path
@@ -22,7 +23,14 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ----Paths----
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]  # d:/Sage
+def _get_project_root() -> Path:
+    env_root = os.environ.get("SAGE_HOME")
+    if env_root:
+        return Path(env_root).resolve()
+    return Path(__file__).resolve().parents[2]
+
+
+_PROJECT_ROOT = _get_project_root()
 _DEFAULT_TOML = _PROJECT_ROOT / "config" / "default.toml"
 _INSTITUTION_TOML = _PROJECT_ROOT / "config" / "institution.toml"
 

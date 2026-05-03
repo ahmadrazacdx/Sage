@@ -102,7 +102,7 @@ def _build_response(mermaid_code: str, svg_data: str, export_filename: str | Non
     parts: list[str] = []
     if svg_data:
         caption = (
-            "Here's your diagram — download it below."
+            "Here's your diagram's mermaid source code."
             if export_filename
             else "Diagram rendered successfully."
         )
@@ -110,7 +110,7 @@ def _build_response(mermaid_code: str, svg_data: str, export_filename: str | Non
     else:
         parts.append("*SVG render/export unavailable. Mermaid source is shown below.*")
 
-    parts.append(f"\n**Mermaid source**\n\n```text\n{mermaid_code}\n```")
+    parts.append(f"\n\n```text\n{mermaid_code}\n```")
     return "\n".join(parts)
 
 async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
@@ -249,12 +249,15 @@ async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         if artifact:
             artifact_paths.append(artifact)
 
+    response_text = _build_response(
+        mermaid_code,
+        svg_data,
+        artifact_paths[0]["filename"] if artifact_paths else None,
+    )
+
     return {
-        "response": _build_response(
-            mermaid_code,
-            svg_data,
-            artifact_paths[0]["filename"] if artifact_paths else None,
-        ),
+        "messages": [AIMessage(content=response_text)],
+        "response": response_text,
         "diagrams": [{"mermaid_code": mermaid_code, "svg_data": svg_data}],
         "artifact_paths": artifact_paths,
         "tool_calls": [{"tool": "diagram_generation", "validated": validated}],

@@ -22,6 +22,7 @@ import asyncio
 import re
 import sys
 import time
+import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
@@ -206,6 +207,7 @@ async def _run_mmdr(
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            creationflags=(subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0),
         )
 
         try:

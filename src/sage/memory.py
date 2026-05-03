@@ -62,6 +62,9 @@ Output one fact per line exactly like these examples:
 [preference] Prefers code examples before theory
 [study] Struggles with dynamic programming concepts
 
+IMPORTANT: The examples above are placeholders. Do not copy them unless the
+conversation explicitly contains those facts.
+
 Maximum 4 facts. If nothing qualifies, output exactly: NONE"""
 
 _TITLE_PROMPT = """Generate a short, descriptive title (4-8 words) for this conversation based on the first user message. Output ONLY the title, nothing else.

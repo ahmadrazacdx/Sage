@@ -11,6 +11,7 @@ Features:
   - Automatic backend lifecycle (FastAPI + dual llama-server)
   - Graceful shutdown of all subprocesses on window close
   - WebView2 compatibility across Windows 10/11
+  - Single-instance enforcement (second click surfaces existing window)
 """
 
 from __future__ import annotations
@@ -28,10 +29,52 @@ from typing import Any
 import structlog
 import uvicorn
 
-log = structlog.get_logger(__name__)
+_PROJECT_ROOT: Path | None = None
+_MUTEX_NAME = "Local\\SageDesktopApp_SingleInstance_v1"
+_ERROR_ALREADY_EXISTS = 183
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+def _acquire_single_instance_lock() -> Any:
+    """Try to acquire a named Windows mutex."""
+    if sys.platform != "win32":
+        return object()
+    try:
+        import ctypes
+        handle = ctypes.windll.kernel32.CreateMutexW(None, True, _MUTEX_NAME)
+        err = ctypes.windll.kernel32.GetLastError()
+        if err == _ERROR_ALREADY_EXISTS:
+            if handle:
+                ctypes.windll.kernel32.CloseHandle(handle)
+            return None
+        return handle
+    except Exception:
+        return object()
 
+def _surface_existing_window() -> None:
+    """Find the running Sage window and bring it to the foreground."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        hwnd = ctypes.windll.user32.FindWindowW(None, "Sage")
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 9)
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+
+
+def _force_window_foreground(title: str = "Sage") -> None:
+    """Force the named window to the foreground on Windows."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        hwnd = ctypes.windll.user32.FindWindowW(None, title)
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 9)
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
 
 def _wait_for_backend(port: int, timeout: float = 30.0) -> bool:
     """Poll until the FastAPI health endpoint responds.
@@ -53,12 +96,28 @@ def _wait_for_backend(port: int, timeout: float = 30.0) -> bool:
 
 def _run_uvicorn(app: Any, host: str, port: int) -> uvicorn.Server:
     """Start uvicorn in a daemon thread and return the server instance."""
+    _null_log_config: dict = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {"format": "%(message)s"},
+        },
+        "handlers": {
+            "null": {"class": "logging.NullHandler"},
+        },
+        "loggers": {
+            "uvicorn":        {"handlers": ["null"], "level": "CRITICAL", "propagate": False},
+            "uvicorn.error":  {"handlers": ["null"], "level": "CRITICAL", "propagate": False},
+            "uvicorn.access": {"handlers": ["null"], "level": "CRITICAL", "propagate": False},
+        },
+    }
     config = uvicorn.Config(
         app,
         host=host,
         port=port,
-        log_level="warning",
+        log_level="critical",
         access_log=False,
+        log_config=_null_log_config,
     )
     server = uvicorn.Server(config)
 
@@ -70,10 +129,8 @@ def _run_uvicorn(app: Any, host: str, port: int) -> uvicorn.Server:
 
 
 def _setup_tray(window: Any) -> threading.Thread | None:
-    """Start a pystray system tray icon in a background thread.
-
-    Returns the thread, or None if pystray is not available.
-    """
+    """Start a pystray system tray icon in a background thread."""
+    log = structlog.get_logger(__name__)
     try:
         import pystray
         from PIL import Image
@@ -106,6 +163,7 @@ def _setup_tray(window: Any) -> threading.Thread | None:
                 window.restore()
             except Exception:
                 pass
+        _force_window_foreground()
 
     def on_quit(icon: Any, item: Any) -> None:
         icon.stop()
@@ -134,6 +192,7 @@ def _setup_tray(window: Any) -> threading.Thread | None:
 
 def _navigate_when_ready(window: Any, backend_url: str, timeout: float = 30.0) -> None:
     """Poll /api/healthz; navigate the already-open window once backend is up."""
+    log = structlog.get_logger(__name__)
     health_url = f"{backend_url}/api/healthz"
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -148,6 +207,17 @@ def _navigate_when_ready(window: Any, backend_url: str, timeout: float = 30.0) -
     try:
         window.load_url(backend_url)
         log.info("window_navigated", url=backend_url)
+
+        try:
+            window.show()
+        except Exception:
+            pass
+        try:
+            window.restore()
+        except Exception:
+            pass
+        _force_window_foreground()
+
     except Exception as exc:
         log.warning("window_navigate_failed", error=str(exc)[:200])
 
@@ -156,79 +226,126 @@ def launch() -> None:
     """Launch the Sage desktop application.
 
     Startup sequence:
-        1. create_app()        — build FastAPI app
-        2. _run_uvicorn()      — start uvicorn in a daemon thread
-        3. webview window      — opens on about:blank in
-        4. _navigate_when_ready— daemon thread polls /api/healthz
-                                 navigates window to real URL once ready
-        5. _fast_then_heavy    — DB + checkpointer + LLM servers in background
-        6. Frontend overlay    — polls /api/status; fades when model_ready=True
+        1. Single-instance check — surface existing window and exit if running.
+        2. create_app()          — build FastAPI app.
+        3. _run_uvicorn()        — start uvicorn in a daemon thread.
+        4. webview window        — opens on about:blank.
+        5. _navigate_when_ready  — daemon thread polls /api/healthz,
+                                   navigates window, forces it to foreground.
+        6. _fast_then_heavy      — DB + checkpointer + LLM servers in background.
+        7. Frontend overlay      — polls /api/status; fades when model_ready=True.
     """
-    from sage.config import get_settings
+    from sage.config import _PROJECT_ROOT as project_root, get_settings
     from sage.utils import configure_logging
+
+    global _PROJECT_ROOT
+    _PROJECT_ROOT = project_root
 
     cfg = get_settings()
     configure_logging(cfg.app.log_level)
 
+    log = structlog.get_logger(__name__)
+    _mutex_handle = _acquire_single_instance_lock()
+    if _mutex_handle is None:
+        log.info("desktop_already_running", action="surfacing_existing_window")
+        _surface_existing_window()
+        return
+
     log.info("desktop_launch_starting")
 
-    # 1. Create FastAPI app
-    from sage.app import create_app
-    app = create_app()
-
-    # 2. Start uvicorn in background thread.
-    server = _run_uvicorn(app, cfg.ui.host, cfg.ui.port)
-    backend_url = f"http://localhost:{cfg.ui.port}"
-
-    # 3. Open pywebview window.
-    try:
-        import webview
-    except ImportError:
-        log.error(
-            "pywebview_not_installed",
-            hint="Install pywebview: pip install pywebview",
-        )
-        import webbrowser
-        webbrowser.open(backend_url)
-        log.info("browser_fallback", url=backend_url)
+    if sys.platform == "win32":
         try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            return
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Sage")
+        except Exception:
+            pass
 
-    _webview_data = _PROJECT_ROOT / "artifacts" / "data" / "webview"
-    _webview_data.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("WEBVIEW2_USER_DATA_FOLDER", str(_webview_data))
+    try:
+        # 2. Create FastAPI app
+        from sage.app import create_app
+        app = create_app()
 
-    window = webview.create_window(
-        "Sage",
-        "about:blank",
-        width=1280,
-        height=820,
-        min_size=(900, 600),
-        resizable=True,
-        text_select=True,
-        easy_drag=False,
-    )
+        # 3. Start uvicorn in a daemon thread.
+        server = _run_uvicorn(app, cfg.ui.host, cfg.ui.port)
+        backend_url = f"http://localhost:{cfg.ui.port}"
 
-    # 4. Start system tray icon.
-    _setup_tray(window)
+        # 4. Open pywebview window.
+        try:
+            import webview
+        except ImportError:
+            log.error(
+                "pywebview_not_installed",
+                hint="Install pywebview: pip install pywebview",
+            )
+            import webbrowser
+            webbrowser.open(backend_url)
+            log.info("browser_fallback", url=backend_url)
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                return
 
-    # 5. Navigate to backend URL in background once healthz responds.
-    threading.Thread(
-        target=_navigate_when_ready,
-        args=(window, backend_url),
-        daemon=True,
-        name="sage-navigate",
-    ).start()
-    log.info("desktop_window_opening")
+        _webview_data = _PROJECT_ROOT / "artifacts" / "data" / "webview"
+        _webview_data.mkdir(parents=True, exist_ok=True)
+        os.environ.setdefault("WEBVIEW2_USER_DATA_FOLDER", str(_webview_data))
 
-    webview.start(
-        debug=(cfg.app.log_level == "debug"),
-        private_mode=False,
-    )
+        icon_path = _PROJECT_ROOT / "installer" / "sage.ico"
+        window_kwargs = {
+            "width": 1280,
+            "height": 820,
+            "min_size": (900, 600),
+            "resizable": True,
+            "text_select": True,
+            "easy_drag": False,
+        }
+        if icon_path.is_file():
+            window_kwargs["icon"] = str(icon_path)
 
-    # 6. Shutdown.
-    log.info("desktop_window_closed")
-    server.should_exit = True
+        try:
+            window = webview.create_window(
+                "Sage",
+                "about:blank",
+                **window_kwargs,
+            )
+        except TypeError as exc:
+            if "icon" in window_kwargs and "icon" in str(exc).lower():
+                window_kwargs.pop("icon", None)
+                log.warning("webview_icon_unsupported", hint="Retrying without icon support")
+                window = webview.create_window(
+                    "Sage",
+                    "about:blank",
+                    **window_kwargs,
+                )
+            else:
+                raise
+
+        # 5. Start system tray icon.
+        _setup_tray(window)
+
+        # 6. Navigate to backend URL in background once healthz responds.
+        threading.Thread(
+            target=_navigate_when_ready,
+            args=(window, backend_url),
+            daemon=True,
+            name="sage-navigate",
+        ).start()
+        log.info("desktop_window_opening")
+
+        webview.start(
+            debug=(cfg.app.log_level == "debug"),
+            private_mode=False,
+            storage_path=str(_webview_data),
+        )
+
+        # 7. Shutdown.
+        log.info("desktop_window_closed")
+        server.should_exit = True
+    except Exception as exc:
+        log.error(
+            "desktop_startup_failed",
+            exc_info=True,
+            exc_type=type(exc).__name__,
+            exc_msg=str(exc)
+        )
+        raise

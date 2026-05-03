@@ -19,6 +19,7 @@ import asyncio
 import re
 import subprocess
 import tempfile
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
@@ -474,12 +475,14 @@ async def export_pdf(
             tmp_path = Path(tmp.name)
  
         typst_bin = _resolve_typst_bin()
+        win_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         proc = await asyncio.wait_for(
             asyncio.create_subprocess_exec(
                 typst_bin, "compile",
                 str(tmp_path), str(output_path),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                creationflags=win_flags,
             ),
             timeout=_PDF_TIMEOUT,
         )
