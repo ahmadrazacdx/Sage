@@ -65,20 +65,13 @@ def sanitize_export_filename(filename: str) -> str:
     return _sanitize_filename(filename)
 
 
-def _default_documents_export_dir() -> Path:
-    """Return the user-facing default export location."""
-    return Path.home() / "Documents" / "Sage" / "exports"
-
-
 def resolve_export_output_dir() -> Path:
     """Return the absolute export output directory, creating it if needed."""
+    from sage.config import _PROJECT_ROOT
     configured = get_settings().tools.export.output_dir.expanduser()
     if configured.is_absolute():
         output_dir = configured
-    elif configured == _DEFAULT_EXPORT_DIR_RELATIVE:
-        output_dir = _default_documents_export_dir()
     else:
-        from sage.config import _PROJECT_ROOT
         output_dir = _PROJECT_ROOT / configured
 
     output_dir.mkdir(parents=True, exist_ok=True)

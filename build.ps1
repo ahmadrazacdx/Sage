@@ -30,7 +30,7 @@
 #>
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('fast','pro','fast-lite','pro-lite','all')]
+    [ValidateSet('fast', 'pro', 'fast-lite', 'pro-lite', 'all')]
     [string]$Tier,
 
     [switch]$SkipFrontend,
@@ -42,32 +42,93 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$ProjectRoot   = (Get-Item "$PSScriptRoot").FullName
-$InstallerDir  = Join-Path $ProjectRoot "installer"
-$ScriptsDir    = Join-Path $InstallerDir "scripts"
-$CacheDir      = Join-Path $InstallerDir ".cache"
-$FrontendDir   = Join-Path $ProjectRoot "frontend"
-$FrontendApp   = Join-Path $FrontendDir "artifacts/sage"
-$SrcDir        = Join-Path $ProjectRoot "src"
+$ProjectRoot = (Get-Item "$PSScriptRoot").FullName
+$InstallerDir = Join-Path $ProjectRoot "installer"
+$ScriptsDir = Join-Path $InstallerDir "scripts"
+$CacheDir = Join-Path $InstallerDir ".cache"
+$FrontendDir = Join-Path $ProjectRoot "frontend"
+$FrontendApp = Join-Path $FrontendDir "artifacts/sage"
+$SrcDir = Join-Path $ProjectRoot "src"
+$LauncherDir = Join-Path $InstallerDir "launcher"
+$LauncherExe = Join-Path $LauncherDir "Sage.exe"
 
 $Manifest = Get-Content (Join-Path $InstallerDir "build-manifest.json") -Raw | ConvertFrom-Json
-$Version  = $Manifest.app_version
+$Version = $Manifest.app_version
 
-$Tiers = if ($Tier -eq 'all') { @('fast','pro','fast-lite','pro-lite') } else { @($Tier) }
+$Tiers = if ($Tier -eq 'all') { @('fast', 'pro', 'fast-lite', 'pro-lite') } else { @($Tier) }
 
 # ---------- helpers ----------
-function Write-Banner { param([string]$Msg)
+function Write-Banner {
+    param([string]$Msg)
     Write-Host ""
     Write-Host ("=" * 60) -ForegroundColor Magenta
     Write-Host "  $Msg" -ForegroundColor Magenta
     Write-Host ("=" * 60) -ForegroundColor Magenta
 }
 function Write-Step { param([string]$Msg) Write-Host "`n>>> $Msg" -ForegroundColor Cyan }
-function Write-Ok   { param([string]$Msg) Write-Host "    OK: $Msg" -ForegroundColor Green }
-function Assert-Command { param([string]$Cmd, [string]$Hint)
+function Write-Ok { param([string]$Msg) Write-Host "    OK: $Msg" -ForegroundColor Green }
+function Write-Warn { param([string]$Msg) Write-Host "    WARN: $Msg" -ForegroundColor Yellow }
+function Assert-Command {
+    param([string]$Cmd, [string]$Hint)
     if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) {
         throw "Required command '$Cmd' not found. $Hint"
     }
+}
+
+function Ensure-MinGW {
+    # 1. Already in PATH?
+    if (Get-Command gcc -ErrorAction SilentlyContinue) {
+        Write-Ok "gcc (MinGW) found in PATH"
+        return
+    }
+
+    # 2. MSYS2 pre-install
+    $msys2Gcc = "C:\msys64\mingw64\bin\gcc.exe"
+    if (Test-Path $msys2Gcc) {
+        $mingwBin = "C:\msys64\mingw64\bin"
+        Write-Ok "MinGW found via MSYS2 at $mingwBin, adding to PATH"
+        $env:PATH = $mingwBin + ";" + $env:PATH
+        return
+    }
+
+    # 3. Winget fallback
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Warn "gcc not found; installing MinGW via winget (BrechtSanders.WinLibs.POSIX.UCRT)..."
+        & winget install --id BrechtSanders.WinLibs.POSIX.UCRT --silent --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -eq 0) {
+            $potentialPaths = @(
+                "$env:LOCALAPPDATA\Programs\WinLibs",
+                "$env:ProgramFiles\WinLibs"
+            )
+            foreach ($p in $potentialPaths) {
+                if (Test-Path "$p\bin\gcc.exe") {
+                    $env:PATH = "$p\bin;" + $env:PATH
+                    Write-Ok "gcc (MinGW) installed via winget and added to PATH"
+                    return
+                }
+            }
+            Write-Warn "winget reported success but gcc.exe not found in expected paths. You may need to restart your terminal."
+        }
+    }
+
+    # 4. Chocolatey fallback
+    Write-Warn "gcc not found; trying Chocolatey..."
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        & choco install mingw -y --no-progress
+        if ($LASTEXITCODE -ne 0) { throw "Chocolatey failed to install MinGW." }
+
+        $chocoMingw = "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
+        if ((Test-Path $chocoMingw) -and ($env:PATH -notlike "*$chocoMingw*")) {
+            $env:PATH = $chocoMingw + ";" + $env:PATH
+        }
+
+        if (Get-Command gcc -ErrorAction SilentlyContinue) {
+            Write-Ok "gcc (MinGW) installed via Chocolatey"
+            return
+        }
+    }
+
+    throw "gcc (MinGW) not found. Please install it manually from https://winlibs.com/ or https://www.mingw-w64.org/ and add the 'bin' folder to your PATH."
 }
 
 # ---------- step 0: validate prerequisites ----------
@@ -77,6 +138,7 @@ Write-Step "Validating prerequisites"
 Assert-Command "uv"    "Install from https://docs.astral.sh/uv/"
 Assert-Command "pnpm"  "Install from https://pnpm.io/"
 Assert-Command "node"  "Install from https://nodejs.org/"
+Ensure-MinGW
 
 # Check NSIS (unless dry run)
 $nsisExe = $null
@@ -99,6 +161,37 @@ if (-not $DryRun) {
 
 Write-Ok "All prerequisites satisfied"
 
+# ---------- step 0.5: build launcher (C + MinGW) ----------
+Write-Step "Building Windows launcher (C + MinGW)"
+
+$iconPath = Join-Path $InstallerDir "sage.ico"
+if (-not (Test-Path $iconPath)) {
+    throw "sage.ico not found at $iconPath, the launcher requires it."
+}
+
+Push-Location $LauncherDir
+try {
+    Write-Host "    windres: compiling icon resource..."
+    & windres launcher.rc -O coff -o launcher.res
+    if ($LASTEXITCODE -ne 0) { throw "windres failed, could not compile launcher.rc" }
+
+    Write-Host "    gcc: compiling and linking Sage.exe..."
+    & gcc launcher.c launcher.res -o Sage.exe -mwindows -lshlwapi -Os -s "-Wl,--gc-sections"
+    if ($LASTEXITCODE -ne 0) { throw "gcc failed - could not compile launcher.c" }
+
+    Remove-Item launcher.res -Force -ErrorAction SilentlyContinue
+}
+finally {
+    Pop-Location
+}
+
+if (-not (Test-Path $LauncherExe)) {
+    throw "Launcher exe not found at $LauncherExe after build."
+}
+
+$launcherKB = [math]::Round((Get-Item $LauncherExe).Length / 1KB, 0)
+Write-Ok "Launcher built: Sage.exe ($launcherKB KB)"
+
 # ---------- step 1: build frontend ----------
 if (-not $SkipFrontend) {
     Write-Step "Building frontend SPA"
@@ -107,9 +200,11 @@ if (-not $SkipFrontend) {
         & pnpm install --frozen-lockfile 2>&1 | Out-Null
         & pnpm build
         if ($LASTEXITCODE -ne 0) { throw "Frontend build failed" }
-    } finally { Pop-Location }
+    }
+    finally { Pop-Location }
     Write-Ok "Frontend built: $FrontendApp/dist"
-} else {
+}
+else {
     Write-Ok "Frontend build skipped (--SkipFrontend)"
 }
 
@@ -124,10 +219,11 @@ Push-Location $ProjectRoot
 try {
     & uv build --wheel --quiet --link-mode=copy
     if ($LASTEXITCODE -ne 0) { throw "Wheel build failed" }
-} finally { Pop-Location }
+}
+finally { Pop-Location }
 
 $WheelFile = Get-ChildItem (Join-Path $ProjectRoot "dist") -Filter "sage-*.whl" |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $WheelFile) { throw "No wheel found in dist/" }
 Write-Ok "Wheel: $($WheelFile.Name)"
 
@@ -141,7 +237,8 @@ foreach ($t in $Tiers) {
     if (Test-Path $StagingDir) {
         if ($SkipPython -and (Test-Path "$StagingDir/python")) {
             Get-ChildItem $StagingDir -Exclude 'python' | Remove-Item -Recurse -Force
-        } else {
+        }
+        else {
             Remove-Item $StagingDir -Recurse -Force
         }
     }
@@ -155,7 +252,8 @@ foreach ($t in $Tiers) {
             -WheelPath $WheelFile.FullName `
             -CacheDir $CacheDir
         if ($LASTEXITCODE -ne 0) { throw "Python preparation failed" }
-    } else {
+    }
+    else {
         if (-not (Test-Path "$StagingDir/python/python.exe")) {
             throw "No cached Python runtime. Run without -SkipPython."
         }
@@ -170,7 +268,8 @@ foreach ($t in $Tiers) {
             -CacheDir $CacheDir `
             -OutputDir $StagingDir
         if ($LASTEXITCODE -ne 0) { throw "Artifact download failed" }
-    } else {
+    }
+    else {
         Write-Ok "Artifact download skipped (--SkipDownload)"
     }
 
@@ -184,6 +283,18 @@ foreach ($t in $Tiers) {
     Copy-Item "$ProjectRoot/config/institution.toml"   "$cfgDst/" -Force
     if (Test-Path "$ProjectRoot/config/templates") {
         Copy-Item "$ProjectRoot/config/templates" "$cfgDst/templates" -Recurse -Force
+    }
+
+    # Launcher
+    Copy-Item $LauncherExe (Join-Path $StagingDir "Sage.exe") -Force
+
+    # Desktop icon (used by pywebview + taskbar/tray)
+    $iconSrc = Join-Path $InstallerDir "sage.ico"
+    if (Test-Path $iconSrc) {
+        Copy-Item $iconSrc (Join-Path $StagingDir "sage.ico") -Force
+    }
+    else {
+        Write-Warn "sage.ico not found. Desktop window/tray may use a default icon."
     }
 
     # Frontend dist
@@ -226,26 +337,36 @@ foreach ($t in $Tiers) {
         files           = @{}
     }
 
-    # Hash all files in staging
+    # Hash all files in staging using fast .NET methods
     $allFiles = Get-ChildItem $StagingDir -Recurse -File
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
     foreach ($f in $allFiles) {
         $relPath = $f.FullName.Substring($StagingDir.Length + 1).Replace('\', '/')
-        $hash    = (Get-FileHash $f.FullName -Algorithm SHA256).Hash
+        
+        # Use .NET Stream for much faster hashing
+        $stream = [System.IO.File]::OpenRead($f.FullName)
+        $hashBytes = $sha256.ComputeHash($stream)
+        $stream.Close()
+        
+        # Convert bytes to hex string
+        $hash = [System.BitConverter]::ToString($hashBytes).Replace("-", "")
+
         $installManifest.files[$relPath] = @{
             sha256 = $hash
             size   = $f.Length
         }
     }
+    $sha256.Dispose()
 
     $manifestPath = Join-Path $StagingDir "manifest.json"
     $installManifest | ConvertTo-Json -Depth 5 | Set-Content $manifestPath -Encoding UTF8
     Write-Ok "Manifest: $($allFiles.Count) files hashed"
 
     # --- 7: create payload archive ---
-    $outDir      = Join-Path $InstallerDir "output"
+    $outDir = Join-Path $InstallerDir "output"
     New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
-    $baseName    = "sage-$t-$Version-windows-x86_64"
+    $baseName = "sage-$t-$Version-windows-x86_64"
     $payloadName = "$baseName.bin"
     $payloadPath = Join-Path $outDir $payloadName
 
@@ -257,7 +378,8 @@ foreach ($t in $Tiers) {
         try {
             & tar -cf $payloadPath python artifacts
             if ($LASTEXITCODE -ne 0) { throw "tar failed to create payload archive" }
-        } finally {
+        }
+        finally {
             Pop-Location
         }
 
@@ -265,11 +387,11 @@ foreach ($t in $Tiers) {
         Write-Ok "Payload: $payloadName ($payloadMB MB)"
     }
 
-    # --- 8: compile NSIS installer stub (only config + frontend embedded) ---
+    # --- 8: compile NSIS installer stub ---
     if (-not $DryRun) {
         Write-Step "Compiling NSIS installer stub"
 
-        $outName  = "$baseName.exe"
+        $outName = "$baseName.exe"
 
         $nsisArgs = @(
             "/DTIER=$t",
@@ -298,7 +420,7 @@ foreach ($t in $Tiers) {
         "$payloadHash  $payloadName" | Add-Content "$outDir/SHA256SUMS.txt" -Encoding UTF8
         Write-Ok "SHA256SUMS.txt updated"
 
-        # --- 9: create distribution zip (installer stub + payload together) ---
+        # --- 9: create distribution zip ---
         Write-Step "Creating distribution package"
         $distZipName = "$baseName.zip"
         $distZipPath = Join-Path $outDir $distZipName
@@ -309,11 +431,11 @@ foreach ($t in $Tiers) {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zip = [System.IO.Compression.ZipFile]::Open($distZipPath, 'Create')
         try {
-            # Store without compression — contents are already binary/compressed
             $noComp = [System.IO.Compression.CompressionLevel]::NoCompression
-            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$outDir\$outName",    $outName,    $noComp) | Out-Null
-            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $payloadPath,          $payloadName,$noComp) | Out-Null
-        } finally {
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$outDir\$outName", $outName, $noComp) | Out-Null
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $payloadPath, $payloadName, $noComp) | Out-Null
+        }
+        finally {
             $zip.Dispose()
         }
 
@@ -323,15 +445,14 @@ foreach ($t in $Tiers) {
         Write-Host "    Upload to Cloudflare R2:" -ForegroundColor Cyan
         Write-Host "      $distZipPath" -ForegroundColor White
 
-    } else {
+    }
+    else {
         Write-Ok "NSIS compilation skipped (--DryRun)"
 
-        # Print staging summary
         $totalMB = [math]::Round(($allFiles | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
         Write-Host "    Staging summary: $($allFiles.Count) files, $totalMB MB" -ForegroundColor Yellow
     }
 }
-
 
 Write-Host ""
 Write-Banner "BUILD COMPLETE"

@@ -59,7 +59,15 @@ export default function Home() {
 
   const { streamState, startStream, stopStream } = useChatStream();
 
-  const { data: status } = useGetStatus({ query: { queryKey: getGetStatusQueryKey(), refetchInterval: 2000 } });
+  const { data: status } = useGetStatus({
+    query: {
+      queryKey: getGetStatusQueryKey(),
+      refetchInterval: (query) =>
+        (query.state.data as SystemStatus | undefined)?.model_ready ? 15000 : 2000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  });
 
   const { data: historyMessages } = useGetSessionMessages(currentThreadId || "", {
     query: {

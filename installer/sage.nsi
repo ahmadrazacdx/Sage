@@ -53,6 +53,7 @@ VIAddVersionKey "LegalCopyright"  "Apache-2.0"
 ; ---------- MUI settings ----------
 !define MUI_ABORTWARNING
 !define MUI_ICON "${STAGING_DIR}\..\..\sage.ico"
+!define MUI_UNICON "${STAGING_DIR}\..\..\sage.ico"
 
 !define MUI_WELCOMEPAGE_TITLE "Welcome to Sage ${VERSION}"
 !define MUI_WELCOMEPAGE_TEXT "This will install Sage Academic Assistant (${TIER} edition) on your computer.$\r$\n$\r$\nSage is an offline-first, AI-powered academic assistant.$\r$\n$\r$\nClick Next to continue."
@@ -127,17 +128,10 @@ Section "Core Files" SecCore
     SetOutPath "$INSTDIR"
     File "${STAGING_DIR}\..\..\sage.ico"
 
-    ; --- Launcher script (VBScript for 100% silent startup) ---
-    FileOpen $0 "$INSTDIR\Sage.vbs" w
-    FileWrite $0 'Set fso = CreateObject("Scripting.FileSystemObject")$\r$\n'
-    FileWrite $0 'Set WshShell = CreateObject("WScript.Shell")$\r$\n'
-    FileWrite $0 'pythonPath = "$INSTDIR\python\pythonw.exe"$\r$\n'
-    FileWrite $0 'If Not fso.FileExists(pythonPath) Then$\r$\n'
-    FileWrite $0 '  MsgBox "Python runtime not found at: " & pythonPath, 16, "Sage Startup Error"$\r$\n'
-    FileWrite $0 '  WScript.Quit 1$\r$\n'
-    FileWrite $0 'End If$\r$\n'
-    FileWrite $0 'WshShell.Environment("PROCESS")("SAGE_HOME") = "$INSTDIR"$\r$\n'
-    FileWrite $0 'WshShell.Run Chr(34) & pythonPath & Chr(34) & " -m sage", 0, False$\r$\n'
+    ; --- Native launcher ---
+    File "${STAGING_DIR}\Sage.exe"
+    FileOpen $0 $InstallLog a
+    FileWrite $0 "Launcher: Sage.exe (native)\r\n"
     FileClose $0
 
     ; =======================================================================
@@ -197,23 +191,19 @@ Section "-PostInstall" SecPost
     CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
 
     CreateShortcut "$DESKTOP\Sage.lnk" \
-        "$WINDIR\System32\wscript.exe" \
-        "$\"$INSTDIR\Sage.vbs$\"" \
+        "$INSTDIR\Sage.exe" \
+        "" \
         "$INSTDIR\sage.ico" 0 SW_SHOWNORMAL "" \
         "Sage Academic Assistant"
 
     CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Sage.lnk" \
-        "$WINDIR\System32\wscript.exe" \
-        "$\"$INSTDIR\Sage.vbs$\"" \
+        "$INSTDIR\Sage.exe" \
+        "" \
         "$INSTDIR\sage.ico" 0 SW_SHOWNORMAL "" \
         "Sage Academic Assistant"
 
     CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" \
         "$INSTDIR\uninstall.exe"
-
-    ; --- Set SAGE_HOME as user env var ---
-    WriteRegStr HKCU "Environment" "SAGE_HOME" "$INSTDIR"
-    SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=500
 
     ; --- Write uninstaller ---
     WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -235,7 +225,7 @@ SectionEnd
 ; LAUNCH FUNCTION
 ; ==========================================================================
 Function LaunchSage
-    Exec 'wscript.exe "$INSTDIR\Sage.vbs"'
+    Exec '"$INSTDIR\Sage.exe"'
 FunctionEnd
 
 ; ==========================================================================
@@ -305,8 +295,6 @@ Section "Uninstall"
 
     ; --- Remove registry ---
     DeleteRegKey HKCU "${UNINSTALL_REG_KEY}"
-    DeleteRegValue HKCU "Environment" "SAGE_HOME"
-    SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=500
 
     ; --- Remove Defender exclusion ---
     nsExec::ExecToLog 'powershell -NoProfile -Command "try { Remove-MpPreference -ExclusionPath \"$INSTDIR\" -ErrorAction SilentlyContinue } catch {}"'

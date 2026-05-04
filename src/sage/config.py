@@ -24,9 +24,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ----Paths----
 def _get_project_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "artifacts").is_dir() and (parent / "config").is_dir():
+            os.environ["SAGE_HOME"] = str(parent)
+            return parent
+
     env_root = os.environ.get("SAGE_HOME")
     if env_root:
         return Path(env_root).resolve()
+
+    # Last resort fallback
     return Path(__file__).resolve().parents[2]
 
 
