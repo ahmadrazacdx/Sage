@@ -109,7 +109,9 @@ class LLMSettings(BaseSettings):
 
 class EmbeddingSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
-    embed_model: Path = Path("artifacts/models/embedding-models/bge-small-en-v1.5")
+
+    model_name: str = "BAAI/bge-small-en-v1.5"
+    cache_dir: Path = Path("artifacts/models/embedding-models")
 
 
 class RAGSettings(BaseSettings):

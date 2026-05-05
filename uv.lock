@@ -2047,6 +2047,39 @@ wheels = [
 ]
 
 [[package]]
+name = "onnxruntime-directml"
+version = "1.24.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "flatbuffers" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "protobuf" },
+    { name = "sympy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/be/90/99566dc6398028e7691a5b12720fd85f757a0901818b84599d28abb3f085/onnxruntime_directml-1.24.4-cp311-cp311-win_amd64.whl", hash = "sha256:96642a787e5a6f33bf043521c0f06eb1eb663f6b830e5862a2026d03f9c90543", size = 25106000, upload-time = "2026-03-17T21:47:15.438Z" },
+    { url = "https://files.pythonhosted.org/packages/88/ea/33814eb0ec96775eda4c1d30b0d86e91d7d2cd0d84c66d3915aef0e06fa3/onnxruntime_directml-1.24.4-cp312-cp312-win_amd64.whl", hash = "sha256:f2ecb68b7b7b259d2ef3112ae760149f9b5a1e7c0fbb73d539da6250a648a614", size = 25111930, upload-time = "2026-03-17T21:47:18.419Z" },
+]
+
+[[package]]
+name = "onnxruntime-gpu"
+version = "1.25.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "flatbuffers" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "protobuf" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bc/bb/d0aeb0910beee46d34568af9ba07d40bf9c5f94f188bf43c0ff47388f6de/onnxruntime_gpu-1.25.1-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:fcdd93f7a74659e08137b5d9c705390e57b37ac86e6956ec0d7ccd81001afe0c", size = 271246304, upload-time = "2026-04-27T22:06:00.753Z" },
+    { url = "https://files.pythonhosted.org/packages/41/a8/1e93491d72ea04318445b0053c00ab7aedecb2327f79a560868e97423ea4/onnxruntime_gpu-1.25.1-cp311-cp311-win_amd64.whl", hash = "sha256:5c2d00d7b62c098e5d0c720ae9e81dcb3143a4285516a43e39c4997fa9fcc1f3", size = 221700978, upload-time = "2026-04-27T21:59:31.581Z" },
+    { url = "https://files.pythonhosted.org/packages/54/d9/0dc74ca5d208848e931abacde743d61c0c33ecc916ffac2b54d604b4cfe5/onnxruntime_gpu-1.25.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:264b65ed81c1a32c2e410423ef3e4ba3ebb603c099d5a374c8780fbeb3496239", size = 271272487, upload-time = "2026-04-27T22:06:11.243Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/10/2f72ca2a2c606e3245dca27e843f74493e544bf976bf5e97c41b0259d18b/onnxruntime_gpu-1.25.1-cp312-cp312-win_amd64.whl", hash = "sha256:d73660da130e03d6f5bfba2522af01491e26902643589fe466a10f6936dfc71a", size = 221708572, upload-time = "2026-04-27T21:59:41.786Z" },
+]
+
+[[package]]
 name = "openai"
 version = "2.28.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3382,6 +3415,8 @@ dependencies = [
     { name = "matplotlib" },
     { name = "networkx" },
     { name = "numpy" },
+    { name = "onnxruntime-directml" },
+    { name = "onnxruntime-gpu" },
     { name = "pandas" },
     { name = "pdf2image" },
     { name = "pdfplumber" },
@@ -3451,6 +3486,8 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "networkx", specifier = ">=3.5" },
     { name = "numpy", specifier = ">=2.1.0" },
+    { name = "onnxruntime-directml", specifier = ">=1.24.4" },
+    { name = "onnxruntime-gpu" },
     { name = "pandas", specifier = ">=2.2.0" },
     { name = "pdf2image", specifier = ">=1.17.0" },
     { name = "pdfplumber", specifier = ">=0.11.4" },
