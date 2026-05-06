@@ -22,6 +22,7 @@ class SystemStatus(BaseModel):
     vectordb_collections: list[str]
     network_online: bool
 
+
 class CoursesResponse(BaseModel):
     courses: list[str]
 
@@ -34,7 +35,7 @@ async def health_check() -> HealthStatus:
 
 @router.get("/status", response_model=SystemStatus)
 async def get_status(request: Request) -> SystemStatus:
-    """System health snapshot. Polled every 5 s by the 
+    """System health snapshot. Polled every 5 s by the
     frontend until {"model_ready":True}.
     """
     cfg = get_settings()

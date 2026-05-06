@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Any
 import warnings
+from typing import Any
 
 import structlog
 from langchain_core.prompts import ChatPromptTemplate
@@ -43,6 +43,7 @@ _SCHEDULE_TIMEOUT_MULTIPLIER: float = 1.5
 # Low temperature ensures deterministic, reproducible schedules
 _SCHEDULE_TEMPERATURE: float = 0.1
 
+
 def _escape_md(text: str) -> str:
     """Escape pipe characters and angle brackets to prevent markdown injection."""
     return text.replace("|", "\\|").replace("<", "\\<").replace(">", "\\>")
@@ -56,13 +57,11 @@ def _clean(text: str) -> str:
     return _escape_md(flat.strip())
 
 
-def _normalize_schedule(
-    analysis: RoadmapAnalysis, schedule: RoadmapSchedule
-) -> RoadmapSchedule:
+def _normalize_schedule(analysis: RoadmapAnalysis, schedule: RoadmapSchedule) -> RoadmapSchedule:
     timeline_days = max(1, analysis.timeline_days)
     seen: set[int] = set()
     cleaned: list[ScheduleDay] = []
- 
+
     for day in sorted(schedule.schedule, key=lambda d: d.day):
         if day.day in seen:
             continue
@@ -72,10 +71,7 @@ def _normalize_schedule(
         checkpoint_raw: str | None
         if isinstance(day.checkpoint, dict):
             checkpoint_raw = str(
-                day.checkpoint.get("milestone")
-                or day.checkpoint.get("checkpoint")
-                or day.checkpoint.get("label")
-                or ""
+                day.checkpoint.get("milestone") or day.checkpoint.get("checkpoint") or day.checkpoint.get("label") or ""
             )
         elif day.checkpoint is None:
             checkpoint_raw = None
@@ -92,10 +88,10 @@ def _normalize_schedule(
                 checkpoint=_clean(checkpoint_raw) if checkpoint_raw else None,
             )
         )
- 
+
     if not cleaned:
         return _build_fallback_schedule(analysis)
- 
+
     cleaned = cleaned[:timeline_days]
     while len(cleaned) < timeline_days:
         last = cleaned[-1]
@@ -111,7 +107,7 @@ def _normalize_schedule(
                 checkpoint=None,
             )
         )
- 
+
     seen_cp: set[int] = set()
     norm_cp: list[Checkpoint] = []
     for cp in schedule.checkpoints:
@@ -121,16 +117,14 @@ def _normalize_schedule(
         seen_cp.add(d)
         norm_cp.append(Checkpoint(after_day=d, milestone=_clean(cp.milestone)))
     if not norm_cp:
-        norm_cp.append(
-            Checkpoint(after_day=timeline_days, milestone="Complete the planned scope confidently")
-        )
- 
+        norm_cp.append(Checkpoint(after_day=timeline_days, milestone="Complete the planned scope confidently"))
+
     qs = [_clean(q) for q in schedule.self_assessment_questions if _clean(q)][:3]
     while len(qs) < 3:
         qs.append(f"What did you improve most in {analysis.subject} during this plan?")
- 
+
     return RoadmapSchedule(schedule=cleaned, checkpoints=norm_cp, self_assessment_questions=qs)
- 
+
 
 class TopicInfo(BaseModel):
     name: str
@@ -229,11 +223,13 @@ class RoadmapSchedule(BaseModel):
                 out.append(cp)
         return out
 
+
 _SCOPE_PHRASE: dict[str, str] = {
     "midterm": "your midterm",
     "final": "your final exam",
     "full course": "the full course",
 }
+
 
 def _build_intro(analysis: RoadmapAnalysis, schedule: RoadmapSchedule) -> str:
     scope_phrase = _SCOPE_PHRASE.get(analysis.scope.lower(), f'"{analysis.scope}"')
@@ -241,25 +237,28 @@ def _build_intro(analysis: RoadmapAnalysis, schedule: RoadmapSchedule) -> str:
     study_days = sum(1 for d in schedule.schedule if d.session_type == "study")
     revision_days = sum(1 for d in schedule.schedule if d.session_type == "revision")
     n_topics = len(analysis.topics)
- 
+
     topic_clause = (
         f" The plan covers **{n_topics} topic{'s' if n_topics != 1 else ''}**, "
         "sequenced by prerequisites so you always build on solid ground."
-        if n_topics else ""
+        if n_topics
+        else ""
     )
     weak_clause = (
         f" I've allocated extra time to your weaker areas "
         f"({', '.join(f'**{t}**' for t in analysis.weak_topics)}) "
         "so they get the attention they deserve."
-        if analysis.weak_topics else ""
+        if analysis.weak_topics
+        else ""
     )
     known_clause = (
         f" Topics you already know "
         f"({', '.join(f'**{t}**' for t in analysis.known_topics)}) "
         "are kept as quick refreshers — no wasted effort."
-        if analysis.known_topics else ""
+        if analysis.known_topics
+        else ""
     )
- 
+
     return (
         f"Here's your personalised **{analysis.timeline_days}-day study roadmap** "
         f"for **{analysis.subject}**, built to get you ready for {scope_phrase}. "
@@ -271,16 +270,16 @@ def _build_intro(analysis: RoadmapAnalysis, schedule: RoadmapSchedule) -> str:
         "Every session opens with a short spaced-repetition recap, and the final "
         "two days are reserved for full revision and practice tests. Let's get into it! 🚀"
     )
- 
+
 
 _SESSION_ICON: dict[str, str] = {
-    "study":      "📖",
-    "review":     "🔁",
-    "revision":   "🧠",
+    "study": "📖",
+    "review": "🔁",
+    "revision": "🧠",
     "assessment": "📝",
 }
 _DIFFICULTY_LABEL: dict[int, str] = {1: "Easy", 2: "Medium", 3: "Hard"}
- 
+
 
 def _format_schedule_markdown(
     analysis: RoadmapAnalysis,
@@ -290,10 +289,10 @@ def _format_schedule_markdown(
     total_hours = sum(d.hours for d in schedule.schedule)
     study_days = sum(1 for d in schedule.schedule if d.session_type == "study")
     revision_days = sum(1 for d in schedule.schedule if d.session_type == "revision")
- 
+
     lines: list[str] = []
     lines += [_build_intro(analysis, schedule), ""]
- 
+
     lines += [
         f"# 🗺️ Study Roadmap — {analysis.subject}",
         "",
@@ -314,7 +313,7 @@ def _format_schedule_markdown(
         lines.append("⚠️  **Priority focus:** " + "  ".join(f"`{t}`" for t in analysis.weak_topics))
     if analysis.known_topics or analysis.weak_topics:
         lines.append("")
- 
+
     if analysis.topics:
         lines += [
             "<details>",
@@ -330,14 +329,15 @@ def _format_schedule_markdown(
                 f"| {t.estimated_hours}h | {prereqs} |"
             )
         lines += ["", "</details>", ""]
- 
+
     if analysis.timeline_days > 28:
         weekly: dict[int, list[ScheduleDay]] = {}
         for day in schedule.schedule:
             weekly.setdefault(((day.day - 1) // 7) + 1, []).append(day)
- 
+
         lines += [
-            "## 📅 Weekly Schedule", "",
+            "## 📅 Weekly Schedule",
+            "",
             "| Week | Days | Focus Topics | Total Hours | Key Activities |",
             "| :---: | :---: | --- | :---: | --- |",
         ]
@@ -352,7 +352,8 @@ def _format_schedule_markdown(
             )
     else:
         lines += [
-            "## 📅 Daily Schedule", "",
+            "## 📅 Daily Schedule",
+            "",
             "| Day | Mode | Topics | Hours | Activities |",
             "| :---: | --- | --- | :---: | --- |",
         ]
@@ -361,41 +362,36 @@ def _format_schedule_markdown(
             mode = f"{icon} **{day.session_type.capitalize()}**"
             topics = "<br>".join(f"• {t}" for t in day.topics)
             activities = "<br>".join(f"▸ {a}" for a in day.activities) if day.activities else "—"
-            lines.append(
-                f"| {day.day} | {mode} | {topics} | **{day.hours}h** | {activities} |"
-            )
+            lines.append(f"| {day.day} | {mode} | {topics} | **{day.hours}h** | {activities} |")
             if day.day in cp_map:
                 lines.append(f"| | 🏁 | ***Checkpoint*** | | *{cp_map[day.day]}* |")
- 
+
     if schedule.checkpoints:
         lines += ["---", "## 🏁 Progress Checkpoints"]
         for cp in schedule.checkpoints:
             lines.append(f"- **After Day {cp.after_day}:** {_escape_md(cp.milestone)}")
- 
+
     if schedule.self_assessment_questions:
         lines += [
-            "---", "## 📝 Self-Assessment",
+            "---",
+            "## 📝 Self-Assessment",
             "> Answer these *before* your final revision day to spot remaining gaps.",
         ]
         for i, q in enumerate(schedule.self_assessment_questions, 1):
             lines.append(f"- **Q{i}.** {_escape_md(q)}")
- 
+
     lines += [
         "---",
-        f"📊 **{study_days}** study days · **{revision_days}** revision days · "
-        f"**{total_hours:.1f}h** total commitment",
+        f"📊 **{study_days}** study days · **{revision_days}** revision days · **{total_hours:.1f}h** total commitment",
     ]
- 
+
     return "\n".join(lines)
 
 
 def _format_knowledge_units(kus: list[dict]) -> str:
     if not kus:
         return "None available."
-    return "\n".join(
-        f"[{ku.get('id', 'KU?')}] {ku.get('claim', ku.get('content', ''))}"
-        for ku in kus
-    )
+    return "\n".join(f"[{ku.get('id', 'KU?')}] {ku.get('claim', ku.get('content', ''))}" for ku in kus)
 
 
 def _build_fallback_schedule(analysis: RoadmapAnalysis) -> RoadmapSchedule:
@@ -443,9 +439,7 @@ def _build_fallback_schedule(analysis: RoadmapAnalysis) -> RoadmapSchedule:
                 ),
                 knowledge_unit_refs=[],
                 checkpoint=(
-                    f"Understand {', '.join(' '.join(t.name.split()[:2]) for t in day_topics)}"
-                    if day_topics
-                    else None
+                    f"Understand {', '.join(' '.join(t.name.split()[:2]) for t in day_topics)}" if day_topics else None
                 ),
             )
         )
@@ -479,7 +473,7 @@ def _build_fallback_schedule(analysis: RoadmapAnalysis) -> RoadmapSchedule:
 
 async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     """Generate a personalised study roadmap.
- 
+
     Phase 1 - Analyse the student request (structured output).
     Phase 2 - Generate day-by-day schedule (structured output).
     Fallback - Deterministic schedule from analysis if LLM fails.
@@ -489,13 +483,15 @@ async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     kus: list[dict] = state.get("knowledge_units", [])
     student_memory: str = state.get("student_memory", "No prior context available.")
     ku_text = _format_knowledge_units(kus)
- 
+
     # Analysis
-    analysis_prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("human", ROADMAP_ANALYSIS_PROMPT),
-    ])
- 
+    analysis_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", SYSTEM_PROMPT),
+            ("human", ROADMAP_ANALYSIS_PROMPT),
+        ]
+    )
+
     analysis: RoadmapAnalysis | None = None
     last_exc: Exception | None = None
     for attempt in range(1, _MAX_RETRIES + 1):
@@ -528,7 +524,7 @@ async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                 exc_type=type(exc).__name__,
                 exc_msg=str(exc),
             )
- 
+
     if analysis is None:
         log.error("roadmap_analysis_failed_all_retries", exc=str(last_exc))
         return {
@@ -537,14 +533,16 @@ async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                 "Please try again with more details about the subject, timeline, and scope."
             )
         }
- 
+
     # Schedule
     analysis_json = analysis.model_dump_json()
-    schedule_prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("human", ROADMAP_SCHEDULE_PROMPT),
-    ])
- 
+    schedule_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", SYSTEM_PROMPT),
+            ("human", ROADMAP_SCHEDULE_PROMPT),
+        ]
+    )
+
     schedule: RoadmapSchedule | None = None
     schedule_timeout = cfg.llm_timeout * _SCHEDULE_TIMEOUT_MULTIPLIER
     last_exc = None
@@ -570,7 +568,7 @@ async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         except asyncio.CancelledError:
             log.error("planner_node_schedule_cancelled")
             raise
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             last_exc = exc
             log.warning("roadmap_schedule_timeout", attempt=attempt, timeout_s=schedule_timeout)
         except Exception as exc:
@@ -581,20 +579,22 @@ async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                 exc_type=type(exc).__name__,
                 exc_msg=str(exc),
             )
- 
+
     if schedule is None:
         log.error("roadmap_schedule_failed_all_retries", exc=str(last_exc))
         schedule = _build_fallback_schedule(analysis)
         log.info("roadmap_schedule_fallback_generated", days=len(schedule.schedule))
- 
+
     schedule = _normalize_schedule(analysis, schedule)
     response_text = _format_schedule_markdown(analysis, schedule)
- 
+
     return {
         "response": response_text,
-        "tool_calls": [{
-            "tool": "roadmap_generation",
-            "subject": analysis.subject,
-            "days": len(schedule.schedule),
-        }],
+        "tool_calls": [
+            {
+                "tool": "roadmap_generation",
+                "subject": analysis.subject,
+                "days": len(schedule.schedule),
+            }
+        ],
     }

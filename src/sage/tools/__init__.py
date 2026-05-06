@@ -51,18 +51,18 @@ _OFFLINE_TOOLS: list[BaseTool] = [
 # --- Online Tools ---
 _ONLINE_TOOL_MODULES: dict[str, tuple[str, str]] = {
     # logical_name: (module_path, attribute_name)
-    "search_arxiv":        ("sage.tools.search",       "search_arxiv"),
-    "search_web":          ("sage.tools.search",       "search_web"),
-    "search_wikipedia":    ("sage.tools.search",       "search_wikipedia"),
+    "search_arxiv": ("sage.tools.search", "search_arxiv"),
+    "search_web": ("sage.tools.search", "search_web"),
+    "search_wikipedia": ("sage.tools.search", "search_wikipedia"),
     "search_library_docs": ("sage.tools.library_docs", "search_library_docs"),
 }
 
 # --- Metadata ---
 OFFLINE_TOOL_NAMES: list[str] = [t.name for t in _OFFLINE_TOOLS]
-ONLINE_TOOL_NAMES: list[str]  = list(_ONLINE_TOOL_MODULES.keys())
-OFFLINE_TOOL_COUNT: int       = len(_OFFLINE_TOOLS)
-ONLINE_TOOL_COUNT: int        = len(_ONLINE_TOOL_MODULES)
-TOTAL_TOOL_COUNT: int         = OFFLINE_TOOL_COUNT + ONLINE_TOOL_COUNT
+ONLINE_TOOL_NAMES: list[str] = list(_ONLINE_TOOL_MODULES.keys())
+OFFLINE_TOOL_COUNT: int = len(_OFFLINE_TOOLS)
+ONLINE_TOOL_COUNT: int = len(_ONLINE_TOOL_MODULES)
+TOTAL_TOOL_COUNT: int = OFFLINE_TOOL_COUNT + ONLINE_TOOL_COUNT
 
 
 def _assert_tools(tools: list[BaseTool], source: str) -> list[BaseTool]:
@@ -74,10 +74,10 @@ def _assert_tools(tools: list[BaseTool], source: str) -> list[BaseTool]:
     for i, t in enumerate(tools):
         if not isinstance(t, BaseTool):
             raise TypeError(
-                f"[{source}] Item at index {i} is {type(t)!r}, "
-                f"expected BaseTool. Check the tool constructor."
+                f"[{source}] Item at index {i} is {type(t)!r}, expected BaseTool. Check the tool constructor."
             )
     return tools
+
 
 def get_offline_tools() -> list[BaseTool]:
     """Return all tools that function without network access.
@@ -107,13 +107,12 @@ def get_online_tools() -> list[BaseTool]:
     for logical_name, (module_path, attr) in _ONLINE_TOOL_MODULES.items():
         try:
             import importlib
+
             module = importlib.import_module(module_path)
-            tool   = getattr(module, attr)
+            tool = getattr(module, attr)
 
             if not isinstance(tool, BaseTool):
-                raise TypeError(
-                    f"Expected BaseTool, got {type(tool)!r} for {attr!r}"
-                )
+                raise TypeError(f"Expected BaseTool, got {type(tool)!r} for {attr!r}")
 
             tools.append(tool)
             log.debug("online_tool_loaded", tool=logical_name)

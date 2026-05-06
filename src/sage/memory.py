@@ -22,14 +22,30 @@ from sage.utils import estimate_tokens, strip_think_markers
 log = structlog.get_logger(__name__)
 
 _NOISE_PREFIXES: tuple[str, ...] = (
-    "fact statement", "fact:", "note:", "memory:", "output:",
-    "example:", "format:", "here", "based on",
+    "fact statement",
+    "fact:",
+    "note:",
+    "memory:",
+    "output:",
+    "example:",
+    "format:",
+    "here",
+    "based on",
 )
 
 _REJECT_CONTENT: tuple[str, ...] = (
-    "unknown", "n/a", "not specified", "not mentioned", "not provided",
-    "ai assistant", "language model", "llm", "sage", "assistant",
-    "role:", "role is",
+    "unknown",
+    "n/a",
+    "not specified",
+    "not mentioned",
+    "not provided",
+    "ai assistant",
+    "language model",
+    "llm",
+    "sage",
+    "assistant",
+    "role:",
+    "role is",
 )
 
 # --- Memory extraction prompt ---
@@ -67,7 +83,8 @@ conversation explicitly contains those facts.
 
 Maximum 4 facts. If nothing qualifies, output exactly: NONE"""
 
-_TITLE_PROMPT = """Generate a short, descriptive title (4-8 words) for this conversation based on the first user message. Output ONLY the title, nothing else.
+_TITLE_PROMPT = """Generate a short, descriptive title (4-8 words) for this conversation based on the first user \\
+message. Output ONLY the title, nothing else.
 
 User message: {message}"""
 
@@ -81,6 +98,7 @@ Conversation:
 {history}
 
 Summary:"""
+
 
 async def extract_memories(
     user_message: str,
@@ -99,7 +117,6 @@ async def extract_memories(
     Returns:
         List of dicts with 'content' and 'category' keys.
     """
-    cfg = get_settings().memory
     if len(user_message.strip()) < 10 or len(assistant_message.strip()) < 20:
         return []
 
@@ -114,9 +131,7 @@ async def extract_memories(
             utility_llm.ainvoke(prompt_text),
             timeout=30.0,
         )
-        raw_text = strip_think_markers(
-            result.content if hasattr(result, "content") else str(result)
-        ).strip()
+        raw_text = strip_think_markers(result.content if hasattr(result, "content") else str(result)).strip()
     except Exception as exc:
         log.warning(
             "memory_extraction_failed",
@@ -140,11 +155,11 @@ async def extract_memories(
             continue
         bracket_end = line.index("]")
         category = line[1:bracket_end].strip().lower().replace(" ", "_")
-        content = line[bracket_end + 1:].strip().lstrip(":- ").strip()
+        content = line[bracket_end + 1 :].strip().lstrip(":- ").strip()
         content_lower = content.lower()
         for noise in _NOISE_PREFIXES:
             if content_lower.startswith(noise):
-                content = content[len(noise):].lstrip(": ").strip()
+                content = content[len(noise) :].lstrip(": ").strip()
                 content_lower = content.lower()
                 break
         if len(content) < 8:
@@ -221,6 +236,7 @@ async def deduplicate_and_store(
 
     return stored_count
 
+
 async def search_memories(
     query: str,
     k: int | None = None,
@@ -249,6 +265,7 @@ async def search_memories(
         for m in all_memories[:k]
     ]
 
+
 async def inject_memory_context(
     query: str,
     max_facts: int = 10,
@@ -268,11 +285,8 @@ async def inject_memory_context(
         cat = mem["category"].replace("_", " ").title()
         lines.append(f"- [{cat}] {mem['content']}")
 
-    return (
-        "## Student Memory\n"
-        "Things I remember about this student from past conversations:\n"
-        + "\n".join(lines)
-    )
+    return "## Student Memory\nThings I remember about this student from past conversations:\n" + "\n".join(lines)
+
 
 async def compress_history(
     messages: list[Any],
@@ -293,19 +307,14 @@ async def compress_history(
     Returns:
         Compressed message list fitting within the token budget.
     """
-    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+    from langchain_core.messages import HumanMessage, SystemMessage
 
     cfg = get_settings().memory
     if max_tokens is None:
         max_tokens = cfg.max_history_tokens
 
     total_tokens = sum(
-        estimate_tokens(
-            m.content
-            if hasattr(m, "content") and isinstance(m.content, str)
-            else str(m)
-        )
-        for m in messages
+        estimate_tokens(m.content if hasattr(m, "content") and isinstance(m.content, str) else str(m)) for m in messages
     )
 
     if total_tokens <= max_tokens:
@@ -329,14 +338,10 @@ async def compress_history(
 
     try:
         result = await asyncio.wait_for(
-            utility_llm.ainvoke(
-                _COMPRESS_PROMPT.format(history=history_text[:3000])
-            ),
+            utility_llm.ainvoke(_COMPRESS_PROMPT.format(history=history_text[:3000])),
             timeout=20.0,
         )
-        summary = strip_think_markers(
-            result.content if hasattr(result, "content") else str(result)
-        ).strip()
+        summary = strip_think_markers(result.content if hasattr(result, "content") else str(result)).strip()
     except Exception as exc:
         log.warning(
             "history_compression_failed",
@@ -348,10 +353,9 @@ async def compress_history(
     if not summary:
         return recent
 
-    summary_msg = SystemMessage(
-        content=f"Previous conversation summary: {summary}"
-    )
+    summary_msg = SystemMessage(content=f"Previous conversation summary: {summary}")
     return [summary_msg, *recent]
+
 
 async def generate_title(
     message: str,
@@ -360,14 +364,15 @@ async def generate_title(
     """Generate a conversation title from the first user message."""
     try:
         result = await asyncio.wait_for(
-            utility_llm.ainvoke(
-                _TITLE_PROMPT.format(message=message[:500])
-            ),
+            utility_llm.ainvoke(_TITLE_PROMPT.format(message=message[:500])),
             timeout=15.0,
         )
-        title = strip_think_markers(
-            result.content if hasattr(result, "content") else str(result)
-        ).strip().strip('"').strip("'")
+        title = (
+            strip_think_markers(result.content if hasattr(result, "content") else str(result))
+            .strip()
+            .strip('"')
+            .strip("'")
+        )
         title = title.split("\n")[0].strip()
         words = title.split()
         if len(words) > 8:
@@ -384,6 +389,7 @@ def _fallback_title(text: str) -> str:
         title += "…"
     return title
 
+
 async def post_turn_memory_hook(
     user_message: str,
     assistant_message: str,
@@ -398,10 +404,7 @@ async def post_turn_memory_hook(
     """
     try:
         all_mems = await get_all_memories()
-        existing_text = (
-            "\n".join(f"- [{m['category']}] {m['content']}" for m in all_mems[:20])
-            if all_mems else ""
-        )
+        existing_text = "\n".join(f"- [{m['category']}] {m['content']}" for m in all_mems[:20]) if all_mems else ""
 
         new_memories = await extract_memories(
             user_message=user_message,

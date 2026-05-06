@@ -149,7 +149,8 @@ QUIZ_EVALUATION_PROMPT: str = textwrap.dedent("""\
     3. For wrong answers: name the misconception + concept to review.
     4. Frame all corrections as learning opportunities.
     5. Score as fraction (e.g. 7/10) and percentage.
-    6. End with a brief summary: identifying the student's demonstrated strengths and specific knowledge gaps revealed by this quiz. Address the student directly (e.g. "You correctly identified...", NOT "The student...").
+    6. End with a brief summary: identifying the student's demonstrated strengths and specific knowledge gaps \\
+revealed by this quiz. Address the student directly (e.g. "You correctly identified...", NOT "The student...").
 """)
 
 
@@ -346,7 +347,8 @@ RESEARCH_PLAN_PROMPT: str = textwrap.dedent("""\
     5. Order subtopics foundational → applied.
 
     Return JSON only, no markdown fences:
-    {{"title":"...","subtopics":[{{"name":"...","description":"1-sentence scope.","queries":{{"academic":"...","web":"...","encyclopedia":"..."}}}}]}}
+    {{"title":"...","subtopics":[{{"name":"...","description":"1-sentence scope.",\
+"queries":{{"academic":"...","web":"...","encyclopedia":"..."}}}}]}}
     Topic: {query}
 """)
 
@@ -360,14 +362,16 @@ RESEARCH_REPORT_PROMPT: str = textwrap.dedent("""\
     {source_references}
 
     Rules:
-    1. Structure strictly as: Abstract → Introduction → [subtopic sections] → Key Findings → Contradictions & Open Questions → Conclusion → References
+    1. Structure strictly as: Abstract → Introduction → [subtopic sections] → Key Findings → \
+Contradictions & Open Questions → Conclusion → References
     2. Every factual claim: cite with [N] matching the numbers above. No uncited assertions.
     3. Formal academic tone. No colloquialisms.
     4. Math in LaTeX: inline $...$ or display $$...$$.
     5. Where sources contradict, note the disagreement explicitly.
     6. Identify ≥1 open research question or knowledge gap.
     7. 400–800 words (excluding references). Cover every required section.
-    8. References section: copy the Available References above VERBATIM. Do NOT fabricate, rephrase, or invent any references. One per line: [N] Title. source.
+    8. References section: copy the Available References above VERBATIM. Do NOT fabricate, rephrase, \\
+or invent any references. One per line: [N] Title. source.
     9. HEADING FORMAT: Open the report with `# {title}` on its own line. Mark every section
     with a Markdown ATX heading: `## Abstract`, `## Introduction`, etc.
     NEVER use bold (`**text**`) as a heading substitute — bold is for inline emphasis only.
@@ -411,7 +415,8 @@ CODE_FIX_DIAGNOSIS_PROMPT: str = textwrap.dedent("""\
     Schema:
     {{"language":"...","framework":null,"error_type":"syntax|runtime|logic|type|import|timeout","error_message":"...","root_cause":"...","affected_lines":[N],"fix_strategy":"...","alternative_strategies":["..."],"confidence":"high|medium|low"}}
 
-    Rules: pin point exact root cause (not symptom); affected line numbers; minimal change only; safest strategy first; no fixed code here, only diagnosis.
+    Rules: pin point exact root cause (not symptom); affected line numbers; \
+minimal change only; safest strategy first; no fixed code here, only diagnosis.
 
     Code: {code}
     Error: {error}

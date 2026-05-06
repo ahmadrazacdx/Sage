@@ -319,6 +319,7 @@ def launch() -> None:
         # 4. Open pywebview window.
         try:
             import webview
+
             try:
                 webview.settings["ALLOW_DOWNLOADS"] = True
                 webview.settings["OPEN_EXTERNAL_LINKS"] = True

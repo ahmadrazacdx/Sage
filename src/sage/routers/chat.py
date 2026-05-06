@@ -11,7 +11,8 @@ Rationale:
     - `GET /api/stream/{thread_id}` pops the pending entry, runs the
       LangGraph agent graph via `astream_events(version="v2")`, and
       yields SSE events for EVERY path (streaming and batch alike).
-    - node_start events are emitted when each graph node begins, this drives the frontend progress timeline for all agentic modes.
+    - node_start events are emitted when each graph node begins, this drives the frontend
+      progress timeline for all agentic modes.
     - For batch intents the LLM token stream is suppressed; only the
       final response chunk is emitted after the graph completes.
     - Concurrency guard: only one active stream per `thread_id`.
@@ -29,7 +30,7 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
@@ -48,9 +49,16 @@ log = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["chat"])
 
-_BATCH_INTENTS: frozenset[str] = frozenset({
-    "explain", "diagram", "quiz", "roadmap", "research", "fix",
-})
+_BATCH_INTENTS: frozenset[str] = frozenset(
+    {
+        "explain",
+        "diagram",
+        "quiz",
+        "roadmap",
+        "research",
+        "fix",
+    }
+)
 _NON_STREAMING_INTENTS: frozenset[str] = _BATCH_INTENTS
 _TYPEWRITER_INTENTS: frozenset[str] = frozenset({"explain"})
 
@@ -61,30 +69,30 @@ _TYPEWRITER_MIN_TOTAL_DELAY_S: float = 0.25
 _TYPEWRITER_MAX_TOTAL_DELAY_S: float = 1.20
 
 _NODE_LABELS: dict[str, str] = {
-    "router":            "🧭 Routing request…",
-    "retrieval":         "📚 Retrieving course materials…",
-    "reasoning":         "🧠 Reasoning through content…",
-    "response_generator":"✍️ Formatting response…",
-    "quiz":              "🧩 Generating quiz…",
-    "diagram":           "📊 Building diagram…",
-    "planner":           "📅 Building study plan…",
-    "research":          "🔬 Researching topic…",
-    "code_fix":          "🔧 Analysing code…",
-    "general":           "💬 Generating answer…",
+    "router": "🧭 Routing request…",
+    "retrieval": "📚 Retrieving course materials…",
+    "reasoning": "🧠 Reasoning through content…",
+    "response_generator": "✍️ Formatting response…",
+    "quiz": "🧩 Generating quiz…",
+    "diagram": "📊 Building diagram…",
+    "planner": "📅 Building study plan…",
+    "research": "🔬 Researching topic…",
+    "code_fix": "🔧 Analysing code…",
+    "general": "💬 Generating answer…",
 }
 
 # Tool labels
 _TOOL_LABELS: dict[str, str] = {
-    "validate_mermaid":   "🔍 Validating diagram syntax…",
+    "validate_mermaid": "🔍 Validating diagram syntax…",
     "render_mermaid_svg": "🖼️ Rendering diagram…",
-    "search_arxiv":       "📄 Searching arXiv…",
-    "search_web":         "🌐 Searching the web…",
-    "search_wikipedia":   "📖 Searching Wikipedia…",
-    "calculator":         "🔢 Running calculation…",
-    "execute_python":     "⚙️ Executing code…",
-    "export_pdf":         "📋 Generating PDF report…",
-    "export_markdown":    "📝 Saving markdown…",
-    "corpus_search":      "📚 Searching course materials…",
+    "search_arxiv": "📄 Searching arXiv…",
+    "search_web": "🌐 Searching the web…",
+    "search_wikipedia": "📖 Searching Wikipedia…",
+    "calculator": "🔢 Running calculation…",
+    "execute_python": "⚙️ Executing code…",
+    "export_pdf": "📋 Generating PDF report…",
+    "export_markdown": "📝 Saving markdown…",
+    "corpus_search": "📚 Searching course materials…",
 }
 
 _SKIP_NODES: frozenset[str] = frozenset({"router"})
@@ -103,6 +111,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     thread_id: str
     message_id: str
+
 
 def _short_id() -> str:
     return uuid.uuid4().hex[:8]
@@ -203,9 +212,7 @@ def _split_thinking_response(text: str) -> tuple[str, str]:
     if not text:
         return "", ""
 
-    traces = [
-        block.strip() for block in _RE_THINK_BLOCK.findall(text) if block and block.strip()
-    ]
+    traces = [block.strip() for block in _RE_THINK_BLOCK.findall(text) if block and block.strip()]
 
     visible = _RE_THINK_BLOCK.sub("", text)
     visible = visible.replace("<think>", "").replace("</think>", "").strip()
@@ -253,7 +260,7 @@ def _consume_thinking_chunk(
 
             if close_idx > 0:
                 thinking_parts.append(remaining[:close_idx])
-            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG):]
+            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG) :]
             in_think = False
             seen_think_marker = True
             continue
@@ -265,7 +272,7 @@ def _consume_thinking_chunk(
         if open_idx == -1 and close_idx != -1 and not seen_think_marker:
             if close_idx > 0:
                 thinking_parts.append(remaining[:close_idx])
-            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG):]
+            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG) :]
             seen_think_marker = True
             continue
 
@@ -277,7 +284,7 @@ def _consume_thinking_chunk(
 
         if open_idx > 0:
             answer_parts.append(remaining[:open_idx])
-        remaining = remaining[open_idx + len(_THINK_OPEN_TAG):]
+        remaining = remaining[open_idx + len(_THINK_OPEN_TAG) :]
         in_think = True
         seen_think_marker = True
 
@@ -363,6 +370,7 @@ def _compress_max_tokens(ctx_size: int) -> int:
         return 1_000
     return 2_000
 
+
 async def _background_compress(
     graph: Any,
     thread_id: str,
@@ -380,6 +388,7 @@ async def _background_compress(
         max_tok = _compress_max_tokens(ctx_size)
 
         from langchain_core.messages import SystemMessage as _SM
+
         compressed = await compress_history(prior_msgs, utility_llm, max_tokens=max_tok)
         if not compressed or not isinstance(compressed[0], _SM):
             return
@@ -404,6 +413,7 @@ async def _background_compress(
             error=str(exc)[:200],
         )
 
+
 # POST
 @router.post("/chat", response_model=ChatResponse)
 async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
@@ -416,8 +426,7 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
     if body.mode not in VALID_INTENTS:
         raise HTTPException(
             status_code=422,
-            detail=f"Invalid mode '{body.mode}'. "
-            f"Expected one of: {', '.join(sorted(VALID_INTENTS))}",
+            detail=f"Invalid mode '{body.mode}'. Expected one of: {', '.join(sorted(VALID_INTENTS))}",
         )
 
     thread_id = body.thread_id or _short_id()
@@ -430,7 +439,7 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
         raise HTTPException(
             status_code=409,
             detail="A pending stream already exists for this thread. "
-                   "Connect to /api/stream/{thread_id} to consume it first.",
+            "Connect to /api/stream/{thread_id} to consume it first.",
         )
     if active.get(thread_id):
         raise HTTPException(
@@ -438,14 +447,12 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
             detail="A stream is already active for this thread.",
         )
 
-    ctx_size  = getattr(get_settings().llm, "active_context_size", 0) or 4_096
+    ctx_size = getattr(get_settings().llm, "active_context_size", 0) or 4_096
     max_facts = _max_memory_facts(ctx_size)
 
     student_memory = ""
     try:
-        student_memory = await inject_memory_context(
-            body.message, max_facts=max_facts
-        )
+        student_memory = await inject_memory_context(body.message, max_facts=max_facts)
     except Exception as exc:
         log.warning("memory_injection_skipped", error=str(exc)[:100])
 
@@ -488,9 +495,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
 
     now = asyncio.get_running_loop().time()
     stale = [
-        tid for tid, e in pending.items()
-        if now - e.get("created_at", now) > _STALE_PENDING_TTL
-        and tid != thread_id
+        tid for tid, e in pending.items() if now - e.get("created_at", now) > _STALE_PENDING_TTL and tid != thread_id
     ]
     for tid in stale:
         pending.pop(tid, None)
@@ -528,7 +533,9 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
 
         try:
             event_iter = graph.astream_events(
-                state_input, config=graph_config, version="v2",
+                state_input,
+                config=graph_config,
+                version="v2",
             ).__aiter__()
             while True:
                 try:
@@ -536,7 +543,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                         event_iter.__anext__(),
                         timeout=_SSE_HEARTBEAT_INTERVAL_S,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield _sse({"type": "heartbeat"})
                     continue
                 except StopAsyncIteration:
@@ -557,12 +564,14 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                     if raw_tool_name:
                         canonical = _canonical_tool_name(raw_tool_name)
                         label = _tool_label(canonical, raw_tool_name)
-                        yield _sse({
-                            "type": "tool_call",
-                            "name": canonical,
-                            "raw_name": raw_tool_name,
-                            "label": label,
-                        })
+                        yield _sse(
+                            {
+                                "type": "tool_call",
+                                "name": canonical,
+                                "raw_name": raw_tool_name,
+                                "label": label,
+                            }
+                        )
                 elif kind == "on_chat_model_stream" and stream_tokens:
                     chunk = event.get("data", {}).get("chunk")
                     if chunk is None:
@@ -572,12 +581,10 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                         continue
                     if intent == "thinking":
                         merged = f"{thinking_carry}{text}"
-                        _, answer_parts, thinking_in_block, thinking_carry, seen_think_marker = (
-                            _consume_thinking_chunk(
-                                merged,
-                                in_think=thinking_in_block,
-                                seen_think_marker=seen_think_marker,
-                            )
+                        _, answer_parts, thinking_in_block, thinking_carry, seen_think_marker = _consume_thinking_chunk(
+                            merged,
+                            in_think=thinking_in_block,
+                            seen_think_marker=seen_think_marker,
                         )
 
                         answer_text = "".join(answer_parts)
@@ -589,9 +596,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                         yield _sse({"type": "chunk", "text": text})
                 elif kind == "on_chain_end":
                     output = event.get("data", {}).get("output")
-                    if isinstance(output, dict) and (
-                        "response" in output or "artifact_paths" in output
-                    ):
+                    if isinstance(output, dict) and ("response" in output or "artifact_paths" in output):
                         final_state_from_events = output
 
             final_state: dict[str, Any] | None = final_state_from_events
@@ -641,8 +646,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
 
                 if intent == "research" and artifact_paths:
                     short_msg = response_text or (
-                        "I have completed your research report. "
-                        "Use the download button below to get the PDF."
+                        "I have completed your research report. Use the download button below to get the PDF."
                     )
                     accumulated_chunks = [short_msg]
                     yield _sse({"type": "chunk", "text": short_msg})
@@ -675,7 +679,9 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
 
             # Persist to in-memory store (backward compat + active session cache).
             thread_messages_store: dict[str, list[dict[str, Any]]] = getattr(
-                request.app.state, "thread_messages", {},
+                request.app.state,
+                "thread_messages",
+                {},
             )
             if not isinstance(thread_messages_store, dict):
                 thread_messages_store = {}
@@ -726,12 +732,10 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                         utility_llm=_mem_llm,
                     )
                 )
-            
+
             turn_number = len(thread_msgs) // 2
             if turn_number >= 3 and _mem_llm is not None and graph is not None:
-                asyncio.create_task(
-                    _background_compress(graph, thread_id, _mem_llm, ctx_size)
-                )
+                asyncio.create_task(_background_compress(graph, thread_id, _mem_llm, ctx_size))
 
         except asyncio.CancelledError:
             log.info("stream_cancelled", thread_id=thread_id)

@@ -27,9 +27,11 @@ def _run_dev_mode() -> None:
     configure_logging(cfg.app.log_level)
 
     from sage.app import create_app
+
     app = create_app()
 
     import structlog
+
     log = structlog.get_logger(__name__)
     log.info(
         "dev_mode_starting",
@@ -51,6 +53,7 @@ def _run_browser_mode() -> None:
     configure_logging(cfg.app.log_level)
 
     from sage.app import create_app
+
     app = create_app()
 
     url = f"http://localhost:{cfg.ui.port}"
@@ -60,12 +63,14 @@ def _run_browser_mode() -> None:
         def _open_browser() -> None:
             """Wait a moment for uvicorn to start, then open browser."""
             import time
+
             time.sleep(2.5)
             webbrowser.open(url)
 
         threading.Thread(target=_open_browser, daemon=True).start()
 
     import structlog
+
     log = structlog.get_logger(__name__)
     log.info("browser_mode_starting", url=url)
 
@@ -80,6 +85,7 @@ def _run_browser_mode() -> None:
 def _run_desktop_mode() -> None:
     """Full desktop experience via pywebview + system tray."""
     from sage.desktop import launch
+
     launch()
 
 

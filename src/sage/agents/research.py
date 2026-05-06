@@ -8,7 +8,7 @@ Four-node pipeline:
   3. Digester : Each subtopic's raw sources are independently
               compressed into a tight digest via a small LLM call.
   4. Writer: Synthesized all digests into a full academic report.
-  5. Reviewer: Quality gate. If verdict is "revise", 
+  5. Reviewer: Quality gate. If verdict is "revise",
      loops back to Writer (max 2 iterations).
 
 Online check: skips online tools if `state["online_mode"] == False`
@@ -43,26 +43,21 @@ from sage.utils import ainvoke_structured_with_fallback, strip_think_markers
 
 log = structlog.get_logger(__name__)
 
-_MAX_PLAN_RETRIES: int  = 2
-_MAX_ITEM_CHARS: int    = 600
-_TOK_PER_WORD: float    = 1.4
-_REF_SECTION_HEADING_RE = re.compile(
-    r"(?im)^(?:#{1,6}\s*|\*\*\s*)references(?:\s*\*\*)?\s*:?\s*$"
-)
+_MAX_PLAN_RETRIES: int = 2
+_MAX_ITEM_CHARS: int = 600
+_TOK_PER_WORD: float = 1.4
+_REF_SECTION_HEADING_RE = re.compile(r"(?im)^(?:#{1,6}\s*|\*\*\s*)references(?:\s*\*\*)?\s*:?\s*$")
 _REF_ITEM_START_RE = re.compile(r"^\[\d+\]\s+")
 _REF_INITIAL_RUN_RE = re.compile(r"(?:\b[A-Z]\.\s*){12,}")
-_PLACEHOLDER_REF_RE = re.compile(
-    r"(?im)^\[\d+\]\s+(?:Author(?:\(s\)|\s*\d*)?[.,]?\s*)?Title\.\s*Venue\.\s*Year\.\s*$"
-)
+_PLACEHOLDER_REF_RE = re.compile(r"(?im)^\[\d+\]\s+(?:Author(?:\(s\)|\s*\d*)?[.,]?\s*)?Title\.\s*Venue\.\s*Year\.\s*$")
 _MAX_REFERENCE_LINE_CHARS = 320
 _MAX_INITIALS_IN_RUN = 8
 _MAX_FALLBACK_REFS = 24
 
 
 def _no_think(llm: ChatOpenAI) -> ChatOpenAI:
-    return llm.bind(
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
-    )
+    return llm.bind(extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+
 
 _DIGEST_PROMPT = (
     'Subtopic: "{name}"\n\n'
@@ -71,28 +66,29 @@ _DIGEST_PROMPT = (
     "Sources:\n{sources}"
 )
 
+
 @dataclasses.dataclass(frozen=True)
 class ContextBudget:
     """All token/character limits for one research pipeline run."""
- 
-    ctx_size: int           # physical context window (tokens)
-    resp_reserve: int       # tokens kept free for report output
-    prompt_overhead: int    # writer template boilerplate (tokens)
-    digest_words: int       # target digest length per subtopic (words)
-    max_subtopics: int      # cap passed to the planner prompt
-    digest_in_chars: int    # max raw-source chars fed into ONE digest call
- 
+
+    ctx_size: int  # physical context window (tokens)
+    resp_reserve: int  # tokens kept free for report output
+    prompt_overhead: int  # writer template boilerplate (tokens)
+    digest_words: int  # target digest length per subtopic (words)
+    max_subtopics: int  # cap passed to the planner prompt
+    digest_in_chars: int  # max raw-source chars fed into ONE digest call
+
     @property
     def source_char_budget(self) -> int:
         """Max characters of ALL digests combined fed to the report writer."""
         avail_tokens = max(self.ctx_size - self.prompt_overhead - self.resp_reserve, 200)
         return avail_tokens * 4
- 
+
     @property
     def digest_out_chars(self) -> int:
         """Expected max characters of one digest output (for budget checks)."""
         return int(self.digest_words * _TOK_PER_WORD * 5)  # ~5 chars/word
- 
+
     @classmethod
     def from_settings(cls) -> ContextBudget:
         """Derive budget from the live LLM context window."""
@@ -132,7 +128,7 @@ class ContextBudget:
             max_subtopics=max_subs,
             digest_in_chars=digest_in_chars,
         )
- 
+
     @staticmethod
     def _calc_max_subtopics(ctx: int) -> int:
         """Return planner subtopic cap based on context size."""
@@ -141,7 +137,7 @@ class ContextBudget:
         if ctx < 8_192:
             return 4
         return 5
- 
+
 
 class SubtopicQueries(BaseModel):
     academic: str = ""
@@ -194,9 +190,7 @@ class ResearchPlan(BaseModel):
                 queries = {
                     "academic": str(item.get("academic") or item.get("academic_query") or ""),
                     "web": str(item.get("web") or item.get("web_query") or ""),
-                    "encyclopedia": str(
-                        item.get("encyclopedia") or item.get("wikipedia") or item.get("wiki") or ""
-                    ),
+                    "encyclopedia": str(item.get("encyclopedia") or item.get("wikipedia") or item.get("wiki") or ""),
                 }
             item["queries"] = queries
             item.setdefault("description", "")
@@ -227,6 +221,7 @@ class ResearchReview(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     overall_comment: str = ""
 
+
 def _trim(text: str, max_chars: int, ellipsis: bool = True) -> str:
     """Truncate text to approximately `max_chars`."""
     if len(text) <= max_chars:
@@ -249,8 +244,8 @@ def _normalize_references_section(report: str) -> str:
     if heading_match is None:
         return report
 
-    prefix = report[:heading_match.end()]
-    references_raw = report[heading_match.end():].strip()
+    prefix = report[: heading_match.end()]
+    references_raw = report[heading_match.end() :].strip()
     if not references_raw:
         return report
 
@@ -327,17 +322,13 @@ def _build_fallback_references(all_sources: list[dict[str, Any]]) -> list[str]:
 
 def _all_refs_look_fake(references_raw: str) -> bool:
     """Heuristic: if ≥60% of [N] lines match the generic pattern, treat all as fake."""
-    lines = [
-        line.strip()
-        for line in references_raw.splitlines()
-        if _REF_ITEM_START_RE.match(line.strip())
-    ]
+    lines = [line.strip() for line in references_raw.splitlines() if _REF_ITEM_START_RE.match(line.strip())]
     if len(lines) < 2:
         return False
     fake = sum(
-        1 for line in lines
-        if re.search(r"\bTitle\b.*\bVenue\b.*\bYear\b", line, re.IGNORECASE)
-        or _PLACEHOLDER_REF_RE.match(line)
+        1
+        for line in lines
+        if re.search(r"\bTitle\b.*\bVenue\b.*\bYear\b", line, re.IGNORECASE) or _PLACEHOLDER_REF_RE.match(line)
     )
     return fake >= len(lines) * 0.6
 
@@ -351,8 +342,8 @@ def _replace_placeholder_references(
     if heading_match is None:
         return report
 
-    prefix = report[:heading_match.end()]
-    references_raw = report[heading_match.end():].strip()
+    prefix = report[: heading_match.end()]
+    references_raw = report[heading_match.end() :].strip()
     if not references_raw:
         return report
     if not _PLACEHOLDER_REF_RE.search(references_raw) and not _all_refs_look_fake(references_raw):
@@ -443,8 +434,7 @@ def _fallback_research_plan(query: str, max_subtopics: int) -> ResearchPlan:
     return ResearchPlan(
         title=f"Research survey on {q}"[:120],
         subtopics=[
-            Subtopic(name=name, description=desc, queries=SubtopicQueries(**queries))
-            for name, desc, queries in picked
+            Subtopic(name=name, description=desc, queries=SubtopicQueries(**queries)) for name, desc, queries in picked
         ],
     )
 
@@ -468,8 +458,8 @@ async def _search_source(
     except Exception as exc:
         log.warning("search_error", source=source_name, exc=str(exc)[:200])
         return {"source": source_name, "data": None, "error": str(exc)[:200]}
- 
- 
+
+
 def _build_subtopic_source_text(
     sources: list[dict],
     subtopic_name: str,
@@ -477,32 +467,33 @@ def _build_subtopic_source_text(
     max_item_chars: int,
 ) -> tuple[str, int]:
     """Format search results for one subtopic into a numbered reference block.
- 
+
     Returns (formatted_text, next_global_index).
     Sources must be tagged with `_subtopic` during search construction.
     """
     lines: list[str] = []
     idx = global_idx
- 
+
     for src in sources:
         if src.get("_subtopic") != subtopic_name:
             continue
         if src.get("error") or not src.get("data"):
             continue
- 
-        data  = src["data"]
+
+        data = src["data"]
         items = data.get("results", []) if isinstance(data, dict) else []
         label = src.get("source", "unknown")
- 
+
         for item in items:
             idx += 1
-            raw   = item.get("content", item.get("title", ""))
+            raw = item.get("content", item.get("title", ""))
             title = item.get("title", f"Source {idx}")
             lines.append(f"[{idx}] ({label}) {title}\n{_trim(raw, max_item_chars)}")
- 
+
     text = "\n\n".join(lines) if lines else "No sources retrieved for this subtopic."
     return text, idx
- 
+
+
 async def _digest_subtopic(
     subtopic: Subtopic,
     source_text: str,
@@ -511,38 +502,41 @@ async def _digest_subtopic(
     timeout: float,
 ) -> str:
     """Compress one subtopic's source text into a tight digest.
- 
+
     Falls back to a truncated version of the raw sources on any LLM
     error so the pipeline never stalls on a single bad digest call.
     """
     trimmed = _trim(source_text, budget.digest_in_chars, ellipsis=False)
- 
+
     prompt_text = _DIGEST_PROMPT.format(
         name=subtopic.name,
         words=budget.digest_words,
         sources=trimmed,
     )
- 
+
     estimated_tokens = math.ceil(len(prompt_text) / 4)
     digest_headroom = budget.ctx_size - math.ceil(budget.digest_words * _TOK_PER_WORD * 1.3) - 30
     if estimated_tokens > digest_headroom:
-        log.warning("digest_prompt_oversized",
-                    subtopic=subtopic.name, estimated=estimated_tokens,
-                    headroom=digest_headroom, ctx_size=budget.ctx_size)
+        log.warning(
+            "digest_prompt_oversized",
+            subtopic=subtopic.name,
+            estimated=estimated_tokens,
+            headroom=digest_headroom,
+            ctx_size=budget.ctx_size,
+        )
         return _trim(trimmed, budget.digest_out_chars)
- 
+
     try:
         result = await asyncio.wait_for(llm.ainvoke(prompt_text), timeout=timeout)
         digest = result.content if isinstance(result, AIMessage) else str(result)
         digest = strip_think_markers(digest)
-        log.info("digest_ok", subtopic=subtopic.name[:40],
-                 words=len(digest.split()), ctx=budget.ctx_size)
+        log.info("digest_ok", subtopic=subtopic.name[:40], words=len(digest.split()), ctx=budget.ctx_size)
         return digest.strip()
     except Exception as exc:
         log.warning("digest_failed", subtopic=subtopic.name[:40], exc=str(exc)[:200])
         return _trim(trimmed, budget.digest_out_chars)
- 
- 
+
+
 async def _run_digest_phase(
     plan: ResearchPlan,
     all_sources: list[dict],
@@ -551,7 +545,7 @@ async def _run_digest_phase(
     timeout: float,
 ) -> str:
     """MAP: compress each subtopic's sources in parallel.
- 
+
     Returns a combined digest block ready for the report writer.
     The combined text is guaranteed to fit inside `budget.source_char_budget`.
     """
@@ -559,18 +553,15 @@ async def _run_digest_phase(
     subtopic_sources: list[tuple[Subtopic, str]] = []
     global_idx = 0
     for sub in plan.subtopics:
-        text, global_idx = _build_subtopic_source_text(
-            all_sources, sub.name, global_idx, _MAX_ITEM_CHARS
-        )
+        text, global_idx = _build_subtopic_source_text(all_sources, sub.name, global_idx, _MAX_ITEM_CHARS)
         subtopic_sources.append((sub, text))
- 
+
     # 2. Compress all subtopics in parallel
     digests = await asyncio.gather(
-        *[_digest_subtopic(sub, src, budget, llm, timeout)
-          for sub, src in subtopic_sources],
+        *[_digest_subtopic(sub, src, budget, llm, timeout) for sub, src in subtopic_sources],
         return_exceptions=True,
     )
- 
+
     # 3. Assemble & safety-trim combined block
     blocks: list[str] = []
     for (sub, _), digest in zip(subtopic_sources, digests, strict=False):
@@ -579,17 +570,19 @@ async def _run_digest_phase(
             blocks.append(f"### {sub.name}\n[digest unavailable]")
         else:
             blocks.append(f"### {sub.name}\n{digest}")
- 
+
     combined = "\n\n".join(blocks)
- 
+
     # Hard-trim to guarantee writer stays in budget
     combined = _trim(combined, budget.source_char_budget, ellipsis=False)
- 
-    log.info("digest_phase_done",
-             subtopics=len(plan.subtopics),
-             chars=len(combined),
-             estimated_tokens=math.ceil(len(combined) / 4),
-             writer_budget_tokens=budget.ctx_size - budget.prompt_overhead - budget.resp_reserve)
+
+    log.info(
+        "digest_phase_done",
+        subtopics=len(plan.subtopics),
+        chars=len(combined),
+        estimated_tokens=math.ceil(len(combined) / 4),
+        writer_budget_tokens=budget.ctx_size - budget.prompt_overhead - budget.resp_reserve,
+    )
     return combined
 
 
@@ -600,12 +593,12 @@ async def research_node(
     digest_llm: ChatOpenAI | None = None,
 ) -> dict[str, Any]:
     """Execute the full Map-Digest-Reduce research pipeline.
-    
-        Args:
-        state:      Agent state dict with `query` and `online_mode`.
-        llm:        Main LLM (planner, writer, reviewer).
-        digest_llm: Optional smaller/faster LLM for the MAP digest phase.
-                    When None, `llm` is used for all phases.
+
+    Args:
+    state:      Agent state dict with `query` and `online_mode`.
+    llm:        Main LLM (planner, writer, reviewer).
+    digest_llm: Optional smaller/faster LLM for the MAP digest phase.
+                When None, `llm` is used for all phases.
     """
     cfg = get_settings().agent
     query: str = state.get("query", "")
@@ -629,17 +622,21 @@ async def research_node(
         }
 
     budget = ContextBudget.from_settings()
-    log.info("research_budget",
-             ctx_size=budget.ctx_size,
-             max_subtopics=budget.max_subtopics,
-             digest_words=budget.digest_words,
-             resp_reserve_tokens=budget.resp_reserve,
-             source_char_budget=budget.source_char_budget)
+    log.info(
+        "research_budget",
+        ctx_size=budget.ctx_size,
+        max_subtopics=budget.max_subtopics,
+        digest_words=budget.digest_words,
+        resp_reserve_tokens=budget.resp_reserve,
+        source_char_budget=budget.source_char_budget,
+    )
 
     # Phase 1: Plan
-    plan_prompt = ChatPromptTemplate.from_messages([
-        ("human", RESEARCH_PLAN_PROMPT),
-    ])
+    plan_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("human", RESEARCH_PLAN_PROMPT),
+        ]
+    )
 
     plan: ResearchPlan | None = None
     for attempt in range(1, _MAX_PLAN_RETRIES + 1):
@@ -660,14 +657,10 @@ async def research_node(
             if len(plan.subtopics) > budget.max_subtopics:
                 plan = ResearchPlan(
                     title=plan.title,
-                    subtopics=plan.subtopics[:budget.max_subtopics],
+                    subtopics=plan.subtopics[: budget.max_subtopics],
                 )
-                log.info("plan_subtopics_capped",
-                         cap=budget.max_subtopics, original=len(plan.subtopics))
-            log.info("research_plan_complete",
-                     title=plan.title,
-                     subtopics=len(plan.subtopics),
-                     attempt=attempt)
+                log.info("plan_subtopics_capped", cap=budget.max_subtopics, original=len(plan.subtopics))
+            log.info("research_plan_complete", title=plan.title, subtopics=len(plan.subtopics), attempt=attempt)
             break
         except Exception as exc:
             log.warning("research_plan_retry", attempt=attempt, exc=str(exc)[:200])
@@ -688,11 +681,9 @@ async def research_node(
     for subtopic in plan.subtopics:
         q = subtopic.queries
         if q.academic:
-            tagged.append((subtopic.name,
-                _search_source(search_arxiv, q.academic, "arxiv", search_cfg.arxiv_timeout)))
+            tagged.append((subtopic.name, _search_source(search_arxiv, q.academic, "arxiv", search_cfg.arxiv_timeout)))
         if q.web:
-            tagged.append((subtopic.name,
-                _search_source(search_web, q.web, "web", search_cfg.web_timeout)))
+            tagged.append((subtopic.name, _search_source(search_web, q.web, "web", search_cfg.web_timeout)))
         if q.encyclopedia:
             tagged.append(
                 (
@@ -716,15 +707,10 @@ async def research_node(
             else:
                 log.warning("search_gather_exception", exc=str(result)[:200])
 
-    log.info("research_sources_ready",
-             total=len(all_sources),
-             with_data=sum(1 for s in all_sources if s.get("data")))
- 
+    log.info("research_sources_ready", total=len(all_sources), with_data=sum(1 for s in all_sources if s.get("data")))
 
     # Phase 3: Digest MAP
-    digest_text = await _run_digest_phase(
-        plan, all_sources, budget, _digest_llm, timeout
-    )
+    digest_text = await _run_digest_phase(plan, all_sources, budget, _digest_llm, timeout)
 
     # Build deterministic references from source metadata
     source_refs = _build_source_references(all_sources)
@@ -736,18 +722,16 @@ async def research_node(
     writer_timeout = float(getattr(cfg, "research_writer_timeout", 300))
     try:
         report_result = await asyncio.wait_for(
-            report_chain.ainvoke({
-                "sources": digest_text,
-                "title": plan.title,
-                "source_references": source_refs,
-            }),
+            report_chain.ainvoke(
+                {
+                    "sources": digest_text,
+                    "title": plan.title,
+                    "source_references": source_refs,
+                }
+            ),
             timeout=writer_timeout,
         )
-        report = (
-            report_result.content
-            if isinstance(report_result, AIMessage)
-            else str(report_result)
-        )
+        report = report_result.content if isinstance(report_result, AIMessage) else str(report_result)
         report = strip_think_markers(report)
         report = _force_replace_references(report, source_refs)
         report = _normalize_references_section(report)
@@ -755,16 +739,20 @@ async def research_node(
         log.error("research_report_failed", exc=str(exc)[:200])
         return {"response": "I was unable to synthesize the research report. Please try again."}
 
-    log.info("research_report_written",
-             chars=len(report),
-             words=len(report.split()),
-             estimated_pages=round(len(report.split()) / 350, 1))
+    log.info(
+        "research_report_written",
+        chars=len(report),
+        words=len(report.split()),
+        estimated_pages=round(len(report.split()) / 350, 1),
+    )
 
     # Phase 5: Review loop
-    review_prompt = ChatPromptTemplate.from_messages([
-        ("human", RESEARCH_REVIEW_PROMPT),
-    ])
-    max_iters     = int(getattr(cfg, "research_max_iters", 2))
+    review_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("human", RESEARCH_REVIEW_PROMPT),
+        ]
+    )
+    max_iters = int(getattr(cfg, "research_max_iters", 2))
 
     for review_iter in range(1, max_iters + 1):
         report_tokens = math.ceil(len(report) / 4)
@@ -772,8 +760,7 @@ async def research_node(
         if report_tokens + review_overhead > budget.ctx_size - 300:
             keep_chars = (budget.ctx_size - 300 - review_overhead) * 4
             review_report = "…[trimmed for review]\n" + report[-keep_chars:]
-            log.warning("review_report_trimmed",
-                        original_tokens=report_tokens, keep_chars=keep_chars)
+            log.warning("review_report_trimmed", original_tokens=report_tokens, keep_chars=keep_chars)
         else:
             review_report = report
         try:
@@ -797,12 +784,8 @@ async def research_node(
             if review.verdict == "pass":
                 break
 
-            issues_text = "\n".join(
-                f"- [{i.type}] {i.detail}" for i in review.issues
-            )
-            suggestions_text = "\n".join(
-                f"- {s}" for s in review.suggestions
-            )
+            issues_text = "\n".join(f"- [{i.type}] {i.detail}" for i in review.issues)
+            suggestions_text = "\n".join(f"- {s}" for s in review.suggestions)
             revision_context = (
                 f"## Review Feedback (Iteration {review_iter})\n"
                 f"### Issues\n{issues_text}\n"
@@ -812,18 +795,16 @@ async def research_node(
             )
 
             report_result = await asyncio.wait_for(
-                report_chain.ainvoke({
-                    "sources": _trim(revision_context, budget.source_char_budget, ellipsis=False),
-                    "title": plan.title,
-                    "source_references": source_refs,
-                }),
+                report_chain.ainvoke(
+                    {
+                        "sources": _trim(revision_context, budget.source_char_budget, ellipsis=False),
+                        "title": plan.title,
+                        "source_references": source_refs,
+                    }
+                ),
                 timeout=writer_timeout,
             )
-            report = (
-                report_result.content
-                if isinstance(report_result, AIMessage)
-                else str(report_result)
-            )
+            report = report_result.content if isinstance(report_result, AIMessage) else str(report_result)
             report = strip_think_markers(report)
             report = _force_replace_references(report, source_refs)
             report = _normalize_references_section(report)
@@ -844,28 +825,34 @@ async def research_node(
     safe_title = plan.title.replace(" ", "_")[:50]
     export_suffix = f"research_{safe_title}"
     try:
-        export_markdown.invoke({
-            "content": report,
-            "filename": export_suffix,
-        })
+        export_markdown.invoke(
+            {
+                "content": report,
+                "filename": export_suffix,
+            }
+        )
     except Exception as exc:
         log.warning("research_export_failed", exc=str(exc)[:200])
 
     try:
-        pdf_result = await export_pdf.ainvoke({
-            "content": report,
-            "filename": export_suffix,
-            "title": plan.title,
-            "subtitle": "AI-Generated Research Report",
-            "author": "Sage Research Agent",
-        })
+        pdf_result = await export_pdf.ainvoke(
+            {
+                "content": report,
+                "filename": export_suffix,
+                "title": plan.title,
+                "subtitle": "AI-Generated Research Report",
+                "author": "Sage Research Agent",
+            }
+        )
         pdf_path = str(pdf_result.get("path") or "").strip()
         if pdf_path:
-            artifact_paths.append({
-                "kind": "pdf",
-                "filename": Path(pdf_path).name,
-                "path": pdf_path,
-            })
+            artifact_paths.append(
+                {
+                    "kind": "pdf",
+                    "filename": Path(pdf_path).name,
+                    "path": pdf_path,
+                }
+            )
         elif pdf_result.get("error"):
             pdf_export_failed = True
             log.warning("export_pdf_soft_fail", error=pdf_result["error"])
@@ -878,10 +865,7 @@ async def research_node(
 
     response = report
     if artifact_paths:
-        response = (
-            "I have completed your research report. "
-            "Use the download button below to get the PDF."
-        )
+        response = "I have completed your research report. Use the download button below to get the PDF."
     elif pdf_export_failed:
         log.info("research_fallback_text_response")
 

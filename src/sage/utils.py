@@ -12,15 +12,14 @@ Provides:
 
 from __future__ import annotations
 
-import functools
 import json
 import re
 import time
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
-from pydantic import BaseModel, ValidationError
 import structlog
+from pydantic import BaseModel, ValidationError
 
 log = structlog.get_logger()
 
@@ -52,7 +51,7 @@ def configure_logging(level: str = "info") -> None:
     from pathlib import Path
 
     _level = getattr(_stdlib_logging, level.upper(), _stdlib_logging.INFO)
-    
+
     processors = [
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
@@ -63,7 +62,7 @@ def configure_logging(level: str = "info") -> None:
     if sage_home:
         log_file = Path(sage_home) / "logs" / "sage.log"
         log_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
         processors.append(structlog.processors.JSONRenderer())
         structlog.configure(
             processors=processors,
@@ -73,11 +72,7 @@ def configure_logging(level: str = "info") -> None:
             cache_logger_on_first_use=True,
         )
     else:
-        processors.append(
-            structlog.dev.ConsoleRenderer()
-            if level == "debug"
-            else structlog.processors.JSONRenderer()
-        )
+        processors.append(structlog.dev.ConsoleRenderer() if level == "debug" else structlog.processors.JSONRenderer())
         structlog.configure(
             processors=processors,
             wrapper_class=structlog.make_filtering_bound_logger(_level),
@@ -110,9 +105,7 @@ def with_error_boundary(
     """
 
     _node_name: str = (
-        getattr(node_fn, "__name__", None)
-        or getattr(getattr(node_fn, "func", None), "__name__", None)
-        or repr(node_fn)
+        getattr(node_fn, "__name__", None) or getattr(getattr(node_fn, "func", None), "__name__", None) or repr(node_fn)
     )
 
     async def _wrapper(state: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -173,16 +166,13 @@ _FENCED_BLOCK_RE = re.compile(
 )
 _THINK_BLOCK_RE = re.compile(r"<t?think>[\s\S]*?</t?think>", re.IGNORECASE)
 _THINK_TAG_RE = re.compile(r"</?t?think>", re.IGNORECASE)
-_StructuredModelT = TypeVar("_StructuredModelT", bound=BaseModel)
+
 
 def is_think_grammar_error(exc: Exception) -> bool:
     """Return True when llama.cpp grammar mode fails on `<think>` tokens."""
     msg = str(exc).lower()
-    return (
-        "failed to initialize samplers" in msg
-        and "empty grammar stack" in msg
-        and "<think>" in msg
-    )
+    return "failed to initialize samplers" in msg and "empty grammar stack" in msg and "<think>" in msg
+
 
 def strip_think_markers(text: str) -> str:
     """Remove `<think>...</think>` blocks and stray tag fragments."""
@@ -292,10 +282,7 @@ def _balanced_json_candidate(text: str) -> str | None:
 
 def _structured_candidates(raw: Any) -> list[str]:
     """Return ordered JSON candidate strings extracted from model output."""
-    if isinstance(raw, dict):
-        maybe_content = raw.get("content", raw)
-    else:
-        maybe_content = getattr(raw, "content", raw)
+    maybe_content = raw.get("content", raw) if isinstance(raw, dict) else getattr(raw, "content", raw)
 
     raw_text = _content_to_text(maybe_content).strip()
     text = strip_think_markers(raw_text) or raw_text
@@ -331,7 +318,9 @@ def _structured_candidates(raw: Any) -> list[str]:
     return ordered
 
 
-def parse_structured_output(raw: Any, schema: type[_StructuredModelT]) -> _StructuredModelT:
+def parse_structured_output[_StructuredModelT: BaseModel](
+    raw: Any, schema: type[_StructuredModelT]
+) -> _StructuredModelT:
     """Parse model output into a Pydantic schema using tolerant JSON extraction."""
     if isinstance(raw, schema):
         return raw
@@ -349,13 +338,10 @@ def parse_structured_output(raw: Any, schema: type[_StructuredModelT]) -> _Struc
             last_exc = exc
 
     preview = strip_think_markers(_content_to_text(getattr(raw, "content", raw)))[:220]
-    raise ValueError(
-        f"Unable to parse structured output for {schema.__name__}. "
-        f"Preview: {preview!r}"
-    ) from last_exc
+    raise ValueError(f"Unable to parse structured output for {schema.__name__}. Preview: {preview!r}") from last_exc
 
 
-async def ainvoke_structured_with_fallback(
+async def ainvoke_structured_with_fallback[_StructuredModelT: BaseModel](
     *,
     prompt: Any,
     llm: Any,

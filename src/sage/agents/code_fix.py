@@ -41,11 +41,22 @@ log = structlog.get_logger(__name__)
 _MAX_RETRIES: int = 3
 
 # Frameworks that cannot run in the subprocess sandbox.
-_UNSANDBOXABLE_MODULES: frozenset[str] = frozenset({
-    "flask", "django", "fastapi", "uvicorn", "gunicorn",
-    "tornado", "aiohttp", "starlette", "quart",
-    "celery", "redis", "sqlalchemy",
-})
+_UNSANDBOXABLE_MODULES: frozenset[str] = frozenset(
+    {
+        "flask",
+        "django",
+        "fastapi",
+        "uvicorn",
+        "gunicorn",
+        "tornado",
+        "aiohttp",
+        "starlette",
+        "quart",
+        "celery",
+        "redis",
+        "sqlalchemy",
+    }
+)
 
 _NON_PYTHON_PATTERNS: list[tuple[str, str]] = [
     (r"#include\s*<", "C/C++"),
@@ -58,18 +69,18 @@ _NON_PYTHON_PATTERNS: list[tuple[str, str]] = [
     (r"\bpackage\s+main", "Go"),
 ]
 
+
 class Diagnosis(BaseModel):
     language: str = "python"
     framework: str | None = None
-    error_type: str = Field(
-        description="syntax | runtime | logic | type | import | timeout"
-    )
+    error_type: str = Field(description="syntax | runtime | logic | type | import | timeout")
     error_message: str = ""
     root_cause: str = ""
     affected_lines: list[int] = Field(default_factory=list)
     fix_strategy: str = ""
     alternative_strategies: list[str] = Field(default_factory=list)
     confidence: str = "medium"
+
 
 def _strip_code_fences(text: str) -> str:
     """Extract executable code from noisy LLM output."""
@@ -121,10 +132,7 @@ def _detect_framework_imports(code: str) -> str | None:
 def _format_knowledge_units(kus: list[dict]) -> str:
     if not kus:
         return "None available."
-    return "\n".join(
-        f"[{ku.get('id', 'KU?')}] {ku.get('claim', ku.get('content', ''))}"
-        for ku in kus
-    )
+    return "\n".join(f"[{ku.get('id', 'KU?')}] {ku.get('claim', ku.get('content', ''))}" for ku in kus)
 
 
 def _extract_text(result: Any) -> str:
@@ -148,21 +156,16 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
 
     if not query:
         return {
-            "response": (
-                "I was unable to diagnose the code issue. "
-                "Please provide the error message and relevant code."
-            )
+            "response": ("I was unable to diagnose the code issue. Please provide the error message and relevant code.")
         }
 
     _active_ctx = get_settings().llm.active_context_size
     _max_out = get_settings().llm.max_tokens
     _MAX_QUERY_CHARS: int = (
-        max(1_000, min(8_000, (_active_ctx - min(_max_out, _active_ctx // 2) - 600) * 4))
-        if _active_ctx > 0 else 2_000
+        max(1_000, min(8_000, (_active_ctx - min(_max_out, _active_ctx // 2) - 600) * 4)) if _active_ctx > 0 else 2_000
     )
     if len(query) > _MAX_QUERY_CHARS:
-        log.warning("code_fix_input_truncated", original_len=len(query),
-                    limit=_MAX_QUERY_CHARS, ctx_size=_active_ctx)
+        log.warning("code_fix_input_truncated", original_len=len(query), limit=_MAX_QUERY_CHARS, ctx_size=_active_ctx)
         query = query[:_MAX_QUERY_CHARS] + "\n# ... (truncated — submit a shorter excerpt)"
 
     non_python = _detect_non_python(query)
@@ -170,20 +173,22 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         log.info("code_fix_non_python_detected", language=non_python)
         try:
             result = await asyncio.wait_for(
-                llm.ainvoke([
-                    SystemMessage(content=CODE_FIX_SYSTEM_PROMPT),
-                    HumanMessage(
-                        content=(
-                            f"This appears to be {non_python} code. "
-                            f"Analyse it and identify any bugs or issues.\n\n"
-                            f"{query}"
-                        )
-                    ),
-                ]),
+                llm.ainvoke(
+                    [
+                        SystemMessage(content=CODE_FIX_SYSTEM_PROMPT),
+                        HumanMessage(
+                            content=(
+                                f"This appears to be {non_python} code. "
+                                f"Analyse it and identify any bugs or issues.\n\n"
+                                f"{query}"
+                            )
+                        ),
+                    ]
+                ),
                 timeout=cfg.llm_timeout,
             )
             text = _extract_text(result)
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             text = f"Analysis timed out for {non_python} code."
         except Exception as exc:
             log.error("code_fix_non_python_failed", exc=str(exc)[:200])
@@ -191,10 +196,12 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         return {"response": text}
 
     # Diagnosis
-    diag_prompt = ChatPromptTemplate.from_messages([
-        ("system", CODE_FIX_SYSTEM_PROMPT + "\n\n" + CODE_FIX_DIAGNOSIS_PROMPT),
-        ("human", "Diagnose the code issue above."),
-    ])
+    diag_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", CODE_FIX_SYSTEM_PROMPT + "\n\n" + CODE_FIX_DIAGNOSIS_PROMPT),
+            ("human", "Diagnose the code issue above."),
+        ]
+    )
 
     diagnosis: Diagnosis | None = None
 
@@ -217,41 +224,40 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                 attempt=attempt,
             )
             break
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             log.warning("code_fix_diagnosis_timeout", attempt=attempt)
         except Exception as exc:
             log.warning("code_fix_diagnosis_retry", attempt=attempt, exc=str(exc)[:200])
 
     if diagnosis is None:
         return {
-            "response": (
-                "I was unable to diagnose the code issue. "
-                "Please provide the error message and relevant code."
-            )
+            "response": ("I was unable to diagnose the code issue. Please provide the error message and relevant code.")
         }
 
     # Framework detection
     framework: str | None = _detect_framework_imports(query) or diagnosis.framework
-    skip_sandbox: bool = bool(
-        framework and framework.lower() in _UNSANDBOXABLE_MODULES
-    )
+    skip_sandbox: bool = bool(framework and framework.lower() in _UNSANDBOXABLE_MODULES)
     if skip_sandbox:
         log.info("code_fix_framework_skip_sandbox", framework=framework)
 
     # Fix loop
-    fix_prompt = ChatPromptTemplate.from_messages([
-        ("system", CODE_FIX_SYSTEM_PROMPT),
-        ("human",
-         "Fix this code based on the diagnosis and any sandbox feedback below.\n\n"
-         "## Diagnosis (JSON)\n{diagnosis}\n\n"
-         "## Affected Lines\n{affected_lines}\n\n"
-         "## Previous Sandbox Error\n{sandbox_error}\n\n"
-         "## Code to Fix\n```python\n{code}\n```\n\n"
-         "Rules:\n"
-         "- If a sandbox error is provided, fix the issue shown in that error FIRST.\n"
-         "- Change ONLY the lines required to correct the error.\n"
-         "- Return ONLY the complete corrected Python code. No explanation."),
-    ])
+    fix_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", CODE_FIX_SYSTEM_PROMPT),
+            (
+                "human",
+                "Fix this code based on the diagnosis and any sandbox feedback below.\n\n"
+                "## Diagnosis (JSON)\n{diagnosis}\n\n"
+                "## Affected Lines\n{affected_lines}\n\n"
+                "## Previous Sandbox Error\n{sandbox_error}\n\n"
+                "## Code to Fix\n```python\n{code}\n```\n\n"
+                "Rules:\n"
+                "- If a sandbox error is provided, fix the issue shown in that error FIRST.\n"
+                "- Change ONLY the lines required to correct the error.\n"
+                "- Return ONLY the complete corrected Python code. No explanation.",
+            ),
+        ]
+    )
 
     current_code: str = query
     fixed_code: str = ""
@@ -268,17 +274,19 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         # Generate fix.
         try:
             fix_result = await asyncio.wait_for(
-                (fix_prompt | llm).ainvoke({
-                    "diagnosis": diagnosis.model_dump_json(),
-                    "affected_lines": affected_str,
-                    "sandbox_error": last_sandbox_error,
-                    "code": current_code,
-                }),
+                (fix_prompt | llm).ainvoke(
+                    {
+                        "diagnosis": diagnosis.model_dump_json(),
+                        "affected_lines": affected_str,
+                        "sandbox_error": last_sandbox_error,
+                        "code": current_code,
+                    }
+                ),
                 timeout=cfg.llm_timeout,
             )
             fixed_code = _strip_code_fences(_extract_text(fix_result))
             fixed_code = strip_think_markers(fixed_code)
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             log.warning("code_fix_gen_timeout", attempt=attempt)
             continue
         except Exception as exc:
@@ -287,8 +295,7 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
 
         if skip_sandbox:
             execution_result = (
-                f"Framework code ({framework}) — sandbox execution skipped. "
-                "Fix is based on static analysis."
+                f"Framework code ({framework}) — sandbox execution skipped. Fix is based on static analysis."
             )
             fix_succeeded = True
             break
@@ -308,11 +315,9 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                 error = sandbox_result.get("error", "Unknown error")
                 execution_result = f"Attempt {attempt}/{_MAX_RETRIES}: {error}"
                 log.warning("code_fix_sandbox_error", attempt=attempt, error=error[:200])
-                last_sandbox_error = (
-                    f"The previous fix failed with this sandbox error:\n{error}"
-                )
+                last_sandbox_error = f"The previous fix failed with this sandbox error:\n{error}"
                 current_code = fixed_code
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             log.warning("code_fix_sandbox_timeout", attempt=attempt)
             execution_result = f"Attempt {attempt}/{_MAX_RETRIES}: sandbox timed out"
         except Exception as exc:
@@ -320,21 +325,25 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
             execution_result = f"Sandbox error: {str(exc)[:200]}"
 
     # Explanation
-    explain_prompt = ChatPromptTemplate.from_messages([
-        ("system", CODE_FIX_SYSTEM_PROMPT + "\n\n" + CODE_FIX_EXPLANATION_PROMPT),
-        ("human", "Explain the fix above."),
-    ])
+    explain_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", CODE_FIX_SYSTEM_PROMPT + "\n\n" + CODE_FIX_EXPLANATION_PROMPT),
+            ("human", "Explain the fix above."),
+        ]
+    )
 
     explanation: str = ""
     try:
         explain_result = await asyncio.wait_for(
-            (explain_prompt | llm).ainvoke({
-                "diagnosis": diagnosis.model_dump_json() if diagnosis else "(no diagnosis)",
-                "original_code": query,
-                "fixed_code": fixed_code or "(no fix generated)",
-                "execution_result": execution_result or "(not executed)",
-                "knowledge_units": ku_text,
-            }),
+            (explain_prompt | llm).ainvoke(
+                {
+                    "diagnosis": diagnosis.model_dump_json() if diagnosis else "(no diagnosis)",
+                    "original_code": query,
+                    "fixed_code": fixed_code or "(no fix generated)",
+                    "execution_result": execution_result or "(not executed)",
+                    "knowledge_units": ku_text,
+                }
+            ),
             timeout=cfg.llm_timeout,
         )
         explanation = _extract_text(explain_result)
@@ -346,7 +355,7 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
             explanation,
             flags=re.IGNORECASE,
         ).rstrip()
-    except (asyncio.TimeoutError, TimeoutError):
+    except TimeoutError:
         log.error("code_fix_explain_timeout")
         explanation = (
             f"### What Was Wrong\n{diagnosis.root_cause}\n\n"
@@ -368,12 +377,10 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     parts: list[str] = []
 
     if not fix_succeeded:
-        parts.append(
-            f"⚠️ **Could not fully resolve the issue after {_MAX_RETRIES} attempts.**"
-        )
+        parts.append(f"⚠️ **Could not fully resolve the issue after {_MAX_RETRIES} attempts.**")
 
     diag_lines = [
-        f"### Diagnosis",
+        "### Diagnosis",
         f"- **Error type**: {diagnosis.error_type}",
         f"- **Root cause**: {diagnosis.root_cause}",
     ]
@@ -407,9 +414,11 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
 
     return {
         "response": "\n\n".join(parts),
-        "tool_calls": [{
-            "tool": "code_fix",
-            "fix_succeeded": fix_succeeded,
-            "error_type": diagnosis.error_type,
-        }],
+        "tool_calls": [
+            {
+                "tool": "code_fix",
+                "fix_succeeded": fix_succeeded,
+                "error_type": diagnosis.error_type,
+            }
+        ],
     }

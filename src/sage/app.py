@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +40,7 @@ async def _heavy_startup(app: FastAPI, checkpointer: Any, cfg: Any) -> None:
         # Start primary LLM server in a thread-pool (blocking I/O).
         proc, llm_port, gpu_info = await asyncio.to_thread(start_llm_server)
         app.state.llm_port = llm_port
-        app.state.gpu_info  = gpu_info
+        app.state.gpu_info = gpu_info
 
         # Start utility server in a thread-pool.
         utility_port: int | None = None
@@ -85,27 +85,28 @@ async def _heavy_startup(app: FastAPI, checkpointer: Any, cfg: Any) -> None:
             error=str(exc)[:500],
         )
 
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Startup / shutdown sequence."""
     cfg = get_settings()
 
     # --- Instant defaults (< 1 ms) ---
-    app.state.model_ready  = False
-    app.state.llm          = None
-    app.state.utility_llm  = None
-    app.state.graph        = None
-    app.state.llm_port     = None
-    app.state.gpu_info     = {}
+    app.state.model_ready = False
+    app.state.llm = None
+    app.state.utility_llm = None
+    app.state.graph = None
+    app.state.llm_port = None
+    app.state.gpu_info = {}
     app.state.utility_port = None
-    app.state.pending_streams  = {}
-    app.state.active_streams   = {}
-    app.state.thread_messages  = {}
-    app.state.embed_model      = None
-    app.state.checkpointer     = None
-    app.state.uploaded_docs    = []
+    app.state.pending_streams = {}
+    app.state.active_streams = {}
+    app.state.thread_messages = {}
+    app.state.embed_model = None
+    app.state.checkpointer = None
+    app.state.uploaded_docs = []
     app.state._checkpointer_cm = None
-    app.state._heavy_task      = None
+    app.state._heavy_task = None
 
     # Start network monitor — fires first probe concurrently, non-blocking.
     network = NetworkMonitor(cfg.network)
@@ -114,20 +115,21 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     async def _fast_then_heavy() -> None:
         """Run DB init + checkpointer open + embed probe, then heavy LLM startup."""
-    
+
         try:
             await init_db()
             log.info("database_ready")
         except Exception as exc:
             log.error("init_db_failed", error=str(exc)[:300])
             return
-        
+
         try:
             from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
             db_path = resolve_db_path()
             cm = AsyncSqliteSaver.from_conn_string(str(db_path))
             checkpointer = await cm.__aenter__()
-            app.state.checkpointer     = checkpointer
+            app.state.checkpointer = checkpointer
             app.state._checkpointer_cm = cm
 
             heavy_task = asyncio.create_task(
@@ -137,7 +139,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             app.state._heavy_task = heavy_task
         except Exception as exc:
             log.error("checkpointer_open_failed", error=str(exc)[:300])
-    
+
     asyncio.create_task(_fast_then_heavy(), name="sage-fast-startup")
     yield
 
@@ -145,23 +147,24 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     heavy_task = app.state._heavy_task
     if heavy_task is not None and not heavy_task.done():
         heavy_task.cancel()
-        try:
+        import contextlib
+
+        with contextlib.suppress(asyncio.CancelledError, Exception):
             await heavy_task
-        except (asyncio.CancelledError, Exception):
-            pass
 
     cm = app.state._checkpointer_cm
     if cm is not None:
-        try:
+        import contextlib
+
+        with contextlib.suppress(Exception):
             await cm.__aexit__(None, None, None)
-        except Exception:
-            pass
 
     app.state.model_ready = False
     await network.stop()
     log.info("app_shutdown_complete")
 
     # Factory
+
 
 def create_app() -> FastAPI:
     """Build and return the fully-configured FastAPI application."""
@@ -176,8 +179,8 @@ def create_app() -> FastAPI:
     )
 
     # Pre-lifespan defaults
-    app.state.llm_port    = None
-    app.state.gpu_info    = {}
+    app.state.llm_port = None
+    app.state.gpu_info = {}
     app.state.utility_port = None
     app.state.model_ready = False
 
@@ -232,16 +235,18 @@ def create_app() -> FastAPI:
                 continue
 
             stat = file_path.stat()
-            created_at = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+            created_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
             local_created = created_at.astimezone()
-            artifacts.append({
-                "kind": kind,
-                "filename": file_path.name,
-                "size_bytes": stat.st_size,
-                "created_at": created_at.isoformat(),
-                "date_label": local_created.strftime("%A, %B %d, %Y"),
-                "url": f"/api/artifacts/{file_path.name}",
-            })
+            artifacts.append(
+                {
+                    "kind": kind,
+                    "filename": file_path.name,
+                    "size_bytes": stat.st_size,
+                    "created_at": created_at.isoformat(),
+                    "date_label": local_created.strftime("%A, %B %d, %Y"),
+                    "url": f"/api/artifacts/{file_path.name}",
+                }
+            )
 
         return artifacts
 
@@ -255,8 +260,7 @@ def create_app() -> FastAPI:
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Artifact not found")
         suffix = file_path.suffix.lower()
-        media_map = {".pdf": "application/pdf", ".svg": "image/svg+xml",
-                     ".md": "text/markdown", ".txt": "text/plain"}
+        media_map = {".pdf": "application/pdf", ".svg": "image/svg+xml", ".md": "text/markdown", ".txt": "text/plain"}
         media_type = media_map.get(suffix, "application/octet-stream")
         return FileResponse(
             path=str(file_path),
@@ -279,4 +283,3 @@ def create_app() -> FastAPI:
         )
 
     return app
-    

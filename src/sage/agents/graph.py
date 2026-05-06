@@ -1,7 +1,7 @@
 """
 LangGraph state graph assembly for Sage.
 
-It constructs the full agent graph, wraps every node with 
+It constructs the full agent graph, wraps every node with
 `with_error_boundary`, and returns a compiled `CompiledStateGraph`.
 """
 
@@ -68,16 +68,16 @@ def build_graph(
     graph = StateGraph(AgentState)
 
     # Nodes
-    graph.add_node("router",             with_error_boundary(_bind_llm(router_node, llm)))
-    graph.add_node("retrieval",          with_error_boundary(_bind_llm(retrieval_node, llm)))
-    graph.add_node("general",            with_error_boundary(_bind_llm(general_node, llm)))
-    graph.add_node("reasoning",          with_error_boundary(_bind_llm(reasoning_node, llm)))
+    graph.add_node("router", with_error_boundary(_bind_llm(router_node, llm)))
+    graph.add_node("retrieval", with_error_boundary(_bind_llm(retrieval_node, llm)))
+    graph.add_node("general", with_error_boundary(_bind_llm(general_node, llm)))
+    graph.add_node("reasoning", with_error_boundary(_bind_llm(reasoning_node, llm)))
     graph.add_node("response_generator", with_error_boundary(response_node))
-    graph.add_node("quiz",               with_error_boundary(_bind_llm(quiz_node, llm)))
-    graph.add_node("diagram",            with_error_boundary(_bind_llm(diagram_node, llm)))
-    graph.add_node("planner",            with_error_boundary(_bind_llm(planner_node, llm)))
-    graph.add_node("research",           with_error_boundary(_bind_llm(research_node, llm)))
-    graph.add_node("code_fix",           with_error_boundary(_bind_llm(code_fix_node, llm)))
+    graph.add_node("quiz", with_error_boundary(_bind_llm(quiz_node, llm)))
+    graph.add_node("diagram", with_error_boundary(_bind_llm(diagram_node, llm)))
+    graph.add_node("planner", with_error_boundary(_bind_llm(planner_node, llm)))
+    graph.add_node("research", with_error_boundary(_bind_llm(research_node, llm)))
+    graph.add_node("code_fix", with_error_boundary(_bind_llm(code_fix_node, llm)))
 
     # Entry Edge
     graph.add_edge(START, "router")
@@ -85,14 +85,14 @@ def build_graph(
         "router",
         route_by_intent,
         {
-            "explain":   "retrieval",
-            "quiz":      "retrieval",
-            "diagram":   "retrieval",
-            "general":   "general",
+            "explain": "retrieval",
+            "quiz": "retrieval",
+            "diagram": "retrieval",
+            "general": "general",
             "reasoning": "reasoning",
-            "roadmap":   "planner",
-            "research":  "research",
-            "fix":       "code_fix",
+            "roadmap": "planner",
+            "research": "research",
+            "fix": "code_fix",
         },
     )
 
@@ -102,7 +102,7 @@ def build_graph(
         route_post_retrieval,
         {
             "explain": "reasoning",
-            "quiz":    "quiz",
+            "quiz": "quiz",
             "diagram": "diagram",
         },
     )
@@ -118,13 +118,13 @@ def build_graph(
     )
 
     # Terminal Edges
-    graph.add_edge("general",           END)
+    graph.add_edge("general", END)
     graph.add_edge("response_generator", END)
-    graph.add_edge("quiz",              END)
-    graph.add_edge("diagram",           END)
-    graph.add_edge("planner",           END)
-    graph.add_edge("research",          END)
-    graph.add_edge("code_fix",          END)
+    graph.add_edge("quiz", END)
+    graph.add_edge("diagram", END)
+    graph.add_edge("planner", END)
+    graph.add_edge("research", END)
+    graph.add_edge("code_fix", END)
 
     # Compile with optional checkpointer.
     compiled = graph.compile(checkpointer=checkpointer)
