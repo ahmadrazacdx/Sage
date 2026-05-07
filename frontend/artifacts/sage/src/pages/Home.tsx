@@ -188,14 +188,24 @@ export default function Home() {
     } catch (err) {
       const error = err as {
         status?: number;
-        data?: { detail?: string };
+        data?: { detail?: any };
         message?: string;
       };
-      if (error?.status === 503) {
-        setSubmitError(error.data?.detail ?? "Model is loading, please wait.");
-      } else {
-        setSubmitError(error?.data?.detail ?? error?.message ?? "Failed to send message.");
+      let errorMsg = "Failed to send message.";
+      if (error?.status === 503 && typeof error.data?.detail === "string") {
+        errorMsg = error.data.detail;
+      } else if (error?.data?.detail) {
+        if (Array.isArray(error.data.detail)) {
+          errorMsg = error.data.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
+        } else if (typeof error.data.detail === "string") {
+          errorMsg = error.data.detail;
+        } else {
+          errorMsg = JSON.stringify(error.data.detail);
+        }
+      } else if (error?.message) {
+        errorMsg = error.message;
       }
+      setSubmitError(errorMsg);
       setIsStreamDone(true);
     }
   };

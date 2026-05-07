@@ -126,15 +126,19 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
           <textarea
             ref={textareaRef}
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={(e) => setMessage(e.target.value.slice(0, 2200))}
             onKeyDown={handleKeyDown}
             disabled={isComposerDisabled}
             placeholder={currentModeObj.placeholder}
+            maxLength={2200}
             className="flex-1 max-h-[200px] min-h-[24px] py-4 pl-4 bg-transparent text-foreground placeholder:text-muted-foreground outline-none resize-none overflow-y-auto"
             rows={1}
           />
 
-          <div className="p-2">
+          <div className="flex flex-col items-center justify-end p-2 gap-1 pb-3">
+            <span className={cn("text-[10px] font-medium px-1", message.length > 2200 ? "text-error" : "text-muted-foreground/60")}>
+              {message.length > 0 && `${message.length}/2200`}
+            </span>
             <button
               onClick={() => {
                 if (isStreaming) {
@@ -169,7 +173,7 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
               if (modeSelectorOpen) setCoursesOpen(false);
             }}
             disabled={isComposerDisabled}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-input border border-border hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-input border border-border hover:bg-primary hover:border-primary text-muted-foreground hover:text-primary-foreground transition-colors"
           >
             <Plus className="w-4 h-4" />
           </button>
