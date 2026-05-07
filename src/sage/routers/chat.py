@@ -95,7 +95,7 @@ _THINK_CLOSE_TAG = "</think>"
 
 class ChatRequest(BaseModel):
     thread_id: str | None = None
-    message: str = Field(..., min_length=1, max_length=2000)
+    message: str = Field(..., min_length=1, max_length=2200)
     mode: str
     course: str = "all"
 
@@ -530,15 +530,33 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
             event_iter = graph.astream_events(
                 state_input, config=graph_config, version="v2",
             ).__aiter__()
+            pending_task = None
             while True:
+<<<<<<< Updated upstream
                 try:
                     event = await asyncio.wait_for(
                         event_iter.__anext__(),
                         timeout=_SSE_HEARTBEAT_INTERVAL_S,
                     )
                 except asyncio.TimeoutError:
+=======
+                if pending_task is None:
+                    pending_task = asyncio.create_task(event_iter.__anext__())
+
+                done, _ = await asyncio.wait(
+                    [pending_task],
+                    timeout=_SSE_HEARTBEAT_INTERVAL_S,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if not done:
+>>>>>>> Stashed changes
                     yield _sse({"type": "heartbeat"})
                     continue
+
+                try:
+                    event = pending_task.result()
+                    pending_task = None
                 except StopAsyncIteration:
                     break
 

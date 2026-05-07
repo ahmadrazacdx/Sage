@@ -113,14 +113,26 @@ def _build_response(mermaid_code: str, svg_data: str, export_filename: str | Non
     parts.append(f"\n\n```text\n{mermaid_code}\n```")
     return "\n".join(parts)
 
+<<<<<<< Updated upstream
 async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
+=======
+
+async def diagram_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpenAI | None = None) -> dict[str, Any]:
+>>>>>>> Stashed changes
     """Generate, validate, and render a high-quality Mermaid diagram.
  
     Phase 1: Build a structured description (nodes / edges / phases).
     Phase 2: Convert to mmdr-safe Mermaid with palette.
     Phase 3: Validate; feed errors back for correction up to max_retries.
     Phase 4: Render SVG via mmdr for export.
+<<<<<<< Updated upstream
  
+=======
+
+    Args:
+        util_llm: Optional smaller LLM for description and fix steps (CPU-only offload).
+
+>>>>>>> Stashed changes
     Returns:
         response   : Mermaid fenced block (Gradio renders natively).
         diagrams   : [{"mermaid_code": str, "svg_data": str}]
@@ -132,9 +144,11 @@ async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     ku_text = _format_knowledge_units(kus)
     timeout: float = cfg.llm_timeout
     max_retries: int = cfg.diagram_max_retries
+    _desc_llm = util_llm or llm
 
     _no_think = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
     llm = llm.bind(**_no_think)
+    _desc_llm = _desc_llm.bind(**_no_think)
 
     # Structured description
     desc_prompt = ChatPromptTemplate.from_messages([
@@ -142,7 +156,7 @@ async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     ])
     try:
         desc_result = await asyncio.wait_for(
-            (desc_prompt | llm).ainvoke({"query": query, "knowledge_units": ku_text}),
+            (desc_prompt | _desc_llm).ainvoke({"query": query, "knowledge_units": ku_text}),
             timeout=timeout,
         )
         description = _to_str(desc_result)
@@ -202,10 +216,19 @@ async def diagram_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
             break
         try:
             fix_result = await asyncio.wait_for(
+<<<<<<< Updated upstream
                 llm.ainvoke([
                     SystemMessage(content=DIAGRAM_FIX_PROMPT),
                     HumanMessage(content=f"mermaid_code:\n{mermaid_code}\n\nerrors:\n{error_text}"),
                 ]),
+=======
+                _desc_llm.ainvoke(
+                    [
+                        SystemMessage(content=DIAGRAM_FIX_PROMPT),
+                        HumanMessage(content=f"mermaid_code:\n{mermaid_code}\n\nerrors:\n{error_text}"),
+                    ]
+                ),
+>>>>>>> Stashed changes
                 timeout=timeout,
             )
             mermaid_code = _strip_fences(_to_str(fix_result))

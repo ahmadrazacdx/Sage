@@ -31,9 +31,9 @@ from sage.utils import with_error_boundary
 log = structlog.get_logger(__name__)
 
 
-def _bind_llm(node_fn: Any, llm: ChatOpenAI) -> Any:
-    """Bind the LLM instance to a node function that accepts (state, llm)."""
-    return functools.partial(node_fn, llm=llm)
+def _bind_llm(node_fn: Any, llm: ChatOpenAI, **extra: Any) -> Any:
+    """Bind the LLM instance (and optional kwargs) to a node function."""
+    return functools.partial(node_fn, llm=llm, **extra)
 
 
 def _route_post_reasoning(state: AgentState) -> str:
@@ -48,6 +48,7 @@ def _route_post_reasoning(state: AgentState) -> str:
 def build_graph(
     llm: ChatOpenAI,
     checkpointer: Any | None = None,
+    util_llm: ChatOpenAI | None = None,
 ) -> CompiledStateGraph:
     """Assemble, compile, and return the Sage agent graph.
 
@@ -59,6 +60,9 @@ def build_graph(
              persistence.  When provided, every graph invocation
              with a `thread_id` config will automatically save
              and restore state across restarts.
+        util_llm: Optional smaller LLM for offloading
+             structured extraction steps on CPU-only builds.
+             When `None`, every node uses `llm` for all steps.
 
     Returns:
         A compiled `CompiledStateGraph` with all nodes error-bounded
@@ -73,11 +77,19 @@ def build_graph(
     graph.add_node("general",            with_error_boundary(_bind_llm(general_node, llm)))
     graph.add_node("reasoning",          with_error_boundary(_bind_llm(reasoning_node, llm)))
     graph.add_node("response_generator", with_error_boundary(response_node))
+<<<<<<< Updated upstream
     graph.add_node("quiz",               with_error_boundary(_bind_llm(quiz_node, llm)))
     graph.add_node("diagram",            with_error_boundary(_bind_llm(diagram_node, llm)))
     graph.add_node("planner",            with_error_boundary(_bind_llm(planner_node, llm)))
     graph.add_node("research",           with_error_boundary(_bind_llm(research_node, llm)))
     graph.add_node("code_fix",           with_error_boundary(_bind_llm(code_fix_node, llm)))
+=======
+    graph.add_node("quiz", with_error_boundary(_bind_llm(quiz_node, llm, util_llm=util_llm)))
+    graph.add_node("diagram", with_error_boundary(_bind_llm(diagram_node, llm, util_llm=util_llm)))
+    graph.add_node("planner", with_error_boundary(_bind_llm(planner_node, llm, util_llm=util_llm)))
+    graph.add_node("research", with_error_boundary(_bind_llm(research_node, llm, digest_llm=util_llm)))
+    graph.add_node("code_fix", with_error_boundary(_bind_llm(code_fix_node, llm, util_llm=util_llm)))
+>>>>>>> Stashed changes
 
     # Entry Edge
     graph.add_edge(START, "router")

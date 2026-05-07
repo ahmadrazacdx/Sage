@@ -477,12 +477,15 @@ def _build_fallback_schedule(analysis: RoadmapAnalysis) -> RoadmapSchedule:
     )
 
 
-async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
+async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpenAI | None = None) -> dict[str, Any]:
     """Generate a personalised study roadmap.
  
     Phase 1 - Analyse the student request (structured output).
     Phase 2 - Generate day-by-day schedule (structured output).
     Fallback - Deterministic schedule from analysis if LLM fails.
+
+    Args:
+        util_llm: Optional smaller LLM for the analysis step (CPU-only offload).
     """
     cfg = get_settings().agent
     query: str = state.get("query", "")
@@ -498,11 +501,12 @@ async def planner_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
  
     analysis: RoadmapAnalysis | None = None
     last_exc: Exception | None = None
+    _analysis_llm = util_llm or llm
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             analysis = await ainvoke_structured_with_fallback(
                 prompt=analysis_prompt,
-                llm=llm,
+                llm=_analysis_llm,
                 schema=RoadmapAnalysis,
                 payload={"query": query, "student_memory": student_memory},
                 timeout_s=cfg.llm_timeout,

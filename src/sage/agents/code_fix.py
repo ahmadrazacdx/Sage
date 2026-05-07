@@ -132,13 +132,16 @@ def _extract_text(result: Any) -> str:
     return result.content if isinstance(result, AIMessage) else str(result)
 
 
-async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
+async def code_fix_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpenAI | None = None) -> dict[str, Any]:
     """Diagnose, fix, verify, and explain a code bug.
 
     The pipeline handles three scenarios:
       1. Pure Python code: diagnose → fix → sandbox verify → explain
       2. Framework code: diagnose → fix (no sandbox) → explain
       3. Non-Python code: general LLM analysis (no sandbox)
+
+    Args:
+        util_llm: Optional smaller LLM for the diagnosis step (CPU-only offload).
     """
     cfg = get_settings().agent
     query: str = state.get("query", "").strip()
@@ -197,12 +200,13 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     ])
 
     diagnosis: Diagnosis | None = None
+    _diag_llm = util_llm or llm
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             diagnosis = await ainvoke_structured_with_fallback(
                 prompt=diag_prompt,
-                llm=llm,
+                llm=_diag_llm,
                 schema=Diagnosis,
                 payload={"code": query, "error": "See code and user message above"},
                 timeout_s=cfg.llm_timeout,

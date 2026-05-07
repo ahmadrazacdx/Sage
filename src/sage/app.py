@@ -64,7 +64,8 @@ async def _heavy_startup(app: FastAPI, checkpointer: Any, cfg: Any) -> None:
         app.state.utility_llm = utility_llm
 
         # Compile graph with the already-open checkpointer.
-        app.state.graph = build_graph(llm, checkpointer=checkpointer)
+        graph_util = utility_llm if gpu_info.get("backend") == "cpu" else None
+        app.state.graph = build_graph(llm, checkpointer=checkpointer, util_llm=graph_util)
 
         # Signal frontend: model is ready.
         app.state.model_ready = True

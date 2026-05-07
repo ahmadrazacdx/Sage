@@ -629,12 +629,36 @@ async def research_node(
         }
 
     budget = ContextBudget.from_settings()
+<<<<<<< Updated upstream
     log.info("research_budget",
              ctx_size=budget.ctx_size,
              max_subtopics=budget.max_subtopics,
              digest_words=budget.digest_words,
              resp_reserve_tokens=budget.resp_reserve,
              source_char_budget=budget.source_char_budget)
+=======
+
+    if digest_llm is not None:
+        util_ctx = get_settings().llm.util_context_window
+        digest_out_reserve = int(budget.digest_words * _TOK_PER_WORD * 1.25)
+        capped_in_chars = max((util_ctx - 30 - digest_out_reserve), 500) * 4
+        budget = dataclasses.replace(budget, digest_in_chars=capped_in_chars)
+        log.info(
+            "digest_in_chars_capped_for_util_model",
+            util_ctx=util_ctx,
+            original_digest_words=budget.digest_words,
+            capped_in_chars=capped_in_chars,
+        )
+
+    log.info(
+        "research_budget",
+        ctx_size=budget.ctx_size,
+        max_subtopics=budget.max_subtopics,
+        digest_words=budget.digest_words,
+        resp_reserve_tokens=budget.resp_reserve,
+        source_char_budget=budget.source_char_budget,
+    )
+>>>>>>> Stashed changes
 
     # Phase 1: Plan
     plan_prompt = ChatPromptTemplate.from_messages([

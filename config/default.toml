@@ -18,8 +18,8 @@ llama_cpp_vulkan_bin = "artifacts/servers/vulkan/llama-server.exe"
 # Utility model
 util_model_path = "artifacts/models/Qwen3.5-0.8B-Q4_K_M.gguf"
 util_model_name = "Qwen3.5-0.8B"
-util_context_window  = 2000
-util_startup_timeout = 40.0
+util_context_window  = 2500
+util_startup_timeout = 45.0
 
 # Hardware auto-scaling
 gpu_layers     = "auto"

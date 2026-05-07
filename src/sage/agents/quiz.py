@@ -480,12 +480,20 @@ def _recover_questions(state: AgentState) -> str | None:
             return recovered
     return None
 
+<<<<<<< Updated upstream
 async def quiz_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
+=======
+
+async def quiz_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpenAI | None = None) -> dict[str, Any]:
+>>>>>>> Stashed changes
     """Generate a quiz or route answer submissions to evaluation.
 
     Routing:
       - Query looks like numbered answers to quiz_evaluate_node
       - Otherwise → generate a new quiz from KUs
+
+    Args:
+        util_llm: Optional smaller LLM for the evaluation step (CPU-only offload).
     """
     query: str = state.get("query", "")
 
@@ -499,7 +507,7 @@ async def quiz_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                     "(e.g. `1. B`, `2. Paris`)."
                 )
             }
-        return await quiz_evaluate_node({**state, "last_quiz_questions": recovered}, llm)
+        return await quiz_evaluate_node({**state, "last_quiz_questions": recovered}, llm, util_llm=util_llm)
 
     cfg = get_settings().agent
     timeout: int = cfg.llm_timeout
@@ -534,8 +542,17 @@ async def quiz_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     return {"response": "Unable to generate a quiz right now. Please try again or refine your topic."}
 
 
-async def quiz_evaluate_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
-    """Evaluate student answers and return per-question feedback + summary."""
+async def quiz_evaluate_node(
+    state: AgentState,
+    llm: ChatOpenAI,
+    *,
+    util_llm: ChatOpenAI | None = None,
+) -> dict[str, Any]:
+    """Evaluate student answers and return per-question feedback + summary.
+
+    Args:
+        util_llm: Optional smaller LLM for structured grading (CPU-only offload).
+    """
     cfg = get_settings().agent
     timeout: int = cfg.llm_timeout
     query: str = state.get("query", "")
@@ -561,12 +578,17 @@ async def quiz_evaluate_node(state: AgentState, llm: ChatOpenAI) -> dict[str, An
     )
 
     invoke_kwargs = {"questions_and_answers": qa_text, "student_memory": student_memory}
+    _eval_llm = util_llm or llm
 
     for attempt in range(1, _MAX_RETRIES + 2):
         try:
+<<<<<<< Updated upstream
             raw = await asyncio.wait_for(
                 _eval_chain(llm).ainvoke(invoke_kwargs), timeout=timeout
             )
+=======
+            raw = await asyncio.wait_for(_eval_chain(_eval_llm).ainvoke(invoke_kwargs), timeout=timeout)
+>>>>>>> Stashed changes
             evaluation = _parse_evaluation(raw)
             evaluation = _validate_evaluation(evaluation, prior)
             log.info("quiz_evaluated", score=evaluation.score, attempt=attempt)
