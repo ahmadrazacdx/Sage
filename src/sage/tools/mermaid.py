@@ -20,11 +20,11 @@ from __future__ import annotations
 
 import asyncio
 import re
+import subprocess
 import sys
 import time
-import subprocess
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import structlog
 from langchain_core.tools import tool
@@ -55,9 +55,9 @@ def _response(
     valid: bool | None = None,
     errors: list[str] | None = None,
     error: str | None = None,
-    meta: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
-    base: Dict[str, Any] = {
+    meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    base: dict[str, Any] = {
         "success": success,
         "operation": operation,
         "error": error,
@@ -69,6 +69,7 @@ def _response(
         base["valid"] = valid
         base["errors"] = errors or []
     return base
+
 
 def _svg_contains_error(svg: str) -> bool:
     """Return True if svg encodes an mmdr parse/syntax error.
@@ -109,6 +110,7 @@ def _extract_svg_error(svg: str) -> str:
 
 
 # --- Binary resolution ---
+
 
 def _resolve_mmdr_path() -> Path:
     """Return the expected filesystem path for the mmdr binary.
@@ -164,11 +166,13 @@ def _assert_mmdr() -> Path:
 # --- Input schemas ---
 class MermaidInput(BaseModel):
     """Input schema for ``render_mermaid_svg``."""
+
     code: str
 
 
 class ValidateMermaidInput(BaseModel):
     """Input schema for ``validate_mermaid``."""
+
     code: str
 
 
@@ -203,7 +207,8 @@ async def _run_mmdr(
     try:
         proc = await asyncio.create_subprocess_exec(
             str(binary),
-            "-e", "svg",
+            "-e",
+            "svg",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -215,11 +220,11 @@ async def _run_mmdr(
                 proc.communicate(input=code.encode("utf-8")),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
-            try:
+        except TimeoutError:
+            import contextlib
+
+            with contextlib.suppress(ProcessLookupError):
                 proc.kill()
-            except ProcessLookupError:
-                pass
             await proc.communicate()
             return "timeout", "", ""
 
@@ -241,7 +246,7 @@ async def _run_mmdr(
 
 # --- Tools ---
 @tool(args_schema=MermaidInput)
-async def render_mermaid_svg(code: str) -> Dict[str, Any]:
+async def render_mermaid_svg(code: str) -> dict[str, Any]:
     """Render a Mermaid diagram definition to SVG markup.
 
     Invokes the bundled mmdr binary.  No browser, Node.js, or network
@@ -272,7 +277,7 @@ async def render_mermaid_svg(code: str) -> Dict[str, Any]:
     start = time.perf_counter()
     timeout = get_settings().tools.mermaid.render_timeout
 
-    meta: Dict[str, Any] = {
+    meta: dict[str, Any] = {
         "code_length": len(code) if code else 0,
         "exec_time_ms": 0,
     }
@@ -287,22 +292,31 @@ async def render_mermaid_svg(code: str) -> Dict[str, Any]:
     if status == "timeout":
         log.warning("mermaid_render_timeout", timeout=timeout, code_length=len(code))
         return _response(
-            False, operation, svg="",
-            error=f"Render timed out after {timeout}s", meta=meta,
+            False,
+            operation,
+            svg="",
+            error=f"Render timed out after {timeout}s",
+            meta=meta,
         )
 
     if status == "error":
         log.warning("mermaid_render_failed", detail=stderr[:300])
         return _response(
-            False, operation, svg="",
-            error=stderr or "mmdr exited with non-zero status", meta=meta,
+            False,
+            operation,
+            svg="",
+            error=stderr or "mmdr exited with non-zero status",
+            meta=meta,
         )
 
     if not stdout.startswith("<svg"):
         log.error("mermaid_unexpected_output", preview=stdout[:120])
         return _response(
-            False, operation, svg="",
-            error="mmdr exited successfully but output is not valid SVG", meta=meta,
+            False,
+            operation,
+            svg="",
+            error="mmdr exited successfully but output is not valid SVG",
+            meta=meta,
         )
 
     log.debug("mermaid_render_success", svg_bytes=len(stdout))
@@ -310,7 +324,7 @@ async def render_mermaid_svg(code: str) -> Dict[str, Any]:
 
 
 @tool(args_schema=ValidateMermaidInput)
-async def validate_mermaid(code: str) -> Dict[str, Any]:
+async def validate_mermaid(code: str) -> dict[str, Any]:
     """Check whether Mermaid source is renderable by mmdr.
 
     Performs a full render pass and discards the SVG.  A clean render
@@ -346,13 +360,16 @@ async def validate_mermaid(code: str) -> Dict[str, Any]:
     """
     operation = "validate_mermaid"
     start = time.perf_counter()
-    meta: Dict[str, Any] = {"exec_time_ms": 0}
+    meta: dict[str, Any] = {"exec_time_ms": 0}
 
     if not code or not code.strip():
         meta["exec_time_ms"] = int((time.perf_counter() - start) * 1000)
         return _response(
-            False, operation,
-            valid=False, errors=["Empty input"], meta=meta,
+            False,
+            operation,
+            valid=False,
+            errors=["Empty input"],
+            meta=meta,
         )
 
     status, _, stderr = await _run_mmdr(code, timeout=_VALIDATE_TIMEOUT)
@@ -363,7 +380,8 @@ async def validate_mermaid(code: str) -> Dict[str, Any]:
 
     errors = [ln for ln in stderr.splitlines() if ln.strip()]
     return _response(
-        False, operation,
+        False,
+        operation,
         valid=False,
         errors=errors or ["Diagram parse error — check Mermaid syntax"],
         meta=meta,

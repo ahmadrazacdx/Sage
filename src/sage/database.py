@@ -16,7 +16,7 @@ import re
 import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -126,11 +126,14 @@ _FTS5_SETUP: list[str] = [
         WHERE memory_id = old.id;
     END""",
 ]
+
+
 def _resolve_db_path() -> Path:
     """Return the absolute database path, creating parent dirs if absent."""
     db_path = get_settings().database.path
     if not db_path.is_absolute():
         from sage.config import _PROJECT_ROOT
+
         db_path = _PROJECT_ROOT / db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
     return db_path
@@ -170,7 +173,7 @@ async def get_async_db() -> AsyncIterator[aiosqlite.Connection]:
 
 _MIGRATIONS: list[tuple[str, str, str]] = [
     ("conversations", "message_count", "INTEGER NOT NULL DEFAULT 0"),
-    ("conversations", "last_message",  "TEXT NOT NULL DEFAULT ''"),
+    ("conversations", "last_message", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 
@@ -178,9 +181,7 @@ async def _run_column_migrations(db: aiosqlite.Connection) -> None:
     """Add any missing columns to existing tables (idempotent)."""
     for table, column, definition in _MIGRATIONS:
         try:
-            await db.execute(
-                f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
-            )
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
             log.info("migration_applied", table=table, column=column)
         except Exception:
             pass
@@ -201,6 +202,7 @@ async def _run_fts5_migration(db: aiosqlite.Connection) -> None:
     )
     log.debug("fts5_migration_complete")
 
+
 async def init_db() -> None:
     """Create all application tables and apply pending migrations."""
     async with get_async_db() as db:
@@ -217,9 +219,7 @@ async def init_db() -> None:
             )
         else:
             await db.execute(
-                "UPDATE schema_version "
-                "SET version = ?, applied_at = datetime('now') "
-                "WHERE version < ?",
+                "UPDATE schema_version SET version = ?, applied_at = datetime('now') WHERE version < ?",
                 (_SCHEMA_VERSION, _SCHEMA_VERSION),
             )
         await db.commit()
@@ -232,7 +232,7 @@ async def init_db() -> None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 async def upsert_conversation(
@@ -315,20 +315,76 @@ async def delete_conversation(thread_id: str) -> None:
         await db.commit()
 
 
-_FTS_STOP_WORDS: frozenset[str] = frozenset({
-    "the", "a", "an", "is", "it", "in", "on", "at", "to", "for",
-    "of", "and", "or", "but", "with", "my", "your", "what", "how",
-    "why", "who", "me", "i", "am", "are", "was", "be", "have",
-    "has", "do", "does", "did", "will", "would", "could", "should",
-    "about", "from", "by", "as", "this", "that", "these", "those",
-    "can", "its", "into", "than", "then", "them", "they", "their",
-    "he", "she", "we", "you", "his", "her", "our", "also", "just",
-})
+_FTS_STOP_WORDS: frozenset[str] = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "is",
+        "it",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "and",
+        "or",
+        "but",
+        "with",
+        "my",
+        "your",
+        "what",
+        "how",
+        "why",
+        "who",
+        "me",
+        "i",
+        "am",
+        "are",
+        "was",
+        "be",
+        "have",
+        "has",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "about",
+        "from",
+        "by",
+        "as",
+        "this",
+        "that",
+        "these",
+        "those",
+        "can",
+        "its",
+        "into",
+        "than",
+        "then",
+        "them",
+        "they",
+        "their",
+        "he",
+        "she",
+        "we",
+        "you",
+        "his",
+        "her",
+        "our",
+        "also",
+        "just",
+    }
+)
 
 
 def build_fts_query(text: str) -> str | None:
     """Convert plain-text query into an FTS5 MATCH string.
-    
+
     Examples:
         - "what is my name?"  to  "name"
         - "explain quicksort algorithm"  to  "explain OR quicksort OR algorithm"
@@ -409,15 +465,17 @@ async def search_memories_fts(
         score = min(abs(raw) / 10.0, 1.0) if raw < 0 else 0.5
         if score < min_score:
             continue
-        results.append({
-            "id": str(row[0]),
-            "content": str(row[1]),
-            "category": str(row[2]),
-            "confidence": float(row[3]),
-            "access_count": int(row[4]),
-            "updated_at": str(row[5]),
-            "score": round(score, 4),
-        })
+        results.append(
+            {
+                "id": str(row[0]),
+                "content": str(row[1]),
+                "category": str(row[2]),
+                "confidence": float(row[3]),
+                "access_count": int(row[4]),
+                "updated_at": str(row[5]),
+                "score": round(score, 4),
+            }
+        )
 
     return results[:k]
 
@@ -431,8 +489,7 @@ async def insert_memory(
     mem_id = f"mem_{uuid4().hex[:12]}"
     async with get_async_db() as db:
         await db.execute(
-            "INSERT INTO memories (id, content, category, confidence) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO memories (id, content, category, confidence) VALUES (?, ?, ?, ?)",
             (mem_id, content, category, confidence),
         )
         await db.commit()
@@ -443,9 +500,7 @@ async def update_memory_timestamp(memory_id: str) -> None:
     """Bump the updated_at and access_count for an existing memory."""
     async with get_async_db() as db:
         await db.execute(
-            "UPDATE memories "
-            "SET updated_at = datetime('now'), access_count = access_count + 1 "
-            "WHERE id = ?",
+            "UPDATE memories SET updated_at = datetime('now'), access_count = access_count + 1 WHERE id = ?",
             (memory_id,),
         )
         await db.commit()
@@ -455,8 +510,7 @@ async def get_all_memories() -> list[dict[str, Any]]:
     """Return all memories ordered by recency (no embeddings)."""
     async with get_async_db() as db:
         cursor = await db.execute(
-            "SELECT id, content, category, confidence, access_count, updated_at "
-            "FROM memories ORDER BY updated_at DESC"
+            "SELECT id, content, category, confidence, access_count, updated_at FROM memories ORDER BY updated_at DESC"
         )
         rows = await cursor.fetchall()
         return [
@@ -506,8 +560,7 @@ async def delete_oldest_memories(keep: int) -> int:
     """
     async with get_async_db() as db:
         cursor = await db.execute(
-            "DELETE FROM memories WHERE id NOT IN "
-            "(SELECT id FROM memories ORDER BY updated_at DESC LIMIT ?)",
+            "DELETE FROM memories WHERE id NOT IN (SELECT id FROM memories ORDER BY updated_at DESC LIMIT ?)",
             (keep,),
         )
         deleted = cursor.rowcount

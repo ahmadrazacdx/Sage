@@ -44,7 +44,7 @@ async def _tcp_probe(host: str, port: int, timeout: float) -> bool:
         writer.close()
         await writer.wait_closed()
         return True
-    except (asyncio.TimeoutError, OSError):
+    except (TimeoutError, OSError):
         return False
 
 
@@ -104,10 +104,10 @@ class NetworkMonitor:
         """Cancel the background poller gracefully."""
         if self._task is not None and not self._task.done():
             self._task.cancel()
-            try:
+            import contextlib
+
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         log.info("network_monitor_stopped")
 
     async def _poll(self) -> None:

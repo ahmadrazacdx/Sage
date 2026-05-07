@@ -19,6 +19,7 @@ log = structlog.get_logger(__name__)
 _RE_HALLUCINATED_KU = re.compile(r"\s*\[KU\d+\]", re.IGNORECASE)
 _RE_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 
+
 def _history_window(ctx_size: int) -> int:
     """Return max history turn-pairs to send based on context window size."""
     if ctx_size <= 4_096:
@@ -41,10 +42,10 @@ def _clean_general_output(text: str) -> str:
 async def general_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     """Direct LLM answer for general-mode queries."""
     cfg_agent = get_settings().agent
-    cfg_llm   = get_settings().llm
+    cfg_llm = get_settings().llm
 
     ctx_size = cfg_llm.active_context_size or 4_096
-    window   = _history_window(ctx_size)
+    window = _history_window(ctx_size)
 
     student_memory: str = state.get("student_memory", "")
     history_summary: str = state.get("history_summary", "") or ""
@@ -52,7 +53,7 @@ async def general_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     messages: list = state.get("messages", [])
     if not messages:
         messages = [HumanMessage(content=state.get("query", ""))]
-    capped = messages[-(window * 2):]
+    capped = messages[-(window * 2) :]
     system_parts: list[str] = [SYSTEM_PROMPT]
     if student_memory:
         system_parts.append(student_memory)
@@ -66,7 +67,7 @@ async def general_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
             llm.ainvoke(prompt_messages),
             timeout=cfg_agent.llm_timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.error("general_node_timeout", timeout=cfg_agent.llm_timeout)
         return {"response": "The request timed out. Please try again."}
     except Exception as exc:
@@ -77,9 +78,7 @@ async def general_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         )
         return {"response": "I ran into an issue. Please try again."}
 
-    raw: str = (
-        result.content if hasattr(result, "content") else str(result)
-    ) or ""
+    raw: str = (result.content if hasattr(result, "content") else str(result)) or ""
     content = _clean_general_output(raw)
     log.info(
         "general_node_complete",

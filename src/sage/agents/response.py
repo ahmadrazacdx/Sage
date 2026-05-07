@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 import structlog
+
 from sage.agents.state import AgentState
 
 log = structlog.get_logger(__name__)
@@ -40,6 +41,7 @@ def _build_citation_map(kus: list[dict]) -> dict[str, int]:
 
 def _rewrite_citations(text: str, citation_map: dict[str, int]) -> str:
     """Replace `[KU#]` tags with `[N]` numeric citations."""
+
     def _replace(match: re.Match) -> str:  # type: ignore[type-arg]
         ku_id = match.group(1).upper()
         num = citation_map.get(ku_id)
@@ -149,13 +151,15 @@ async def response_node(state: AgentState) -> dict[str, Any]:
         num = citation_map.get(ku_id)
         if num is not None:
             seen_ku_ids.add(ku_id)
-            citations.append({
-                "label": f"[{num}]",
-                "ku_id": ku_id,
-                "source": ku.get("source_file", ""),
-                "page": ku.get("source_page", ""),
-                "confidence": ku.get("confidence", ""),
-            })
+            citations.append(
+                {
+                    "label": f"[{num}]",
+                    "ku_id": ku_id,
+                    "source": ku.get("source_file", ""),
+                    "page": ku.get("source_page", ""),
+                    "confidence": ku.get("confidence", ""),
+                }
+            )
 
     log.info(
         "response_formatted",

@@ -4,7 +4,7 @@ Document export tools for Sage.
 Provides two LangChain tools:
   1. `export_markdown`: write Markdown content to a file.
   2. `export_pdf`: compile Markdown to a High-quality PDF via Typst,
-        using the academic_report.typ template.    
+        using the academic_report.typ template.
 Usage:
 
     from sage.tools.export import export_markdown, export_pdf
@@ -18,11 +18,11 @@ from __future__ import annotations
 import asyncio
 import re
 import subprocess
-import tempfile
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 import structlog
 from langchain_core.tools import tool
@@ -45,7 +45,10 @@ _UNSAFE_RE = re.compile(
 
 _TEMPLATE_NAME = "academic_report.typ"
 
-def _response(success: bool, operation: str, path: str | None = None, error: str | None = None, meta: Dict[str, Any] | None = None) -> Dict[str, Any]:
+
+def _response(
+    success: bool, operation: str, path: str | None = None, error: str | None = None, meta: dict[str, Any] | None = None
+) -> dict[str, Any]:
     return {
         "success": success,
         "operation": operation,
@@ -54,11 +57,13 @@ def _response(success: bool, operation: str, path: str | None = None, error: str
         "meta": meta or {},
     }
 
+
 def _sanitize_filename(filename: str) -> str:
     """Strip unsafe characters and enforce length limit."""
     clean = Path(filename).name
     clean = re.sub(r'[<>:"/\\|?*]', "_", clean).strip(". ")
     return (clean or "export")[:_MAX_FILENAME_LENGTH]
+
 
 def sanitize_export_filename(filename: str) -> str:
     """Public wrapper used by non-tool exporters."""
@@ -68,11 +73,9 @@ def sanitize_export_filename(filename: str) -> str:
 def resolve_export_output_dir() -> Path:
     """Return the absolute export output directory, creating it if needed."""
     from sage.config import _PROJECT_ROOT
+
     configured = get_settings().tools.export.output_dir.expanduser()
-    if configured.is_absolute():
-        output_dir = configured
-    else:
-        output_dir = _PROJECT_ROOT / configured
+    output_dir = configured if configured.is_absolute() else _PROJECT_ROOT / configured
 
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
@@ -98,13 +101,16 @@ def _resolve_typst_bin() -> str:
         return str(p)
     if "/" in bin_path or "\\" in bin_path:
         from sage.config import _PROJECT_ROOT
+
         return str(_PROJECT_ROOT / bin_path)
     return bin_path
+
 
 def _resolve_template_path() -> Path | None:
     """Return the absolute path to academic_report.typ, or None if missing."""
     try:
         from sage.config import _PROJECT_ROOT
+
         candidate = _PROJECT_ROOT / "config" / "templates" / _TEMPLATE_NAME
         if candidate.is_file():
             return candidate
@@ -112,14 +118,17 @@ def _resolve_template_path() -> Path | None:
         pass
     return None
 
+
 def validate_typst_bin() -> bool:
     """Return True if the configured Typst binary is accessible."""
     import shutil
+
     bin_path = _resolve_typst_bin()
     p = Path(bin_path)
     if p.suffix:
         return p.is_file()
     return shutil.which(bin_path) is not None
+
 
 def _nonconflict_path(base: Path) -> Path:
     """Return base if it does not exist, otherwise base_1, base_2, …"""
@@ -132,6 +141,7 @@ def _nonconflict_path(base: Path) -> Path:
         if not candidate.exists():
             return candidate
         counter += 1
+
 
 def _flush_refs(ref_lines: list[str], out: list[str]) -> None:
     """Emit accumulated [N] reference lines as a Typst hanging-indent block."""
@@ -197,6 +207,7 @@ def _markdown_to_typst(md: str) -> str:
 
     return "\n".join(out_lines)
 
+
 def _generate_typst_source(
     markdown_content: str,
     title: str = "",
@@ -206,48 +217,56 @@ def _generate_typst_source(
     institution: str = "",
 ) -> str:
     """Generate a complete, self-contained Typst document.
- 
+
     If the academic_report.typ template exists it is used as-is.  Otherwise a rich
     inline fallback is generated so PDF export never silently fails.
     """
     template_path = _resolve_template_path()
     body_typst = _markdown_to_typst(markdown_content)
     date_str = date or datetime.now().strftime("%B %d, %Y")
-    inst_str = institution or get_settings().tools.export.institution if hasattr(
-        get_settings().tools.export, "institution"
-    ) else "Thal University Bhakkar"
- 
+    inst_str = (
+        institution or get_settings().tools.export.institution
+        if hasattr(get_settings().tools.export, "institution")
+        else "Thal University Bhakkar"
+    )
+
     if template_path:
         tpl = template_path.read_text(encoding="utf-8")
         full_src = tpl.replace("#report-body", body_typst)
         for var, val in [
             ('default: "Research Report"', f'default: "{_esc(title or "Research Report")}"'),
-            ('default: ""',                f'default: "{_esc(subtitle)}"'),
+            ('default: ""', f'default: "{_esc(subtitle)}"'),
             ('default: "Sage Research Agent"', f'default: "{_esc(author)}"'),
-            ('default: ""',                f'default: "{_esc(date_str)}"'),
+            ('default: ""', f'default: "{_esc(date_str)}"'),
             ('default: "Thal University Bhakkar"', f'default: "{_esc(inst_str)}"'),
         ]:
             full_src = full_src.replace(var, val, 1)
         return full_src
- 
+
     # Inline fallback (no template file found)
     return _inline_typst_doc(body_typst, title, subtitle, author, date_str, inst_str)
+
 
 def _esc(s: str) -> str:
     """Escape double-quotes for embedding in Typst string literals."""
     return s.replace('"', '\\"')
 
+
 def _inline_typst_doc(
-    body: str, title: str, subtitle: str,
-    author: str, date_str: str, institution: str,
+    body: str,
+    title: str,
+    subtitle: str,
+    author: str,
+    date_str: str,
+    institution: str,
 ) -> str:
     """Full professional Typst document when the template file is absent."""
-    t   = _esc(title or "Research Report")
+    t = _esc(title or "Research Report")
     sub = _esc(subtitle)
-    au  = _esc(author)
-    dt  = _esc(date_str)
+    au = _esc(author)
+    dt = _esc(date_str)
     ins = _esc(institution)
- 
+
     return f"""\
 // --- Colour palette ---
 #let sage-dark   = rgb("#0f2744")
@@ -322,7 +341,11 @@ def _inline_typst_doc(
       #block(height: 4pt, width: 6cm, fill: sage-accent)
       #v(0.6em)
       #text(size: 26pt, weight: "bold", fill: white, "{t}")
-      {"#v(0.4em)" + chr(10) + f'      #text(size: 14pt, fill: sage-accent, style: "italic", "{sub}")' if subtitle else ""}
+      {
+        "#v(0.4em)" + chr(10) + f'      #text(size: 14pt, fill: sage-accent, style: "italic", "{sub}")'
+        if subtitle
+        else ""
+    }
     ]
     #v(1.2em)
   ]
@@ -380,9 +403,10 @@ def _inline_typst_doc(
 {body}
 """
 
+
 # --- Markdown Export ---
 @tool
-def export_markdown(content: str, filename: str) -> Dict[str, Any]:
+def export_markdown(content: str, filename: str) -> dict[str, Any]:
     """Export content as a Markdown (.md) file.
 
     Args:
@@ -421,7 +445,7 @@ async def export_pdf(
     author: str = "Sage Research Agent",
     date: str = "",
     institution: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Export content as a professionally formatted PDF using Typst.
 
     Produces a cover page, table of contents, numbered sections,
@@ -437,7 +461,7 @@ async def export_pdf(
         author:      Author name for the cover page.
         date:        Date string (defaults to today).
         institution: Institution name for the cover page.
- 
+
     Returns:
         Dict with keys: success, operation, path, error, meta.
     """
@@ -454,25 +478,34 @@ async def export_pdf(
     tmp_path: Path | None = None
     try:
         typst_source = _generate_typst_source(
-            content, title=title, subtitle=subtitle,
-            author=author, date=date, institution=institution,
+            content,
+            title=title,
+            subtitle=subtitle,
+            author=author,
+            date=date,
+            institution=institution,
         )
     except ValueError as exc:
         return _response(False, operation, error=str(exc))
-    
+
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".typ", encoding="utf-8", delete=False,
+            mode="w",
+            suffix=".typ",
+            encoding="utf-8",
+            delete=False,
         ) as tmp:
             tmp.write(typst_source)
             tmp_path = Path(tmp.name)
- 
+
         typst_bin = _resolve_typst_bin()
         win_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         proc = await asyncio.wait_for(
             asyncio.create_subprocess_exec(
-                typst_bin, "compile",
-                str(tmp_path), str(output_path),
+                typst_bin,
+                "compile",
+                str(tmp_path),
+                str(output_path),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 creationflags=win_flags,
@@ -480,22 +513,25 @@ async def export_pdf(
             timeout=_PDF_TIMEOUT,
         )
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_PDF_TIMEOUT)
- 
+
         if proc.returncode != 0:
             err_msg = stderr.decode("utf-8", errors="replace").strip()
-            log.error("export_pdf_typst_error", returncode=proc.returncode,
-                      stderr=err_msg[:400])
+            log.error("export_pdf_typst_error", returncode=proc.returncode, stderr=err_msg[:400])
             return _response(False, operation, error=f"Typst compile error: {err_msg[:300]}")
- 
+
         log.info("export_pdf_complete", path=str(output_path), length=len(content))
         return _response(True, operation, path=str(output_path), meta={"length": len(content)})
 
     except FileNotFoundError:
-        return _response(False, operation, error=(
-            "Typst binary not found. Install typst (https://typst.app) "
-            "and set tools.export.typst_bin in your config."
-        ))
-    except asyncio.TimeoutError:
+        return _response(
+            False,
+            operation,
+            error=(
+                "Typst binary not found. Install typst (https://typst.app) "
+                "and set tools.export.typst_bin in your config."
+            ),
+        )
+    except TimeoutError:
         return _response(False, operation, error="PDF generation timed out")
     except Exception as exc:
         log.error("export_pdf_unexpected", error=str(exc)[:200])

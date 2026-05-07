@@ -28,9 +28,7 @@ from sage.prompts import (
 
 log = structlog.get_logger(__name__)
 
-_RE_THINK_BLOCK = re.compile(
-    r"<think>(.*?)</think>", re.IGNORECASE | re.DOTALL
-)
+_RE_THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.IGNORECASE | re.DOTALL)
 _RE_HALLUCINATED_KU = re.compile(r"\s*\[KU\d+\]", re.IGNORECASE)
 _RE_REASONING_LEAD = re.compile(
     r"^(the user|let me|i need|i should|i can|i will|i(?:'| )?ll|first|then|to solve|"
@@ -77,6 +75,7 @@ _MATH_PREFIXES: tuple[str, ...] = (
     "what's",
 )
 
+
 def _intro(intent: str, query: str) -> str:
     """Return a short warm opener, deterministically chosen per query."""
     bank = _THINKING_INTROS if intent == "thinking" else _EXPLAIN_INTROS
@@ -108,13 +107,13 @@ def _extract_math_expression(query: str) -> str | None:
     for prefix in _MATH_PREFIXES:
         token = f"{prefix} "
         if lowered.startswith(token):
-            text = text[len(token):].strip()
+            text = text[len(token) :].strip()
             lowered = text.lower()
             break
 
     for stem in ("the result of ", "result of ", "value of "):
         if lowered.startswith(stem):
-            text = text[len(stem):].strip()
+            text = text[len(stem) :].strip()
             lowered = text.lower()
             break
 
@@ -139,6 +138,7 @@ def _format_calculator_result(value: Any) -> str:
             return str(int(rounded))
     return str(value)
 
+
 def _format_knowledge_units(kus: list[dict]) -> str:
     """Render KU list as numbered lines for prompt injection.
 
@@ -156,6 +156,7 @@ def _format_knowledge_units(kus: list[dict]) -> str:
         suffix = f" p.{page}" if page else ""
         lines.append(f"- {claim} [{ku_id}] ({source}{suffix})")
     return "\n".join(lines)
+
 
 def _strip_think_blocks(text: str) -> str:
     """Strip all <think>...</think> blocks and stray tags from model text."""
@@ -211,9 +212,7 @@ def _looks_like_reasoning_paragraph(paragraph: str) -> bool:
         return True
 
     lowered = p.lower()
-    if "tool" in lowered and ("result" in lowered or "calculator" in lowered or "search" in lowered):
-        return True
-    return False
+    return "tool" in lowered and ("result" in lowered or "calculator" in lowered or "search" in lowered)
 
 
 def _looks_like_answer_paragraph(paragraph: str) -> bool:
@@ -227,9 +226,7 @@ def _looks_like_answer_paragraph(paragraph: str) -> bool:
     lowered = p.lower()
     if lowered.startswith("## "):
         return True
-    if lowered.startswith("the result is") or lowered.startswith("the answer is"):
-        return True
-    return False
+    return lowered.startswith("the result is") or lowered.startswith("the answer is")
 
 
 def _ensure_think_wrapped(response: str) -> str:
@@ -266,13 +263,14 @@ def _ensure_think_wrapped(response: str) -> str:
 
     return f"<think>\nCompleted reasoning and tool steps.\n</think>\n\n{text}"
 
+
 async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     """Reasoning agent, handles `thinking` and `explain` intents.
 
     Args:
         state: Current agent state dict (AgentState TypedDict).
         llm:   Shared ChatOpenAI instance pointing at the local llama.cpp server.
- 
+
     Returns:
         Dict with key `response` (str). When thinking is active the
         response begins with a `<think>…</think>` block followed by the
@@ -284,9 +282,7 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     intent: str = state.get("intent", "general")
     query: str = state.get("query", "")
     kus: list[dict] = state.get("knowledge_units", [])
-    student_memory: str = state.get(
-        "student_memory", "No prior student context available."
-    )
+    student_memory: str = state.get("student_memory", "No prior student context available.")
 
     thinking_budget: int = llm_cfg.reasoning_budget
 
@@ -297,6 +293,7 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         try:
             from sage.tools.calculator import calculator
             from sage.tools.search import search_web
+
             calculator_tool = calculator
             is_math_query = _is_math_focused_query(query)
             thinking_tools = [calculator] if is_math_query else [calculator, search_web]
@@ -337,11 +334,7 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         if is_math_query:
             effective_budget = min(effective_budget, _FAST_MATH_THINKING_BUDGET)
         llm_with_thinking = _with_thinking(llm, effective_budget)
-        llm_with_tools = (
-            llm_with_thinking.bind_tools(thinking_tools)
-            if thinking_tools
-            else llm_with_thinking
-        )
+        llm_with_tools = llm_with_thinking.bind_tools(thinking_tools) if thinking_tools else llm_with_thinking
 
         messages_so_far: list[Any] = [
             SystemMessage(content=system_thinking),
@@ -354,7 +347,7 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                     llm_with_tools.ainvoke(messages_so_far),
                     timeout=cfg.llm_timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.error("reasoning_thinking_timeout", timeout=cfg.llm_timeout)
                 return {"response": "The request timed out. Please try again."}
             except Exception as exc:
@@ -410,11 +403,7 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     ku_tags = ", ".join(f"[{ku['id']}]" for ku in kus) if kus else ""
 
     if kus:
-        human_msg = (
-            "{query}\n\n"
-            f"Remember: cite Knowledge Units as {ku_tags} inline. "
-            "End with **Key Takeaway:**"
-        )
+        human_msg = f"{{query}}\n\nRemember: cite Knowledge Units as {ku_tags} inline. End with **Key Takeaway:**"
     else:
         human_msg = (
             "{query}\n\n"
@@ -423,21 +412,25 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
             "End with **Key Takeaway:**"
         )
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT_WITH_CITATIONS + "\n\n" + REASONING_EXPLAIN_PROMPT),
-        ("human", human_msg),
-    ])
- 
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", SYSTEM_PROMPT_WITH_CITATIONS + "\n\n" + REASONING_EXPLAIN_PROMPT),
+            ("human", human_msg),
+        ]
+    )
+
     try:
         result = await asyncio.wait_for(
-            (prompt | llm).ainvoke({
-                "query": query,
-                "knowledge_units": ku_text,
-                "student_memory": student_memory,
-            }),
+            (prompt | llm).ainvoke(
+                {
+                    "query": query,
+                    "knowledge_units": ku_text,
+                    "student_memory": student_memory,
+                }
+            ),
             timeout=cfg.llm_timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.error("reasoning_explain_timeout", timeout=cfg.llm_timeout)
         return {"response": "The request timed out. Please try again."}
     except Exception as exc:

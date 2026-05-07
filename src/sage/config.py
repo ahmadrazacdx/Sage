@@ -22,6 +22,7 @@ from typing import Any, Literal
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 # ----Paths----
 def _get_project_root() -> Path:
     current = Path(__file__).resolve()
@@ -84,7 +85,7 @@ class LLMSettings(BaseSettings):
     model_path_cuda: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
     model_name_cpu: str = "Qwen3.5-2B"
     model_name_cuda: str = "Qwen3.5-4B"
-    
+
     # Active instance configuration dynamically populated by llm.py
     active_model_path: Path = Path(".")
     active_model_name: str = "uninitialized"
@@ -162,10 +163,7 @@ class RAGSettings(BaseSettings):
     @model_validator(mode="after")
     def _overlap_lt_size(self) -> RAGSettings:
         if self.chunk_overlap >= self.chunk_size:
-            raise ValueError(
-                f"chunk_overlap ({self.chunk_overlap}) must be "
-                f"less than chunk_size ({self.chunk_size})"
-            )
+            raise ValueError(f"chunk_overlap ({self.chunk_overlap}) must be less than chunk_size ({self.chunk_size})")
         return self
 
 

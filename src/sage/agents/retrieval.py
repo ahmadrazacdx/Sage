@@ -39,12 +39,12 @@ async def retrieval_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     """
     expanded_query: str = state.get("expanded_query", state.get("query", ""))
     course_code: str | None = state.get("course_code")
-    
+
     if course_code and course_code.lower() != "all":
         log.info("retrieval_course_filter", course_code=course_code, hint="Retrieving strictly within course metadata")
     else:
         log.info("retrieval_global_search", hint="Retrieving across entire corpus")
-        
+
     log.info(
         "retrieval_stub_active",
         query_preview=expanded_query[:80],

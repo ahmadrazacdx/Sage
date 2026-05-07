@@ -9,8 +9,8 @@ Persistence is fully SQLite-backed:
 from __future__ import annotations
 
 from typing import Any
-import structlog
 
+import structlog
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
@@ -19,16 +19,19 @@ from sage.database import delete_conversation, list_conversations
 log = structlog.get_logger(__name__)
 router = APIRouter(tags=["sessions"])
 
+
 class Session(BaseModel):
     thread_id: str
     title: str
     last_message_preview: str
     updated_at: str
 
+
 class Message(BaseModel):
     role: str
     content: str
     artifact: dict[str, str] | None = None
+
 
 @router.get("/sessions", response_model=list[Session])
 async def list_sessions(request: Request) -> list[Session]:
@@ -62,10 +65,7 @@ async def get_session_messages(
                     role = "user" if getattr(m, "type", "") == "human" else "assistant"
                     content = getattr(m, "content", "") or ""
                     if isinstance(content, list):
-                        content = " ".join(
-                            str(c.get("text", c) if isinstance(c, dict) else c)
-                            for c in content
-                        )
+                        content = " ".join(str(c.get("text", c) if isinstance(c, dict) else c) for c in content)
                     result.append(Message(role=role, content=str(content)))
                 if result:
                     return result
@@ -73,9 +73,7 @@ async def get_session_messages(
             pass
 
     # Fallback to in-memory (for backward compat during transition).
-    thread_messages: dict[str, list[dict[str, Any]]] = getattr(
-        request.app.state, "thread_messages", {}
-    )
+    thread_messages: dict[str, list[dict[str, Any]]] = getattr(request.app.state, "thread_messages", {})
     thread = thread_messages.get(thread_id)
     if thread is not None:
         return [Message(**m) for m in thread]
@@ -90,9 +88,7 @@ async def delete_session(thread_id: str, request: Request) -> None:
     if checkpointer is not None:
         try:
             conn = checkpointer.conn
-            cur = await conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
+            cur = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             all_tables = [row[0] for row in await cur.fetchall()]
 
             checkpoint_tables: list[str] = []
@@ -101,15 +97,13 @@ async def delete_session(thread_id: str, request: Request) -> None:
                 cols = [row[1] for row in await col_cur.fetchall()]
                 if "thread_id" in cols:
                     checkpoint_tables.append(table)
-            
+
             for table in checkpoint_tables:
                 await conn.execute(
                     f"DELETE FROM {table} WHERE thread_id = ?",  # noqa: S608
                     (thread_id,),
                 )
-            await conn.execute(
-                "DELETE FROM conversations WHERE id = ?", (thread_id,)
-            )
+            await conn.execute("DELETE FROM conversations WHERE id = ?", (thread_id,))
             await conn.commit()
         except Exception as exc:
             log.warning(

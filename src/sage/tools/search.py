@@ -16,13 +16,14 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Dict, Any, List, Optional
 import warnings
+from typing import Any
 
 import structlog
 from langchain_core.tools import tool
 
 from sage.config import get_settings
+
 try:
     from bs4 import GuessedAtParserWarning
 except ImportError:
@@ -46,7 +47,7 @@ def _sanitize_query(query: str) -> str:
     return clean[:_MAX_QUERY_LENGTH]
 
 
-def _error(msg: str) -> Dict[str, Any]:
+def _error(msg: str) -> dict[str, Any]:
     return {
         "query": "",
         "source": "",
@@ -55,7 +56,7 @@ def _error(msg: str) -> Dict[str, Any]:
     }
 
 
-def _success(query: str, source: str, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _success(query: str, source: str, results: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "query": query,
         "source": source,
@@ -66,7 +67,7 @@ def _success(query: str, source: str, results: List[Dict[str, Any]]) -> Dict[str
 
 # --- arXiv ---
 @tool
-async def search_arxiv(query: str) -> Dict[str, Any]:
+async def search_arxiv(query: str) -> dict[str, Any]:
     """Search arXiv for academic papers relevant to the query.
 
     Returns paper titles, abstracts, and arXiv IDs.  Useful for
@@ -118,7 +119,7 @@ async def search_arxiv(query: str) -> Dict[str, Any]:
 
         return _success(clean_query, "arxiv", results)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return _error(f"arXiv search timed out after {cfg.arxiv_timeout}s")
     except ImportError:
         return _error("Install 'arxiv' package")
@@ -128,7 +129,7 @@ async def search_arxiv(query: str) -> Dict[str, Any]:
 
 # --- Web (DuckDuckGo) ---
 @tool
-async def search_web(query: str) -> Dict[str, Any]:
+async def search_web(query: str) -> dict[str, Any]:
     """Search the web using DuckDuckGo for general information.
 
     Returns relevant web page snippets.  Useful for finding
@@ -174,7 +175,7 @@ async def search_web(query: str) -> Dict[str, Any]:
 
         return _success(clean_query, "web", results)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return _error(f"Web search timed out after {cfg.web_timeout}s")
     except ImportError:
         return _error("Install 'duckduckgo-search' package")
@@ -184,7 +185,7 @@ async def search_web(query: str) -> Dict[str, Any]:
 
 # --- Wikipedia ---
 @tool
-async def search_wikipedia(query: str) -> Dict[str, Any]:
+async def search_wikipedia(query: str) -> dict[str, Any]:
     """Search Wikipedia for background information on a topic.
 
     Returns article summaries useful for research context and
@@ -238,7 +239,7 @@ async def search_wikipedia(query: str) -> Dict[str, Any]:
 
         return _success(clean_query, "wikipedia", results)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return _error(f"Wikipedia search timed out after {cfg.wiki_timeout}s")
     except ImportError:
         return _error("Install 'wikipedia' package")
