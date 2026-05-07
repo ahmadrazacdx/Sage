@@ -32,7 +32,7 @@
     "llm_gpu": {
       "filename": "Qwen3.5-4B-Q4_K_M.gguf",
       "source": "https://huggingface.co/Qwen/Qwen3.5-4B-GGUF/resolve/main/qwen3.5-4b-q4_k_m.gguf",
-      "sha256": "FILL_AFTER_FIRST_DOWNLOAD",
+      "sha256": "00FE7986FF5F6B463E62455821146049DB6F9313603938A70800D1FB69EF11A4",
       "size_bytes": 2740937888,
       "install_path": "artifacts/models/Qwen3.5-4B-Q4_K_M.gguf",
       "tiers": ["pro"]
@@ -63,7 +63,7 @@
       "install_path": "artifacts/servers/cpu",
       "keep_patterns": ["llama-server.exe", "*.dll"],
       "strip_patterns": ["llama-bench*", "llama-cli*", "llama-completion*", "llama-fit*", "llama-gemma*", "llama-gguf*", "llama-imatrix*", "llama-llava*", "llama-minicpm*", "llama-mtmd*", "llama-perplexity*", "llama-quantize*", "llama-qwen*", "llama-results*", "llama-template*", "llama-tokenize*", "llama-tts*", "llama-batched*", "rpc-server*"],
-      "tiers": ["fast", "fast-lite"]
+      "tiers": ["fast", "fast-lite", "pro", "pro-lite"]
     },
     "llama_cpp_cuda": {
       "version": "b9010",
