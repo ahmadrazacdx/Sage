@@ -15,8 +15,13 @@ function stripDecorativePrefix(label: string): string {
   return label.replace(/^[^A-Za-z0-9]+\s*/, "").trim();
 }
 
-function normalizeNodeStepLabel(mode: string | null, node?: string, fallbackLabel?: string): string {
+function normalizeNodeStepLabel(mode: string | null, node?: string, fallbackLabel?: string): string | null {
   const nodeName = (node || "").trim();
+
+  // Hide retrieval line for specific modes as requested
+  if (nodeName === "retrieval" && (mode === "diagram" || mode === "fix")) {
+    return null;
+  }
 
   if (mode === "quiz") {
     if (nodeName === "retrieval") return "📚 Retrieving context…";
@@ -213,6 +218,9 @@ export function useChatStream() {
           if (data.type === 'node_start') {
              const nodeName = asNonEmptyString((data as { node?: string }).node) || "unknown";
              const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString((data as { label?: string }).label));
+             
+             if (!label) return prev; // Skip hidden steps
+             
              if (hasStepLabel(prev.steps, label)) {
                return { ...prev, activeTool: null };
              }
@@ -315,6 +323,9 @@ export function useChatStream() {
           if (data.type === 'node_start') {
              const nodeName = asNonEmptyString(data.node) || "unknown";
              const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString(data.label));
+             
+             if (!label) return prev; // Skip hidden steps
+             
              if (hasStepLabel(prev.steps, label)) {
                return { ...prev, activeTool: null };
              }

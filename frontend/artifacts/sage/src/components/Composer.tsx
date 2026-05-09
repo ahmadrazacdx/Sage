@@ -111,10 +111,12 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
           )}
         </div>
 
-        <div className="inline-flex items-center gap-1.5 bg-sidebar border border-sidebar-border rounded-full px-2.5 py-1 text-xs text-foreground/90">
-          <span className="text-muted-foreground">Course:</span>
-          <span className="font-medium">{selectedCourseLabel}</span>
-        </div>
+        {!["research", "fix", "diagram", "thinking"].includes(mode) && (
+          <div className="inline-flex items-center gap-1.5 bg-sidebar border border-sidebar-border rounded-full px-2.5 py-1 text-xs text-foreground/90">
+            <span className="text-muted-foreground">Course:</span>
+            <span className="font-medium">{selectedCourseLabel}</span>
+          </div>
+        )}
       </div>
 
       <div className="relative">
@@ -204,56 +206,58 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
 
                 <div className="h-px bg-sidebar-border my-1" />
 
-                <div
-                  className="relative"
-                  onMouseEnter={(e) => {
-                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                    const estimatedSubmenuHeight = 220;
-                    setCoursesOpenUpward(window.innerHeight - rect.top < estimatedSubmenuHeight);
-                    setCoursesOpen(true);
-                  }}
-                  onMouseLeave={() => setCoursesOpen(false)}
-                >
-                  <button
-                    type="button"
-                    className="flex items-center gap-3 w-full px-3 py-2.5 text-sm text-left transition-colors text-foreground hover:bg-white/5"
+                {!["research", "fix", "diagram", "thinking"].includes(mode) && (
+                  <div
+                    className="relative"
+                    onMouseEnter={(e) => {
+                      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                      const estimatedSubmenuHeight = 220;
+                      setCoursesOpenUpward(window.innerHeight - rect.top < estimatedSubmenuHeight);
+                      setCoursesOpen(true);
+                    }}
+                    onMouseLeave={() => setCoursesOpen(false)}
                   >
-                    <span className="text-base">📚</span>
-                    <span className="font-medium">Courses</span>
-                    <ChevronRight className="w-3.5 h-3.5 ml-auto" />
-                  </button>
+                    <button
+                      type="button"
+                      className="flex items-center gap-3 w-full px-3 py-2.5 text-sm text-left transition-colors text-foreground hover:bg-white/5"
+                    >
+                      <span className="text-base">📚</span>
+                      <span className="font-medium">Courses</span>
+                      <ChevronRight className="w-3.5 h-3.5 ml-auto" />
+                    </button>
 
-                  <AnimatePresence>
-                    {coursesOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, x: 8, scale: 0.98 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, x: 8, scale: 0.98 }}
-                        transition={{ duration: 0.12 }}
-                        className={cn(
-                          "absolute left-full ml-2 w-48 max-h-[11rem] overflow-y-auto custom-scrollbar pr-1 bg-sidebar border border-sidebar-border rounded-xl shadow-2xl py-1",
-                          coursesOpenUpward ? "bottom-0" : "top-0"
-                        )}
-                      >
-                        {courses.map((courseOption) => (
-                          <button
-                            key={courseOption.value}
-                            onClick={() => setCourseAndClose(courseOption.value)}
-                            className={cn(
-                              "flex items-center w-full px-3 py-2 text-sm text-left transition-colors",
-                              course === courseOption.value
-                                ? "bg-primary/10 text-primary"
-                                : "text-foreground hover:bg-white/5"
-                            )}
-                          >
-                            <span>{courseOption.label}</span>
-                            {course === courseOption.value && <Check className="w-3.5 h-3.5 ml-auto" />}
-                          </button>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                    <AnimatePresence>
+                      {coursesOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, x: 8, scale: 0.98 }}
+                          animate={{ opacity: 1, x: 0, scale: 1 }}
+                          exit={{ opacity: 0, x: 8, scale: 0.98 }}
+                          transition={{ duration: 0.12 }}
+                          className={cn(
+                            "absolute left-full ml-2 w-48 max-h-[11rem] overflow-y-auto custom-scrollbar pr-1 bg-sidebar border border-sidebar-border rounded-xl shadow-2xl py-1",
+                            coursesOpenUpward ? "bottom-0" : "top-0"
+                          )}
+                        >
+                          {courses.map((courseOption) => (
+                            <button
+                              key={courseOption.value}
+                              onClick={() => setCourseAndClose(courseOption.value)}
+                              className={cn(
+                                "flex items-center w-full px-3 py-2 text-sm text-left transition-colors",
+                                course === courseOption.value
+                                  ? "bg-primary/10 text-primary"
+                                  : "text-foreground hover:bg-white/5"
+                              )}
+                            >
+                              <span>{courseOption.label}</span>
+                              {course === courseOption.value && <Check className="w-3.5 h-3.5 ml-auto" />}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

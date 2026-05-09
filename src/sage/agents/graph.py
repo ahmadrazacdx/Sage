@@ -91,7 +91,7 @@ def build_graph(
         {
             "explain": "retrieval",
             "quiz": "retrieval",
-            "diagram": "retrieval",
+            "diagram": "diagram",
             "general": "general",
             "reasoning": "reasoning",
             "roadmap": "planner",
@@ -107,7 +107,6 @@ def build_graph(
         {
             "explain": "reasoning",
             "quiz": "quiz",
-            "diagram": "diagram",
         },
     )
 

@@ -75,6 +75,6 @@ def route_by_intent(state: AgentState) -> str:
 
 def route_post_retrieval(state: AgentState) -> str:
     """Conditional edge after retrieval dispatches to the right agent.
-    Only (explain, quiz, diagram) intents pass through retrieval.
+    Only (explain, quiz) intents pass through retrieval.
     """
     return state.get("intent", "explain")
