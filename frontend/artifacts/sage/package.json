@@ -75,6 +75,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@mermaid-js/layout-elk": "^0.2.1",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.45",
     "mermaid": "^11.13.0",

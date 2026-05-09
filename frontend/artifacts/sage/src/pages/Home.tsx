@@ -324,7 +324,7 @@ export default function Home() {
                           </div>
                         ) : (
                           <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{msg.content}</p>}>
-                            <Markdown content={msg.content} enableMermaid={false} />
+                            <Markdown content={msg.content} enableMermaid={true} />
                           </Suspense>
                         )}
 
@@ -381,7 +381,7 @@ export default function Home() {
                       >
                         {streamState.content ? (
                           <Suspense fallback={<p className="whitespace-pre-wrap text-[#e0e0e0]">{streamState.content}</p>}>
-                            <Markdown content={streamState.content} enableMermaid={false} />
+                            <Markdown content={streamState.content} enableMermaid={true} />
                           </Suspense>
                         ) : streamState.isStreaming && streamState.activeMode === "thinking" ? (
                           <span className="text-muted-foreground text-sm">Thinking...</span>

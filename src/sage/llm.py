@@ -628,7 +628,7 @@ def _build_cmd(
             "--batch-size",
             "1024",
             "--ubatch-size",
-            "228",
+            "512",
             "--ctx-size",
             str(server_ctx),
             "--n-gpu-layers",

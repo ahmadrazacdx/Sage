@@ -83,8 +83,6 @@ _NODE_LABELS: dict[str, str] = {
 
 # Tool labels
 _TOOL_LABELS: dict[str, str] = {
-    "validate_mermaid": "🔍 Validating diagram syntax…",
-    "render_mermaid_svg": "🖼️ Rendering diagram…",
     "search_arxiv": "📄 Searching arXiv…",
     "search_web": "🌐 Searching the web…",
     "search_wikipedia": "📖 Searching Wikipedia…",
