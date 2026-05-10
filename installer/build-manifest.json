@@ -151,7 +151,7 @@
     "typst": {
       "version": "0.13.1",
       "source": "https://github.com/typst/typst/releases/download/v0.13.1/typst-x86_64-pc-windows-msvc.zip",
-      "sha256": "1BFCABE2756657587C5F879041B55265C2A954C2BA8125ADA842D2A33B371695",
+      "sha256": "44170D0632298BA68CBABC43DBFB6908B17CA9236859E0767B0E5D54B2D19F48",
       "install_path": "artifacts/typst",
       "keep_patterns": [
         "typst.exe"
