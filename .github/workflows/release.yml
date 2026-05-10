@@ -3,8 +3,6 @@ name: Release
 on:
   push:
     tags: ["v*"]
-    branches: ["dev-ci"]
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -93,10 +91,7 @@ jobs:
   upload-r2:
     needs: build-installer
     runs-on: ubuntu-latest
-    if: |
-      startsWith(github.ref, 'refs/tags/v') || 
-      github.ref == 'refs/heads/dev-ci' ||
-      github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
         tier: [fast, pro, fast-lite, pro-lite]
@@ -145,10 +140,6 @@ jobs:
   create-release:
     needs: build-installer
     runs-on: ubuntu-latest
-    if: |
-      startsWith(github.ref, 'refs/tags/v') || 
-      github.ref == 'refs/heads/dev-ci' ||
-      github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
 
