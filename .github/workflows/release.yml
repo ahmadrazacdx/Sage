@@ -85,7 +85,7 @@ jobs:
         with:
           name: installer-${{ matrix.tier }}
           path: |
-            installer/output/*.exe
+            installer/output/*.zip
             installer/output/SHA256SUMS.txt
           retention-days: 30
 
@@ -130,7 +130,7 @@ jobs:
           export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
           export AWS_DEFAULT_REGION="auto"
 
-          for f in installer/output/*.exe; do
+          for f in installer/output/*.zip; do
             FNAME=$(basename "$f")
             echo "Uploading $FNAME..."
             aws s3 cp "$f" "s3://${R2_BUCKET_NAME}/v${VERSION}/${FNAME}" --endpoint-url "$ENDPOINT"
@@ -175,6 +175,6 @@ jobs:
         with:
           body: ${{ steps.changelog.outputs.content }}
           files: |
-            installers/**/*.exe
+            installers/**/*.zip
             installers/**/SHA256SUMS.txt
           generate_release_notes: true
