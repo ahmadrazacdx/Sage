@@ -32,7 +32,7 @@
   "models": {
     "llm_cpu": {
       "filename": "Qwen3.5-2B-Q4_K_M.gguf",
-      "source": "https://huggingface.co/Qwen/Qwen3.5-2B-GGUF/resolve/main/qwen3.5-2b-q4_k_m.gguf",
+      "source": "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf",
       "sha256": "AAF42C8B7C3CAB2BF3D69C355048D4A0EE9973D48F16C731C0520EE914699223",
       "size_bytes": 1280835840,
       "install_path": "artifacts/models/Qwen3.5-2B-Q4_K_M.gguf",
@@ -42,7 +42,7 @@
     },
     "llm_gpu": {
       "filename": "Qwen3.5-4B-Q4_K_M.gguf",
-      "source": "https://huggingface.co/Qwen/Qwen3.5-4B-GGUF/resolve/main/qwen3.5-4b-q4_k_m.gguf",
+      "source": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
       "sha256": "00FE7986FF5F6B463E62455821146049DB6F9313603938A70800D1FB69EF11A4",
       "size_bytes": 2740937888,
       "install_path": "artifacts/models/Qwen3.5-4B-Q4_K_M.gguf",
@@ -52,7 +52,7 @@
     },
     "llm_utility": {
       "filename": "Qwen3.5-0.8B-Q4_K_M.gguf",
-      "source": "https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/qwen3.5-0.8b-q4_k_m.gguf",
+      "source": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
       "sha256": "BD258782E35F7F458F8ACED1ADC053E6E92E89BC735BA3BE89D38A06121DC517",
       "install_path": "artifacts/models/Qwen3.5-0.8B-Q4_K_M.gguf",
       "tiers": [
