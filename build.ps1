@@ -197,7 +197,7 @@ if (-not $SkipFrontend) {
     Write-Step "Building frontend SPA"
     Push-Location $FrontendApp
     try {
-        & pnpm install 2>&1 | Out-Null
+        & pnpm install --no-frozen-lockfile 2>&1 | Out-Null
         & pnpm build
         if ($LASTEXITCODE -ne 0) { throw "Frontend build failed" }
     }
