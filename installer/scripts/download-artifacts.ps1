@@ -83,7 +83,7 @@ function Extract-Archive {
         throw "Unsupported archive format: $ArchivePath"
     }
     # If all files are inside a single nested subdirectory, unwrap it
-    $children = Get-ChildItem $DestDir
+    $children = @(Get-ChildItem $DestDir)
     if ($children.Count -eq 1 -and $children[0].PSIsContainer) {
         return $children[0].FullName
     }
