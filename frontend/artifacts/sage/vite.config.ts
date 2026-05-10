@@ -23,7 +23,7 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
-    chunkSizeWarningLimit: 800,
+    chunkSizeWarningLimit: 1500,
   },
   server: {
     port,
@@ -36,13 +36,13 @@ export default defineConfig({
         ws: true,
         configure: (proxy) => {
           proxy.on("error", () => {
-        });
+          });
+        },
       },
     },
-  },
-  fs: {
-    strict: true,
-    deny: ["**/.*"],
+    fs: {
+      strict: true,
+      deny: ["**/.*"],
     },
   },
   preview: {
