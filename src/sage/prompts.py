@@ -172,7 +172,8 @@ DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent(r"""\
     - All components, data flow labels on edges, tier grouping via subgraphs
 
     ## Complexity & Correctness
-    - Focus on logical accuracy and clear flow. Do NOT invent unnecessary nodes or feedback loops just to increase complexity.
+    - Focus on logical accuracy and clear flow. Do NOT invent unnecessary nodes or \
+      feedback loops just to increase complexity.
     - Typical node counts: Simple concept (7-10), Algorithm (10-14), Architecture (12-16).
     - Algorithms MUST clearly show the termination condition and the exact loop/iteration cycle.
 
@@ -215,15 +216,18 @@ DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
     Convert the structured description below into bare Mermaid syntax.
     Output ONLY structure — NO classDef, NO class assignments, NO linkStyle. Styling is injected automatically.
 
-    NEVER: %%{init}%% | HTML tags | stateDiagram-v2 | multi-line labels | & fan-out shorthand | UPPER_SNAKE_CASE as a literal
+    NEVER: %%{init}%% | HTML tags | stateDiagram-v2 | multi-line labels | \
+    & fan-out shorthand | UPPER_SNAKE_CASE as a literal
 
     RULES:
     1. Line 1: diagram type + direction (e.g. flowchart TD).
-    2. Node IDs: MUST exactly match the snake_case `id` from the description (e.g. start_node). NEVER invent short IDs like A, B, C.
+    2. Node IDs: MUST exactly match the snake_case `id` from the description (e.g. start_node). \
+       NEVER invent short IDs like A, B, C.
     3. Quote labels with special chars using double quotes.
     4. Decision nodes: {label?} diamond syntax.
     5. subgraph NAME ["Display Label"] when 3+ nodes share a phase. Subgraphs MUST contain ONLY node definitions.
-    6. Edge chaining (e.g. node_a --> node_b --> node_c) is highly encouraged to keep the diagram logically clean and prevent orphan nodes. NEVER use & fan-out.
+    6. Edge chaining (e.g. node_a --> node_b --> node_c) is highly encouraged to keep the \
+       diagram logically clean and prevent orphan nodes. NEVER use & fan-out.
     7. Dashed edges for feedback/recurrent: -.->, solid for normal: -->
     8. Define ALL edges outside/below the subgraphs. NEVER define edges inside subgraphs to prevent duplication.
     9. Return ONLY the raw Mermaid code inside a `mermaid fenced block, with no explanation.

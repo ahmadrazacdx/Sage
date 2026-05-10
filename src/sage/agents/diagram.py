@@ -94,7 +94,7 @@ def _strip_fences(text: str) -> str:
 
     match = _MERMAID_START_RE.search(cleaned)
     if match is not None:
-        cleaned = cleaned[match.start():]
+        cleaned = cleaned[match.start() :]
 
     cleaned = _INIT_BLOCK_RE.sub("", cleaned)
     cleaned = _deduplicate_mermaid(cleaned)
@@ -119,20 +119,21 @@ def _deduplicate_mermaid(code: str) -> str:
         return "\n".join(lines[:cut_at]).rstrip()
     return code
 
+
 def _is_valid_mermaid(code: str) -> tuple[bool, str]:
     """Sanity check: valid declaration, balanced subgraphs, and has edges."""
     if not _MERMAID_START_RE.match(code.strip()):
         return False, "Does not start with a valid diagram type declaration."
-        
+
     subgraph_count = len(re.findall(r"^\s*subgraph\b", code, re.MULTILINE))
     end_count = len(re.findall(r"^\s*end\b", code, re.MULTILINE))
     if subgraph_count != end_count:
         return False, f"Unbalanced subgraphs: found {subgraph_count} 'subgraph' blocks but {end_count} 'end' tags."
-        
+
     edge_re = re.compile(r"(--.*?-->|--.*?---|==.*?==>|-\..*?\.->|-->|---|==>|===|-\.->|-\.-)")
     if not edge_re.search(code):
         return False, "Diagram contains no edges/connections."
-        
+
     return True, ""
 
 
@@ -160,7 +161,12 @@ def _inject_mermaid_styling(bare_code: str, description: dict | None) -> str:
     structural_lines: list[str] = []
     for line in lines:
         stripped = line.strip().lower()
-        if stripped.startswith("classdef ") or stripped.startswith("class ") or stripped.startswith("linkstyle ") or stripped.startswith("style "):
+        if (
+            stripped.startswith("classdef ")
+            or stripped.startswith("class ")
+            or stripped.startswith("linkstyle ")
+            or stripped.startswith("style ")
+        ):
             continue
         structural_lines.append(line)
 
@@ -173,7 +179,7 @@ def _inject_mermaid_styling(bare_code: str, description: dict | None) -> str:
         if m:
             sg_id = m.group(1).strip()
             subgraph_ids.append(sg_id)
-    
+
     for i, sg_id in enumerate(subgraph_ids):
         style = _SUBGRAPH_STYLES[i % len(_SUBGRAPH_STYLES)]
         result_lines.append(f"    style {sg_id} {style}")
@@ -186,21 +192,21 @@ def _inject_mermaid_styling(bare_code: str, description: dict | None) -> str:
                 node_id = f"{node_id}_n"
             if node_id and node_id not in unique_nodes:
                 unique_nodes.append(node_id)
-                
+
     node_id_re = re.compile(r"^\s+(\w+)\s*[\[\({]")
     for line in structural_lines[1:]:
         m = node_id_re.match(line)
         if m:
             node_id = m.group(1)
-            if node_id.lower() not in (
-                "subgraph", "end", "direction", "classdef", "class", "linkstyle", "style"
+            if (
+                node_id.lower() not in ("subgraph", "end", "direction", "classdef", "class", "linkstyle", "style")
+                and node_id not in unique_nodes
             ):
-                if node_id not in unique_nodes:
-                    unique_nodes.append(node_id)
+                unique_nodes.append(node_id)
 
     class_groups: dict[str, list[str]] = defaultdict(list)
     _AVAILABLE_CLASSES = ["primary", "secondary", "accent", "warning", "neutral", "highlight"]
-    
+
     for i, node_id in enumerate(unique_nodes):
         class_name = _AVAILABLE_CLASSES[i % len(_AVAILABLE_CLASSES)]
         class_groups[class_name].append(node_id)
@@ -219,11 +225,11 @@ def _inject_mermaid_styling(bare_code: str, description: dict | None) -> str:
         stripped = line.strip()
         if not stripped or stripped.startswith("subgraph") or stripped.startswith("end"):
             continue
-        
+
         arrows = _EDGE_ARROW_RE.findall(stripped)
         if not arrows:
             continue
-            
+
         for arrow in arrows:
             if "-." in arrow:
                 dashed_indices.append(edge_idx)
@@ -238,10 +244,21 @@ def _inject_mermaid_styling(bare_code: str, description: dict | None) -> str:
 
     return "\n".join(result_lines)
 
-_MERMAID_RESERVED_IDS: frozenset[str] = frozenset({
-    "end", "graph", "subgraph", "classDef", "class",
-    "style", "linkStyle", "direction", "flowchart", "click",
-})
+
+_MERMAID_RESERVED_IDS: frozenset[str] = frozenset(
+    {
+        "end",
+        "graph",
+        "subgraph",
+        "classDef",
+        "class",
+        "style",
+        "linkStyle",
+        "direction",
+        "flowchart",
+        "click",
+    }
+)
 
 
 def _sanitize_mermaid_ids(code: str) -> str:
@@ -249,7 +266,7 @@ def _sanitize_mermaid_ids(code: str) -> str:
     reserved_used: set[str] = set()
     for line in code.split("\n"):
         for kw in _MERMAID_RESERVED_IDS:
-            if re.search(rf'\b{kw}\s*[\[\({{]', line):
+            if re.search(rf"\b{kw}\s*[\[\({{]", line):
                 reserved_used.add(kw)
 
     if not reserved_used:
@@ -263,9 +280,9 @@ def _sanitize_mermaid_ids(code: str) -> str:
             result.append(line)
             continue
         for old, new in rename.items():
-            line = re.sub(rf'\b{old}\b(?=\s*[\[\({{])', new, line)
-            line = re.sub(rf'((?:-->|-\.->|==>)\s*)\b{old}\b', rf'\g<1>{new}', line)
-            line = re.sub(rf'^(\s*)\b{old}\b(?=\s)', rf'\g<1>{new}', line)
+            line = re.sub(rf"\b{old}\b(?=\s*[\[\({{])", new, line)
+            line = re.sub(rf"((?:-->|-\.->|==>)\s*)\b{old}\b", rf"\g<1>{new}", line)
+            line = re.sub(rf"^(\s*)\b{old}\b(?=\s)", rf"\g<1>{new}", line)
         result.append(line)
     return "\n".join(result)
 
@@ -278,10 +295,7 @@ def _trim_description_for_mermaid(desc: dict) -> dict:
         return desc
     kept = nodes[:_MAX_NODES_TO_MERMAID]
     kept_ids = {n.get("id") for n in kept}
-    trimmed_edges = [
-        e for e in desc.get("edges", [])
-        if e.get("from") in kept_ids and e.get("to") in kept_ids
-    ]
+    trimmed_edges = [e for e in desc.get("edges", []) if e.get("from") in kept_ids and e.get("to") in kept_ids]
     log.debug(
         "description_trimmed_for_mermaid",
         original_nodes=len(nodes),
@@ -333,7 +347,7 @@ async def diagram_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
             timeout=phase1_limit,
         )
         raw_description = _to_str(desc_result)
-        
+
         if len(raw_description) > 5000:
             raw_description = raw_description[:5000] + "\n... (truncated)"
 
@@ -401,9 +415,7 @@ async def diagram_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
                 _fix_llm.ainvoke(
                     [
                         SystemMessage(content=DIAGRAM_FIX_PROMPT),
-                        HumanMessage(
-                            content=f"mermaid_code:\n```mermaid\n{mermaid_code}\n```\n\nerrors:\n{error_msg}"
-                        ),
+                        HumanMessage(content=f"mermaid_code:\n```mermaid\n{mermaid_code}\n```\n\nerrors:\n{error_msg}"),
                     ]
                 ),
                 timeout=60.0,

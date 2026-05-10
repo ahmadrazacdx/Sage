@@ -480,6 +480,7 @@ def _recover_questions(state: AgentState) -> str | None:
             return recovered
     return None
 
+
 async def quiz_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpenAI | None = None) -> dict[str, Any]:
     """Generate a quiz or route answer submissions to evaluation.
 
