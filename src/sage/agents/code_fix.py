@@ -4,7 +4,7 @@ Code fix agent subgraph for Sage.
 Three-node pipeline:
   1. Diagnosis: Structured analysis of the bug (language, error type, root cause, fix strategy).
   2. Fix loop: LLM generates a fix, sandbox verifies, retry on error.
-  3. Explanation: Educational walkthrough with diff, best practice, and citations.
+  3. Explanation: Educational walkthrough with diff and best practice.
 """
 
 from __future__ import annotations
@@ -129,12 +129,6 @@ def _detect_framework_imports(code: str) -> str | None:
     return None
 
 
-def _format_knowledge_units(kus: list[dict]) -> str:
-    if not kus:
-        return "None available."
-    return "\n".join(f"[{ku.get('id', 'KU?')}] {ku.get('claim', ku.get('content', ''))}" for ku in kus)
-
-
 def _extract_text(result: Any) -> str:
     """Safely extract string content from an LLM result."""
     return result.content if isinstance(result, AIMessage) else str(result)
@@ -153,8 +147,6 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpe
     """
     cfg = get_settings().agent
     query: str = state.get("query", "").strip()
-    kus: list[dict] = state.get("knowledge_units", [])
-    ku_text = _format_knowledge_units(kus)
     t_start = time.perf_counter()
 
     if not query:
@@ -345,7 +337,6 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpe
                     "original_code": query,
                     "fixed_code": fixed_code or "(no fix generated)",
                     "execution_result": execution_result or "(not executed)",
-                    "knowledge_units": ku_text,
                 }
             ),
             timeout=cfg.llm_timeout,

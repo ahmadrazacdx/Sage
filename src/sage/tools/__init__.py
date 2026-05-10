@@ -6,8 +6,8 @@ LangGraph `ToolNode` use these factories to obtain tool lists.
 
 Tools are categorized as:
   - Offline: Available without network (calculator, sandbox,
-    mermaid, export)
-  - Online: Require network (arXiv, web, Wikipedia, Context7)
+    export)
+  - Online: Require network (arXiv, web, Wikipedia)
 
 Usage:
 
@@ -25,7 +25,6 @@ from langchain_core.tools import BaseTool
 
 from sage.tools.calculator import calculator
 from sage.tools.export import export_markdown, export_pdf
-from sage.tools.mermaid import render_mermaid_svg, validate_mermaid
 from sage.tools.sandbox import execute_python
 
 log = structlog.get_logger(__name__)
@@ -42,8 +41,6 @@ __all__ = [
 _OFFLINE_TOOLS: list[BaseTool] = [
     calculator,
     execute_python,
-    validate_mermaid,
-    render_mermaid_svg,
     export_markdown,
     export_pdf,
 ]
@@ -54,7 +51,6 @@ _ONLINE_TOOL_MODULES: dict[str, tuple[str, str]] = {
     "search_arxiv": ("sage.tools.search", "search_arxiv"),
     "search_web": ("sage.tools.search", "search_web"),
     "search_wikipedia": ("sage.tools.search", "search_wikipedia"),
-    "search_library_docs": ("sage.tools.library_docs", "search_library_docs"),
 }
 
 # --- Metadata ---
@@ -83,9 +79,7 @@ def get_offline_tools() -> list[BaseTool]:
     """Return all tools that function without network access.
 
     Returns:
-        List of offline tools: calculator, execute_python,
-        validate_mermaid, render_mermaid_svg, export_markdown,
-        export_pdf.
+        List of offline tools: calculator, execute_python, export_markdown,export_pdf.
     """
     return _assert_tools(list(_OFFLINE_TOOLS), "get_offline_tools")
 

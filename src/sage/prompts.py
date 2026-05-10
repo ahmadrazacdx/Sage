@@ -155,116 +155,121 @@ revealed by this quiz. Address the student directly (e.g. "You correctly identif
 
 
 # --- Diagram Generation ---
-_PALETTE: str = """\
-    classDef process  fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
-    classDef decision fill:#fef9c3,stroke:#b45309,stroke-width:2px,color:#1c1917
-    classDef terminal fill:#d1fae5,stroke:#065f46,stroke-width:2px,color:#064e3b
-    classDef data     fill:#fce7f3,stroke:#9d174d,stroke-width:2px,color:#1c1917
-    classDef actor    fill:#ede9fe,stroke:#5b21b6,stroke-width:2px,color:#1c1917
-    classDef entity   fill:#e0f2fe,stroke:#075985,stroke-width:2px,color:#0c1a2e
-    classDef default  fill:#f1f5f9,stroke:#334155,stroke-width:1.5px,color:#1e293b"""
+DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent(r"""\
+    You are an elite technical diagram architect. Produce a rich, detailed, \
+    publication-quality structured description — NOT trivial box-arrow chains.
 
-DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
-    You are a technical diagram architect preparing input for a Mermaid renderer.
-    Produce a structured intermediate description from the student request and knowledge units.
+    ## Mapping Rules
+    CONCEPT/ARCHITECTURE (e.g. "RNN", "transformer", "microservices"):
+    - Show INTERNAL structure: layers, gates, hidden states, data paths, feedback loops
+    - Group into subgraphs: "Input Layer", "Gate Computations", "Output", etc.
+    - Use normal math notation in labels: "h(t)", "sigma(W_x x + b)", "softmax(z)"
 
-    ## Knowledge Units
-    {knowledge_units}
+    PROCESS/ALGORITHM (e.g. "merge sort", "TCP handshake"):
+    - Every step with decision diamonds, error/edge-case paths, loop-back edges
 
-    ## Instructions
-    - diagram_type: choose the single best fit — flowchart | sequence | class | state | ER | mindmap
-    - justification: one sentence explaining the choice
-    - title: concise, descriptive title
-    - nodes[]: every node with:
-        id (snake_case, unique), label (plain text, no HTML, no pipes),
-        type (process | decision | data | terminal | actor | entity),
-        phase (short group label for nodes that belong together, e.g. "Input", "Training", "Output")
-    - edges[]: from, to, label (omit key if empty)
-    - For flowcharts: mark every decision node; list both true_branch and false_branch targets in notes.
-    - Omit trivial pass-through nodes that add no structural information.
-    - notes: any layout or grouping hints for the Mermaid generator.
+    SYSTEM (e.g. "MVC", "compiler pipeline"):
+    - All components, data flow labels on edges, tier grouping via subgraphs
 
-    Return JSON only — no fences, no commentary:
-    {{"diagram_type":"flowchart","justification":"...","title":"...",
-    "nodes":[{{"id":"node_id","label":"Plain label","type":"process","phase":"Phase A"}}],
-    "edges":[{{"from":"a","to":"b","label":"yes"}}],
-    "notes":"..."}}
+    ## Complexity & Correctness
+    - Focus on logical accuracy and clear flow. Do NOT invent unnecessary nodes or feedback loops just to increase complexity.
+    - Typical node counts: Simple concept (7-10), Algorithm (10-14), Architecture (12-16).
+    - Algorithms MUST clearly show the termination condition and the exact loop/iteration cycle.
+
+    ## NEVER
+    - Generic labels ("Process","Hidden") | Spaghetti edges that break factual correctness.
+
+    ## Output Format
+    - diagram_type: flowchart | sequence | class | state | ER | mindmap
+    - nodes[]: id (snake_case), label (specific descriptive text), type (process|decision|data|terminal), phase
+    - edges[]: from, to, label (optional descriptive text), style ("dashed" for feedback/recurrent, omit for solid)
+    - notes: layout hints (e.g. "TB layout", "group gates together")
+
+    ## Example — "Vanilla RNN"
+    {{"diagram_type":"flowchart","title":"Vanilla RNN Architecture",
+    "nodes":[
+      {{"id":"input_xt","label":"Input x(t)","type":"data","phase":"Input"}},
+      {{"id":"prev_h","label":"Prev Hidden h(t-1)","type":"data","phase":"Input"}},
+      {{"id":"concat","label":"Concatenate [h, x]","type":"process","phase":"Processing"}},
+      {{"id":"linear","label":"Linear W * [h, x] + b","type":"process","phase":"Processing"}},
+      {{"id":"activation","label":"Activation tanh","type":"process","phase":"Processing"}},
+      {{"id":"hidden_out","label":"Hidden h(t)","type":"terminal","phase":"Output"}},
+      {{"id":"output_layer","label":"Output Layer Wy h + by","type":"process","phase":"Output"}},
+      {{"id":"prediction","label":"Prediction y(t)","type":"terminal","phase":"Output"}}],
+    "edges":[
+      {{"from":"input_xt","to":"concat"}},
+      {{"from":"prev_h","to":"concat"}},
+      {{"from":"concat","to":"linear"}},
+      {{"from":"linear","to":"activation"}},
+      {{"from":"activation","to":"hidden_out"}},
+      {{"from":"hidden_out","to":"output_layer"}},
+      {{"from":"output_layer","to":"prediction"}},
+      {{"from":"hidden_out","to":"prev_h","label":"recurrent","style":"dashed"}}],
+    "notes":"TB layout. Recurrent edge dashed."}}
 
     ## Student Request
     {query}
 """)
 
-DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent(f"""\
-    Output publication-quality Mermaid code (NeurIPS/ICML standard) for mmdr (Rust CLI renderer).
+DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
+    Convert the structured description below into bare Mermaid syntax.
+    Output ONLY structure — NO classDef, NO class assignments, NO linkStyle. Styling is injected automatically.
 
-    NEVER: %%{{init}}%% | HTML tags in labels | stateDiagram-v2 | rx: in classDef | multi-line labels
-
-    PALETTE — declare these classDefs and assign every node:
-   {_PALETTE}
+    NEVER: %%{init}%% | HTML tags | stateDiagram-v2 | multi-line labels | & fan-out shorthand | UPPER_SNAKE_CASE as a literal
 
     RULES:
-    1. Line 1: diagram type only (e.g. flowchart TD) — nothing else.
-    2. Order: classDef → subgraphs/nodes → edges → class assignments → linkStyle.
-    3. Node IDs verbatim snake_case from description.
-    4. Quote labels containing parens, colons, brackets, or pipes.
-    5. No dangling edges. Decision nodes: {{label?}} diamond syntax.
-    6. subgraph UPPER_SNAKE_CASE [Display Label] when ≥3 nodes share a phase.
-    7. Primary edges: stroke-width:2.5px. Secondary/feedback: stroke-dasharray:5 5,stroke-width:1.5px.
-    8. Return ONLY raw Mermaid — no fences, no explanation.
+    1. Line 1: diagram type + direction (e.g. flowchart TD).
+    2. Node IDs: MUST exactly match the snake_case `id` from the description (e.g. start_node). NEVER invent short IDs like A, B, C.
+    3. Quote labels with special chars using double quotes.
+    4. Decision nodes: {label?} diamond syntax.
+    5. subgraph NAME ["Display Label"] when 3+ nodes share a phase. Subgraphs MUST contain ONLY node definitions.
+    6. Edge chaining (e.g. node_a --> node_b --> node_c) is highly encouraged to keep the diagram logically clean and prevent orphan nodes. NEVER use & fan-out.
+    7. Dashed edges for feedback/recurrent: -.->, solid for normal: -->
+    8. Define ALL edges outside/below the subgraphs. NEVER define edges inside subgraphs to prevent duplication.
+    9. Return ONLY the raw Mermaid code inside a `mermaid fenced block, with no explanation.
 
-    EXAMPLE:
+    EXAMPLE (bare structure, every edge on its own line):
     flowchart TD
-        classDef process  fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#1e3a5f
-        classDef decision fill:#fef9c3,stroke:#b45309,stroke-width:2px,color:#1c1917
-        classDef terminal fill:#d1fae5,stroke:#065f46,stroke-width:2px,color:#064e3b
-        subgraph INPUT [Input Layer]
-            raw_data[Raw Input Data]
-            preprocess[Preprocessing]
+        subgraph INPUT ["Input"]
+            input_x["x(t)"]
+            prev_h["h(t-1)"]
         end
-        subgraph CORE [Core Processing]
-            encode{{Encoder}}
-            decide{{Valid?}}
-            transform[Transform]
+        subgraph PROCESSING ["Processing"]
+            concat["Concatenate"]
+            linear["Linear W"]
+            act["Activation"]
         end
-        subgraph OUTPUT [Output Layer]
-            result([Result])
-            error([Error])
+        subgraph OUTPUT ["Output"]
+            ht["h(t)"]
+            yt["y(t)"]
         end
-        raw_data --> preprocess
-        preprocess --> encode
-        encode --> decide
-        decide -->|yes| transform
-        decide -->|no| error
-        transform --> result
-        class raw_data,preprocess data
-        class encode,transform process
-        class decide decision
-        class result,error terminal
-        linkStyle 0,1,2 stroke:#1d4ed8,stroke-width:2.5px
-        linkStyle 5 stroke:#9d174d,stroke-dasharray:5 5,stroke-width:1.5px
+        input_x --> concat
+        prev_h --> concat
+        concat --> linear
+        linear --> act
+        act --> ht
+        ht --> yt
+        ht -.->|recurrent| prev_h
 
     DESCRIPTION:
     {{description}}
 """)
 
 DIAGRAM_FIX_PROMPT: str = textwrap.dedent("""\
-    Fix ONLY the listed syntax errors in the Mermaid code below so it renders with mmdr.
+    Fix ONLY the syntax errors in the Mermaid code below so it parses correctly.
+
+    ## Rules
+    1. Fix only what is broken — do not restructure or redesign.
+    2. Preserve all node IDs, labels, edges, subgraph blocks.
+    3. Remove %%{init}%% if present.
+    4. Remove HTML tags from labels if present.
+    5. Return ONLY the corrected Mermaid code inside a `mermaid fenced block, with no explanation.
 
     ## Mermaid Code
     {mermaid_code}
 
     ## Errors
     {errors}
-
-    ## Rules
-    1. Fix only what is listed — do not restructure, reorder, or redesign.
-    2. Preserve all node IDs, labels, edges, classDef, class, style, linkStyle, subgraph blocks exactly.
-    3. Remove %%{init}%% entirely if present (unsupported by mmdr).
-    4. Replace stateDiagram-v2 with stateDiagram if present.
-    5. Remove rx: from any classDef line if present.
-    6. Remove all HTML tags from labels if present.
-    7. If renaming a node is required to fix a collision, add a %% comment above the changed line.
-    8. Return ONLY the corrected Mermaid code — no fences, no explanation, no preamble.
 """)
 
 # --- Roadmap / Study Plan ---
@@ -440,15 +445,13 @@ CODE_FIX_EXPLANATION_PROMPT: str = textwrap.dedent("""\
     3. "### Why It Happened" MUST be consistent with `execution_result`.
        If `execution_result` contains a `TypeError`, do NOT claim the code ran successfully.
     4. ≤350 words total.
-    5. Cite relevant KU inline as [KU#]; omit "### Key Concept" section if no retrieved KU applies.
-    6. If `fix_incomplete` or fix_succeeded=False: acknowledge this in "### What Was Wrong"
+    5. If `fix_incomplete` or fix_succeeded=False: acknowledge this in "### What Was Wrong"
        and propose the next debug step in "### Best Practice".
 
     Diagnosis (JSON): {diagnosis}
     Original code: {original_code}
     Fixed code: {fixed_code}
     Execution result: {execution_result}
-    Knowledge Units: {knowledge_units}
 """)
 
 # --- Knowledge Unit Extraction ---

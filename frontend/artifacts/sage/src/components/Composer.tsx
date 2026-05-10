@@ -1,8 +1,30 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Plus, ChevronRight, Check, X, Square } from "lucide-react";
+import { Send, Plus, ChevronRight, Check, X, Square, Timer } from "lucide-react";
 import { SAGE_MODES, type SageMode, cn } from "@/lib/utils";
 import { useGetCourses } from "@workspace/api-client-react";
+
+// --- Diagram cooldown (3 minutes) ---
+const DIAGRAM_COOLDOWN_MS = 3 * 60 * 1000;
+const DIAGRAM_COOLDOWN_KEY = "sage_diagram_last_used";
+
+function getDiagramCooldownRemaining(): number {
+  const raw = localStorage.getItem(DIAGRAM_COOLDOWN_KEY);
+  if (!raw) return 0;
+  const elapsed = Date.now() - Number(raw);
+  return Math.max(DIAGRAM_COOLDOWN_MS - elapsed, 0);
+}
+
+function markDiagramUsed(): void {
+  localStorage.setItem(DIAGRAM_COOLDOWN_KEY, String(Date.now()));
+}
+
+function formatCooldown(ms: number): string {
+  const s = Math.ceil(ms / 1000);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
 
 interface ComposerProps {
   onSend: (message: string, mode: SageMode, course: string) => void;
@@ -12,15 +34,17 @@ interface ComposerProps {
   selectedMode?: SageMode;
   onModeChange?: (mode: SageMode) => void;
   resetSelectionKey?: number;
+  triggerDiagramCooldown?: number;
 }
 
-export function Composer({ onSend, onStopStreaming, disabled, isStreaming = false, selectedMode, onModeChange, resetSelectionKey }: ComposerProps) {
+export function Composer({ onSend, onStopStreaming, disabled, isStreaming = false, selectedMode, onModeChange, resetSelectionKey, triggerDiagramCooldown }: ComposerProps) {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<SageMode>("general");
   const [course, setCourse] = useState("all");
   const [modeSelectorOpen, setModeSelectorOpen] = useState(false);
   const [coursesOpen, setCoursesOpen] = useState(false);
   const [coursesOpenUpward, setCoursesOpenUpward] = useState(false);
+  const [diagramCooldown, setDiagramCooldown] = useState(getDiagramCooldownRemaining);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const selectorRef = useRef<HTMLDivElement>(null);
 
@@ -29,6 +53,25 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
 
   const currentModeObj = SAGE_MODES.find(m => m.id === mode)!;
   const isComposerDisabled = disabled || isStreaming;
+  const isDiagramOnCooldown = diagramCooldown > 0;
+
+  // Tick the cooldown timer every second while active
+  useEffect(() => {
+    if (diagramCooldown <= 0) return;
+    const id = window.setInterval(() => {
+      const remaining = getDiagramCooldownRemaining();
+      setDiagramCooldown(remaining);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [diagramCooldown > 0]);
+
+  // Start cooldown when triggered by parent (gen finished)
+  useEffect(() => {
+    if (triggerDiagramCooldown && triggerDiagramCooldown > 0) {
+      markDiagramUsed();
+      setDiagramCooldown(DIAGRAM_COOLDOWN_MS);
+    }
+  }, [triggerDiagramCooldown]);
 
   useEffect(() => {
     if (selectedMode && selectedMode !== mode) {
@@ -65,11 +108,15 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (message.trim() && !isComposerDisabled) {
-        onSend(message.trim(), mode, course);
-        setMessage("");
-        if (textareaRef.current) textareaRef.current.style.height = "24px";
+        handleSendWithCooldown(message.trim(), mode, course);
       }
     }
+  };
+
+  const handleSendWithCooldown = (msg: string, sendMode: SageMode, sendCourse: string) => {
+    onSend(msg, sendMode, sendCourse);
+    setMessage("");
+    if (textareaRef.current) textareaRef.current.style.height = "24px";
   };
 
   const setModeAndNotify = (nextMode: SageMode) => {
@@ -97,6 +144,12 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
         <div className="inline-flex items-center gap-1.5 bg-sidebar border border-sidebar-border rounded-full px-2.5 py-1 text-xs text-foreground/90">
           <span className="text-muted-foreground">Mode:</span>
           <span className="font-medium">{currentModeObj.icon} {currentModeObj.name}</span>
+          {mode === "diagram" && isDiagramOnCooldown && (
+            <span className="ml-1 text-[10px] text-warning font-mono tabular-nums" title="Diagram cooldown active">
+              <Timer className="inline w-3 h-3 mr-0.5 -mt-px" />
+              {formatCooldown(diagramCooldown)}
+            </span>
+          )}
           {mode !== "general" && (
             <button
               type="button"
@@ -149,12 +202,10 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
                 }
 
                 if (message.trim() && !isComposerDisabled) {
-                  onSend(message.trim(), mode, course);
-                  setMessage("");
-                  if (textareaRef.current) textareaRef.current.style.height = "24px";
+                  handleSendWithCooldown(message.trim(), mode, course);
                 }
               }}
-              disabled={isStreaming ? false : (isComposerDisabled || !message.trim())}
+              disabled={isStreaming ? false : (isComposerDisabled || !message.trim() || (mode === "diagram" && isDiagramOnCooldown))}
               className={cn(
                 "flex items-center justify-center w-10 h-10 rounded-full transition-all shadow-md",
                 isStreaming
@@ -189,20 +240,32 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
                 transition={{ duration: 0.15 }}
                 className="absolute bottom-14 left-0 w-52 bg-sidebar border border-sidebar-border rounded-xl shadow-2xl overflow-visible z-50 py-1"
               >
-                {SAGE_MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => { setModeAndNotify(m.id as SageMode); }}
-                    className={cn(
-                      "flex items-center gap-3 w-full px-3 py-2.5 text-sm text-left transition-colors",
-                      mode === m.id ? "bg-primary/10 text-primary" : "text-foreground hover:bg-white/5"
-                    )}
-                  >
-                    <span className="text-base">{m.icon}</span>
-                    <span className="font-medium">{m.name}</span>
-                    {mode === m.id && <Check className="w-3.5 h-3.5 ml-auto" />}
-                  </button>
-                ))}
+                {SAGE_MODES.map((m) => {
+                  const isCoolingDiagram = m.id === "diagram" && isDiagramOnCooldown;
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => { if (!isCoolingDiagram) setModeAndNotify(m.id as SageMode); }}
+                      disabled={isCoolingDiagram}
+                      className={cn(
+                        "flex items-center gap-3 w-full px-3 py-2.5 text-sm text-left transition-colors",
+                        isCoolingDiagram
+                          ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                          : mode === m.id ? "bg-primary/10 text-primary" : "text-foreground hover:bg-white/5"
+                      )}
+                    >
+                      <span className="text-base">{m.icon}</span>
+                      <span className="font-medium">{m.name}</span>
+                      {isCoolingDiagram && (
+                        <span className="ml-auto text-[10px] font-mono tabular-nums text-warning flex items-center gap-1">
+                          <Timer className="w-3 h-3" />
+                          {formatCooldown(diagramCooldown)}
+                        </span>
+                      )}
+                      {!isCoolingDiagram && mode === m.id && <Check className="w-3.5 h-3.5 ml-auto" />}
+                    </button>
+                  );
+                })}
 
                 <div className="h-px bg-sidebar-border my-1" />
 

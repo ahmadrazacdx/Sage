@@ -309,6 +309,15 @@ def _kill_orphaned_servers(model_path: Path) -> None:
                 continue
             cmdline = " ".join(proc.info.get("cmdline") or [])
             if model_name in cmdline:
+                try:
+                    parent = proc.parent()
+                    if parent is not None:
+                        parent_name = parent.name().lower()
+                        if any(x in parent_name for x in ["python", "pytest", "uv", "sage"]):
+                            continue
+                except psutil.NoSuchProcess:
+                    pass
+
                 proc.kill()
                 killed.append(proc.pid)
                 log.info("orphaned_server_killed", pid=proc.pid)
@@ -724,7 +733,7 @@ def create_llm(port: int) -> ChatOpenAI:
         temperature=cfg.temperature,
         max_tokens=max_tok,
         streaming=True,
-        timeout=cfg_agent.llm_timeout,
+        timeout=max(cfg_agent.llm_timeout, 480),
     )
 
     return llm.bind(

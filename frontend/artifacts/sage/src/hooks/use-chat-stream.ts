@@ -57,8 +57,6 @@ function normalizeToolStepLabel(mode: string | null, toolName?: string, fallback
   if (tool === "search_web") return "🌐 Searching the web…";
   if (tool === "search_arxiv") return "📄 Searching arXiv…";
   if (tool === "search_wikipedia") return "📖 Searching Wikipedia…";
-  if (tool === "validate_mermaid") return "🔍 Validating diagram syntax…";
-  if (tool === "render_mermaid_svg") return "🖼️ Rendering diagram…";
   if (tool === "execute_python") return "⚙️ Executing code…";
   if (tool === "corpus_search") return "📚 Searching course materials…";
 
@@ -129,7 +127,7 @@ export function useChatStream() {
     artifact: null,
     activeMode: null,
   });
-  
+
   const eventSourceRef = useRef<EventSource | null>(null);
   const cancelMockRef = useRef<(() => void) | null>(null);
   const streamedContentRef = useRef("");
@@ -186,9 +184,9 @@ export function useChatStream() {
       }, () => {
         const finalContent = streamedContentRef.current;
         cancelMockRef.current = null;
-        setStreamState(prev => ({ 
-          ...prev, 
-          isStreaming: false, 
+        setStreamState(prev => ({
+          ...prev,
+          isStreaming: false,
           content: "",
           thinking: prev.thinking,
           activeTool: null,
@@ -216,35 +214,35 @@ export function useChatStream() {
           if (data.type === 'chunk') return prev;
           if (data.type === 'thinking') return prev;
           if (data.type === 'node_start') {
-             const nodeName = asNonEmptyString((data as { node?: string }).node) || "unknown";
-             const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString((data as { label?: string }).label));
-             
-             if (!label) return prev; // Skip hidden steps
-             
-             if (hasStepLabel(prev.steps, label)) {
-               return { ...prev, activeTool: null };
-             }
-             const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
-             newSteps.push({
+            const nodeName = asNonEmptyString((data as { node?: string }).node) || "unknown";
+            const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString((data as { label?: string }).label));
+
+            if (!label) return prev; // Skip hidden steps
+
+            if (hasStepLabel(prev.steps, label)) {
+              return { ...prev, activeTool: null };
+            }
+            const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
+            newSteps.push({
               id: `${nodeName}-${Date.now()}`,
               label,
               status: "active",
-             });
-             return { ...prev, steps: newSteps, activeTool: null };
+            });
+            return { ...prev, steps: newSteps, activeTool: null };
           }
           if (data.type === 'tool_call') {
-             const toolName = asNonEmptyString((data as { name?: string }).name) || "tool";
-             const label = normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString((data as { label?: string }).label));
-             if (shouldDedupeToolStep(prev.activeMode, toolName) && hasStepLabel(prev.steps, label)) {
-               return { ...prev, activeTool: toolName };
-             }
-             const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
-             newSteps.push({
+            const toolName = asNonEmptyString((data as { name?: string }).name) || "tool";
+            const label = normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString((data as { label?: string }).label));
+            if (shouldDedupeToolStep(prev.activeMode, toolName) && hasStepLabel(prev.steps, label)) {
+              return { ...prev, activeTool: toolName };
+            }
+            const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
+            newSteps.push({
               id: `tool-${toolName}-${Date.now()}`,
               label,
               status: "active",
-             });
-             return { ...prev, steps: newSteps, activeTool: toolName };
+            });
+            return { ...prev, steps: newSteps, activeTool: toolName };
           }
           if (data.type === 'error') {
             return {
@@ -274,9 +272,9 @@ export function useChatStream() {
           es.close();
           eventSourceRef.current = null;
           const finalContent = streamedContentRef.current;
-          setStreamState(prev => ({ 
-            ...prev, 
-            isStreaming: false, 
+          setStreamState(prev => ({
+            ...prev,
+            isStreaming: false,
             content: "",
             thinking: prev.thinking,
             activeTool: null,
@@ -321,35 +319,35 @@ export function useChatStream() {
           }
           if (data.type === 'thinking') return prev;
           if (data.type === 'node_start') {
-             const nodeName = asNonEmptyString(data.node) || "unknown";
-             const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString(data.label));
-             
-             if (!label) return prev; // Skip hidden steps
-             
-             if (hasStepLabel(prev.steps, label)) {
-               return { ...prev, activeTool: null };
-             }
-             const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
-             newSteps.push({
-               id: `${nodeName}-${Date.now()}`,
-               label,
-               status: "active",
-             });
-             return { ...prev, steps: newSteps, activeTool: null };
+            const nodeName = asNonEmptyString(data.node) || "unknown";
+            const label = normalizeNodeStepLabel(prev.activeMode, nodeName, asNonEmptyString(data.label));
+
+            if (!label) return prev; // Skip hidden steps
+
+            if (hasStepLabel(prev.steps, label)) {
+              return { ...prev, activeTool: null };
+            }
+            const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
+            newSteps.push({
+              id: `${nodeName}-${Date.now()}`,
+              label,
+              status: "active",
+            });
+            return { ...prev, steps: newSteps, activeTool: null };
           }
           if (data.type === 'tool_call') {
-             const toolName = asNonEmptyString(data.name) || asNonEmptyString(data.tool_name) || "tool";
-             const label = normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString(data.label));
-             if (shouldDedupeToolStep(prev.activeMode, toolName) && hasStepLabel(prev.steps, label)) {
-               return { ...prev, activeTool: toolName };
-             }
-             const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
-             newSteps.push({
-               id: `tool-${toolName}-${Date.now()}`,
-               label,
-               status: "active",
-             });
-             return { ...prev, steps: newSteps, activeTool: toolName };
+            const toolName = asNonEmptyString(data.name) || asNonEmptyString(data.tool_name) || "tool";
+            const label = normalizeToolStepLabel(prev.activeMode, toolName, asNonEmptyString(data.label));
+            if (shouldDedupeToolStep(prev.activeMode, toolName) && hasStepLabel(prev.steps, label)) {
+              return { ...prev, activeTool: toolName };
+            }
+            const newSteps: StreamStep[] = prev.steps.map(s => ({ ...s, status: "done" }));
+            newSteps.push({
+              id: `tool-${toolName}-${Date.now()}`,
+              label,
+              status: "active",
+            });
+            return { ...prev, steps: newSteps, activeTool: toolName };
           }
           if (data.type === 'error') {
             es.close();

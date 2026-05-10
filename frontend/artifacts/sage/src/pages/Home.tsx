@@ -51,6 +51,7 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsName, setSettingsName] = useState("");
   const [modelReady, setModelReady] = useState(false);
+  const [diagramCooldownTrigger, setDiagramCooldownTrigger] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -183,6 +184,10 @@ export default function Home() {
           ]);
         }
         setIsStreamDone(true);
+        if (mode === "diagram") {
+          setDiagramCooldownTrigger(Date.now());
+          setComposerMode("general");
+        }
         queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
       });
     } catch (err) {
@@ -222,6 +227,10 @@ export default function Home() {
     }
 
     setIsStreamDone(true);
+    if (streamState.activeMode === "diagram") {
+      setDiagramCooldownTrigger(Date.now());
+      setComposerMode("general");
+    }
     queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
   }, [streamState.isStreaming, streamState.content, stopStream, queryClient]);
 
@@ -413,6 +422,7 @@ export default function Home() {
             resetSelectionKey={chatResetKey}
             isStreaming={streamState.isStreaming}
             disabled={submitChat.isPending || isModelLoading}
+            triggerDiagramCooldown={diagramCooldownTrigger}
           />
         </div>
       </main>
