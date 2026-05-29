@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { GraduationCap, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface FirstRunProps {
@@ -26,9 +26,11 @@ export function FirstRun({ onComplete }: FirstRunProps) {
         className="w-full max-w-md p-8 rounded-3xl bg-card border border-border shadow-2xl"
       >
         <div className="flex justify-center mb-6">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
-            <GraduationCap className="w-8 h-8 text-primary" />
-          </div>
+          <img 
+            src="/favicon.svg" 
+            className="w-16 h-16 object-contain hover:scale-105 transition-transform duration-300 cursor-pointer" 
+            alt="Sage Logo" 
+          />
         </div>
         
         <h1 className="text-3xl font-bold text-center mb-2 text-foreground">Welcome to Sage</h1>

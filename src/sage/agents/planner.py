@@ -531,11 +531,14 @@ async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
 
     if analysis is None:
         log.error("roadmap_analysis_failed_all_retries", exc=str(last_exc))
+        from langchain_core.messages import AIMessage
+        res_text = (
+            "I was unable to analyse your study plan request. "
+            "Please try again with more details about the subject, timeline, and scope."
+        )
         return {
-            "response": (
-                "I was unable to analyse your study plan request. "
-                "Please try again with more details about the subject, timeline, and scope."
-            )
+            "messages": [AIMessage(content=res_text)],
+            "response": res_text,
         }
 
     # Schedule
@@ -592,7 +595,9 @@ async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
     schedule = _normalize_schedule(analysis, schedule)
     response_text = _format_schedule_markdown(analysis, schedule)
 
+    from langchain_core.messages import AIMessage
     return {
+        "messages": [AIMessage(content=response_text)],
         "response": response_text,
         "tool_calls": [
             {

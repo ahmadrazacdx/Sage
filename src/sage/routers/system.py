@@ -21,6 +21,10 @@ class SystemStatus(BaseModel):
     embedding_model: str
     vectordb_collections: list[str]
     network_online: bool
+    institution_name: str
+    institution_department: str
+    institution_email: str
+    institution_website: str
 
 
 class CoursesResponse(BaseModel):
@@ -51,6 +55,10 @@ async def get_status(request: Request) -> SystemStatus:
             cfg.rag.user_uploads_collection,
         ],
         network_online=network.online if network is not None else False,
+        institution_name=cfg.institution.name,
+        institution_department=cfg.institution.department,
+        institution_email=cfg.institution.contact_email,
+        institution_website=cfg.institution.social.get("website", ""),
     )
 
 

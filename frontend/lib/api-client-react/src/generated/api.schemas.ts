@@ -68,6 +68,10 @@ export interface SystemStatus {
   embedding_tier: string;
   vectordb_collections: string[];
   network_online: boolean;
+  institution_name: string;
+  institution_department: string;
+  institution_email: string;
+  institution_website: string;
 }
 
 export interface ErrorDetail {

@@ -496,12 +496,14 @@ async def quiz_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpenAI 
     if _looks_like_answers(query):
         recovered = _recover_questions(state)
         if not recovered:
+            res_text = (
+                "I detected quiz answers but couldn't find a prior quiz to grade. "
+                "Please generate a quiz first, then submit numbered answers "
+                "(e.g. `1. B`, `2. Paris`)."
+            )
             return {
-                "response": (
-                    "I detected quiz answers but couldn't find a prior quiz to grade. "
-                    "Please generate a quiz first, then submit numbered answers "
-                    "(e.g. `1. B`, `2. Paris`)."
-                )
+                "messages": [AIMessage(content=res_text)],
+                "response": res_text,
             }
         return await quiz_evaluate_node({**state, "last_quiz_questions": recovered}, llm, util_llm=util_llm)
 
@@ -521,8 +523,10 @@ async def quiz_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpenAI 
             quiz = _validate_quiz(_parse_quiz(raw))
             serialized = _serialize(quiz.questions)
             log.info("quiz_generated", question_count=len(quiz.questions), attempt=attempt)
+            res_text = f"{_render_quiz(quiz, topic=query)}\n\n{_encode_payload(quiz.questions)}"
             return {
-                "response": f"{_render_quiz(quiz, topic=query)}\n\n{_encode_payload(quiz.questions)}",
+                "messages": [AIMessage(content=res_text)],
+                "response": res_text,
                 "last_quiz_questions": serialized,
                 "tool_calls": [{"tool": "quiz_generation", "questions": len(quiz.questions)}],
             }
@@ -533,7 +537,11 @@ async def quiz_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpenAI 
             await asyncio.sleep(2)
 
     log.error("quiz_gen_all_retries_failed")
-    return {"response": "Unable to generate a quiz right now. Please try again or refine your topic."}
+    res_text = "Unable to generate a quiz right now. Please try again or refine your topic."
+    return {
+        "messages": [AIMessage(content=res_text)],
+        "response": res_text,
+    }
 
 
 async def quiz_evaluate_node(
@@ -554,8 +562,10 @@ async def quiz_evaluate_node(
 
     raw_questions: str | None = state.get("last_quiz_questions")
     if not raw_questions:
+        res_text = "I couldn't find a quiz to evaluate. Please generate a quiz first, then submit your answers."
         return {
-            "response": ("I couldn't find a quiz to evaluate. Please generate a quiz first, then submit your answers.")
+            "messages": [AIMessage(content=res_text)],
+            "response": res_text,
         }
 
     prior = _deserialize(raw_questions)
@@ -574,8 +584,10 @@ async def quiz_evaluate_node(
             evaluation = _parse_evaluation(raw)
             evaluation = _validate_evaluation(evaluation, prior)
             log.info("quiz_evaluated", score=evaluation.score, attempt=attempt)
+            res_text = _render_evaluation(evaluation)
             return {
-                "response": _render_evaluation(evaluation),
+                "messages": [AIMessage(content=res_text)],
+                "response": res_text,
                 "tool_calls": [{"tool": "quiz_evaluation", "score": evaluation.score}],
             }
         except Exception as exc:
@@ -585,4 +597,8 @@ async def quiz_evaluate_node(
             await asyncio.sleep(3)
 
     log.error("quiz_eval_all_retries_failed")
-    return {"response": "Unable to evaluate your answers right now. Please try again."}
+    res_text = "Unable to evaluate your answers right now. Please try again."
+    return {
+        "messages": [AIMessage(content=res_text)],
+        "response": res_text,
+    }

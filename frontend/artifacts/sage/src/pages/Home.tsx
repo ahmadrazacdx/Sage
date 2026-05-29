@@ -6,7 +6,7 @@ import { FirstRun } from "@/components/setup/FirstRun";
 import { ModelLoading } from "@/components/setup/ModelLoading";
 import { useChatStream, type ArtifactInfo } from "@/hooks/use-chat-stream";
 import { useGetStatus, useGetSessionMessages, useSubmitChat, type SystemStatus } from "@workspace/api-client-react";
-import { GraduationCap, Loader2, X, Info, Github, Building2, Cpu, Database, WifiOff, ShieldCheck, FileDown } from "lucide-react";
+import { Loader2, X, Info, Github, Building2, Cpu, Database, WifiOff, ShieldCheck, FileDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { type SageMode } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -254,14 +254,14 @@ export default function Home() {
 
   const displayMessages: LocalMessage[] = canUseHistory && historyList
     ? (() => {
-        if (!lastCompletedArtifact || historyList.length === 0) return historyList;
-        const merged = [...historyList];
-        const lastIdx = merged.length - 1;
-        if (merged[lastIdx]?.role === "assistant") {
-          merged[lastIdx] = { ...merged[lastIdx], artifact: lastCompletedArtifact };
-        }
-        return merged;
-      })()
+      if (!lastCompletedArtifact || historyList.length === 0) return historyList;
+      const merged = [...historyList];
+      const lastIdx = merged.length - 1;
+      if (merged[lastIdx]?.role === "assistant") {
+        merged[lastIdx] = { ...merged[lastIdx], artifact: lastCompletedArtifact };
+      }
+      return merged;
+    })()
     : optimisticMessages;
 
   const timelineVisible =
@@ -322,9 +322,11 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="flex gap-4 max-w-full flex-1">
-                      <div className="w-8 h-8 shrink-0 rounded-full bg-sidebar border border-sidebar-border flex items-center justify-center mt-1">
-                        <GraduationCap className="w-4 h-4 text-primary" />
-                      </div>
+                      <img
+                        src="/favicon.svg"
+                        className="w-6 h-6 shrink-0 object-contain mt-2"
+                        alt="Sage Logo"
+                      />
                       <div className="flex-1 min-w-0 pt-1">
                         {/* Error crash guard */}
                         {msg.content?.includes("💣") || msg.content?.startsWith("<!") ? (
@@ -363,12 +365,11 @@ export default function Home() {
                   transition={{ duration: 0.15, ease: "easeOut" }}
                   className="flex w-full justify-start gap-4 flex-1"
                 >
-                  <div className="relative w-8 h-8 shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mt-1">
-                    {showThinkingSpinner && (
-                      <Loader2 className="absolute -inset-1.5 w-11 h-11 text-primary/40 animate-spin" />
-                    )}
-                    <GraduationCap className="w-4 h-4 text-primary" />
-                  </div>
+                  <img
+                    src="/favicon.svg"
+                    className={`w-6 h-6 shrink-0 object-contain mt-2 ${streamState.isStreaming ? 'animate-smooth-spin' : ''}`}
+                    alt="Sage Logo"
+                  />
                   <div className="flex-1 min-w-0 pt-1 flex flex-col gap-2">
                     {timelineVisible && (
                       <Suspense fallback={null}>
@@ -397,7 +398,7 @@ export default function Home() {
                         ) : null}
                       </div>
                     )}
-                    
+
                   </div>
                 </motion.div>
               )}
@@ -462,7 +463,7 @@ export default function Home() {
               <div className="px-6 py-5 space-y-5">
                 <div className="space-y-3 text-sm text-foreground/85 leading-relaxed">
                   <p>
-                    <b>Sage</b> is an offline AI Academic assistant designed for higher-education assistance at Thal University Bhakkar.
+                    <b>Sage</b> is an offline AI Academic assistant designed for higher-education assistance at {status?.institution_name || "Thal University Bhakkar"}.
                     It combines guided tutoring, interactive study modes, and course-aware context to support daily learning with low friction.
                   </p>
                   <p>
@@ -506,7 +507,7 @@ export default function Home() {
                     <Github className="w-3.5 h-3.5" />
                     GitHub
                   </a>
-                  <a href="https://tu.edu.pk" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-sidebar-border hover:bg-white/[0.1] transition-colors">
+                  <a href={status?.institution_website || "https://tu.edu.pk"} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-sidebar-border hover:bg-white/[0.1] transition-colors">
                     <Building2 className="w-3.5 h-3.5" />
                     University
                   </a>

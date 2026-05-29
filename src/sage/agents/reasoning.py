@@ -321,7 +321,7 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                             expression=expression[:80],
                             response_len=len(response),
                         )
-                        return {"response": response}
+                        return {"messages": [AIMessage(content=response)], "response": response}
                     if isinstance(calc_payload, dict):
                         log.warning(
                             "reasoning_math_fast_path_tool_error",
@@ -349,14 +349,14 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                 )
             except TimeoutError:
                 log.error("reasoning_thinking_timeout", timeout=cfg.llm_timeout)
-                return {"response": "The request timed out. Please try again."}
+                return {"messages": [AIMessage(content="The request timed out. Please try again.")], "response": "The request timed out. Please try again."}
             except Exception as exc:
                 log.error(
                     "reasoning_thinking_failed",
                     exc_type=type(exc).__name__,
                     exc_msg=str(exc)[:200],
                 )
-                return {"response": "I ran into an issue processing your request. Please try again."}
+                return {"messages": [AIMessage(content="I ran into an issue processing your request. Please try again.")], "response": "I ran into an issue processing your request. Please try again."}
 
             tool_calls = getattr(result, "tool_calls", None) or []
             if not tool_calls:
@@ -394,7 +394,7 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
             requested_budget=thinking_budget,
             effective_budget=effective_budget,
         )
-        return {"response": response}
+        return {"messages": [AIMessage(content=response)], "response": response}
 
     # Explain path
     ku_text = _format_knowledge_units(kus)

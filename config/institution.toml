@@ -1,52 +1,8 @@
-# =============================================================================
-# Sage -- Institution Configuration
-# =============================================================================
-# Enforced directory structure:
-#   raw/
-#     <PROGRAM_CODE>/             <- folder name IS the program code
-#       <1-8>/                    <- semester number
-#         <COURSE_CODE>_<Title>/  <- enables course-level metadata (RECOMMENDED)
-#           <files>               <- .pdf  .pptx  .docx  .md  .txt
-#
-# DEPLOYMENT CHECKLIST:
-#   1. Fill in [institution] with your university details.
-#   2. Add each degree program to [institution.programs].
-#   3. Populate artifacts/data/raw/ with the enforced structure above.
-#   4. Run: uv run python scripts/ingest.py
-#   5. Run: uv run python -m sage
-# =============================================================================
-
 [institution]
-name            = "THAL UNIVERSITY BHAKKAR"
+name            = "Thal University Bhakkar"
 department      = "Department of Computer Science & Information Technology"
 contact_email   = "computing@tu.edu.pk"
 academic_year   = "2025-2026"
-total_semesters = 8
 
-
-# --- Program Registry ---
-# Maps program folder name (code) -> full human-readable name for the UI.
-# Add one line when you create a new degree-program folder under raw/.
-[institution.programs]
-BSSE = "Bachelor of Science in Software Engineering"
-BSCS = "Bachelor of Science in Computer Science"
-BSIT = "Bachelor of Science in Information Technology"
-
-
-# --- About Page ---
-# All fields are optional. Leave blank ("") to hide from the about page.
 [institution.social]
 website  = "https://tu.edu.pk"
-facebook = ""
-twitter  = ""
-
-
-# --- Optional Default Overrides ----
-# Uncomment and adjust any default.toml value that needs changing for this
-# deployment. All other settings remain at their default.toml values.
-
-# [embedding]
-# tier = "standard"   # Upgrade to 768-dim if RAM >= 8 GB
-
-# [network]
-# force_offline = true   # Metered connection: disable all internet calls 
