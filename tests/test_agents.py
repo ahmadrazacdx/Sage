@@ -1,8 +1,10 @@
+from unittest.mock import MagicMock
+
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock
-from sage.agents.router import router_node, route_by_intent, route_post_retrieval
+
+from sage.agents.router import route_by_intent, route_post_retrieval, router_node
 from sage.agents.state import AgentState
+
 
 @pytest.mark.asyncio
 async def test_router_node():
@@ -21,6 +23,7 @@ async def test_router_node():
     assert result["intent"] == "thinking"
     assert result["thinking_mode"] is True
 
+
 def test_route_by_intent():
     state = AgentState(intent="explain")
     assert route_by_intent(state) == "explain"
@@ -28,8 +31,9 @@ def test_route_by_intent():
     state = AgentState(intent="thinking")
     assert route_by_intent(state) == "reasoning"
 
-    state = AgentState(intent="invalid_intent") # type: ignore
+    state = AgentState(intent="invalid_intent")  # type: ignore
     assert route_by_intent(state) == "general"
+
 
 def test_route_post_retrieval():
     state = AgentState(intent="quiz")

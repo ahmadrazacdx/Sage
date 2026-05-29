@@ -1,6 +1,9 @@
-import pytest
 from unittest.mock import MagicMock
-from sage.agents.retrieval import retrieval_node, _query_cache_key
+
+import pytest
+
+from sage.agents.retrieval import _query_cache_key, retrieval_node
+
 
 @pytest.mark.asyncio
 async def test_retrieval_node_stub():
@@ -11,6 +14,7 @@ async def test_retrieval_node_stub():
     assert "knowledge_units" in res
     assert "retrieval_cache_key" in res
 
+
 @pytest.mark.asyncio
 async def test_retrieval_node_cache_hit():
     llm = MagicMock()
@@ -19,11 +23,12 @@ async def test_retrieval_node_cache_hit():
         "query": "test",
         "retrieval_cache_key": ckey,
         "retrieval_cache_chunks": [{"id": 1}],
-        "retrieval_cache_kus": [{"id": "K1"}]
+        "retrieval_cache_kus": [{"id": "K1"}],
     }
     res = await retrieval_node(state, llm)
     assert res["chunks"] == [{"id": 1}]
     assert res["knowledge_units"] == [{"id": "K1"}]
+
 
 def test_query_cache_key():
     k1 = _query_cache_key("hello")

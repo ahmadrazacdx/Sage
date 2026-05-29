@@ -349,14 +349,20 @@ async def reasoning_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                 )
             except TimeoutError:
                 log.error("reasoning_thinking_timeout", timeout=cfg.llm_timeout)
-                return {"messages": [AIMessage(content="The request timed out. Please try again.")], "response": "The request timed out. Please try again."}
+                return {
+                    "messages": [AIMessage(content="The request timed out. Please try again.")],
+                    "response": "The request timed out. Please try again.",
+                }
             except Exception as exc:
                 log.error(
                     "reasoning_thinking_failed",
                     exc_type=type(exc).__name__,
                     exc_msg=str(exc)[:200],
                 )
-                return {"messages": [AIMessage(content="I ran into an issue processing your request. Please try again.")], "response": "I ran into an issue processing your request. Please try again."}
+                return {
+                    "messages": [AIMessage(content="I ran into an issue processing your request. Please try again.")],
+                    "response": "I ran into an issue processing your request. Please try again.",
+                }
 
             tool_calls = getattr(result, "tool_calls", None) or []
             if not tool_calls:

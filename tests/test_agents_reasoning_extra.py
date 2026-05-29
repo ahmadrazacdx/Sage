@@ -1,10 +1,5 @@
-import pytest
-import re
-from sage.agents.reasoning import (
-    _ensure_think_wrapped, 
-    _looks_like_reasoning_paragraph,
-    _looks_like_answer_paragraph
-)
+from sage.agents.reasoning import _ensure_think_wrapped, _looks_like_answer_paragraph, _looks_like_reasoning_paragraph
+
 
 def test_ensure_think_wrapped():
     assert _ensure_think_wrapped("<think>T</think>A") == "<think>T</think>A"
@@ -15,9 +10,11 @@ def test_ensure_think_wrapped():
     assert "</think>" in wrapped
     assert "42" in wrapped
 
+
 def test_looks_like_reasoning_paragraph():
     assert _looks_like_reasoning_paragraph("First I will think about it") is True
     assert _looks_like_reasoning_paragraph("The answer is 42") is False
+
 
 def test_looks_like_answer_paragraph():
     assert _looks_like_answer_paragraph("Therefore, we conclude") is True
