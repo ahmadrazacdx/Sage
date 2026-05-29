@@ -1,13 +1,13 @@
 import React, { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, Plus, File, Trash2, GraduationCap, ChevronLeft, ChevronDown, ChevronRight, Info, Menu, Wifi, WifiOff, Loader2, FileDown, Download } from "lucide-react";
+import { MessageSquare, Plus, File, Trash2, ChevronLeft, ChevronDown, ChevronRight, Info, Menu, Wifi, WifiOff, Loader2, FileDown, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { 
-  useListSessions, 
-  useDeleteSession, 
-//   useListDocuments, 
-//   useDeleteDocument, 
-//   useUploadDocuments,
+import {
+  useListSessions,
+  useDeleteSession,
+  //   useListDocuments, 
+  //   useDeleteDocument, 
+  //   useUploadDocuments,
   type SystemStatus
 } from "@workspace/api-client-react";
 import { differenceInCalendarDays } from "date-fns";
@@ -54,7 +54,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
     week: SessionItem[];
     lastMonth: SessionItem[];
   };
-  
+
   const deleteSession = useDeleteSession();
   // const deleteDocument = useDeleteDocument();
   // const uploadDocuments = useUploadDocuments();
@@ -140,15 +140,15 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
                 onClick={() => onSelectThread(s.thread_id)}
                 className={cn(
                   "flex-1 flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-all text-left truncate",
-                  currentThreadId === s.thread_id 
-                    ? "bg-primary/15 text-primary font-medium" 
+                  currentThreadId === s.thread_id
+                    ? "bg-primary/15 text-primary font-medium"
                     : "text-foreground/80 hover:bg-white/5 hover:text-foreground"
                 )}
               >
                 <MessageSquare className="w-4 h-4 shrink-0 opacity-70" />
                 <span className="truncate">{s.title || "New Conversation"}</span>
               </button>
-              <button 
+              <button
                 onClick={(e) => {
                   e.stopPropagation();
                   deleteSession.mutate({ threadId: s.thread_id }, {
@@ -182,7 +182,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
 
   if (isCollapsed) {
     return (
-      <button 
+      <button
         onClick={() => setCollapsed(false)}
         className="fixed top-4 left-4 z-50 p-2 rounded-xl bg-sidebar border border-sidebar-border shadow-lg text-foreground hover:bg-white/5 transition-colors"
       >
@@ -192,23 +192,28 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ x: -260 }}
       animate={{ x: 0 }}
       exit={{ x: -260 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       className="flex flex-col w-[260px] h-screen bg-sidebar border-r border-sidebar-border shrink-0 text-foreground overflow-hidden"
     >
-      {/* Header */}
       <div className="flex items-start justify-between p-4 shrink-0">
-        <div className="flex items-start gap-2">
-          <GraduationCap className="w-6 h-6 text-primary mt-0.5" />
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/favicon.svg"
+            className="w-7 h-7 object-contain hover:scale-110 hover:rotate-6 transition-all duration-300 cursor-pointer"
+            alt="Sage Logo"
+          />
           <div className="leading-tight">
             <div className="font-bold text-lg tracking-tight bg-gradient-to-br from-white to-white/60 bg-clip-text text-transparent">Sage</div>
-            <div className="text-[11px] text-muted-foreground">Thal University Bhakkar</div>
+            <div className="text-xs font-normal tracking-wide text-primary/80">
+              {status?.institution_name || "Thal University Bhakkar"}
+            </div>
           </div>
         </div>
-        <button 
+        <button
           onClick={() => setCollapsed(true)}
           className="p-1.5 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -218,7 +223,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
 
       {/* New Chat Button */}
       <div className="px-3 pb-4 shrink-0">
-        <button 
+        <button
           onClick={onNewChat}
           className="flex items-center gap-2 w-full px-3 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-xl font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
         >

@@ -261,6 +261,10 @@
   margin-bottom: 0.5rem;
 }
 
+.prose.prose-invert > :first-child {
+  margin-top: 0 !important;
+}
+
 .prose pre {
   background: #1a1b1e !important;
   border: 1px solid #333;
@@ -418,3 +422,20 @@
   .bg-error\/10 { background-color: rgba(239, 68, 68, 0.1); }
   .border-error\/20 { border-color: rgba(239, 68, 68, 0.2); }
 }
+
+@keyframes smooth-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-smooth-spin {
+  animation: smooth-spin 0.6s linear infinite !important;
+  will-change: transform;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
