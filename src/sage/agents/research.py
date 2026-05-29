@@ -609,15 +609,17 @@ async def research_node(
     # Offline guard
     if not online:
         log.warning("research_offline_mode")
+        res_text = (
+            "⚠️ **Research mode requires an internet connection.**\n\n"
+            "The Research Agent searches arXiv, the web, and Wikipedia "
+            "for multi-source academic reports.  Please connect to the "
+            "internet and try again.\n\n"
+            "Alternatively, use **Explain** mode for answers from "
+            "your course materials (offline)."
+        )
         return {
-            "response": (
-                "⚠️ **Research mode requires an internet connection.**\n\n"
-                "The Research Agent searches arXiv, the web, and Wikipedia "
-                "for multi-source academic reports.  Please connect to the "
-                "internet and try again.\n\n"
-                "Alternatively, use **Explain** mode for answers from "
-                "your course materials (offline)."
-            ),
+            "messages": [AIMessage(content=res_text)],
+            "response": res_text,
             "research_report": None,
         }
 
@@ -685,7 +687,11 @@ async def research_node(
     try:
         from sage.tools.search import search_arxiv, search_web, search_wikipedia
     except ImportError as exc:
-        return {"response": f"⚠️ Search tools unavailable: {exc}"}
+        res_text = f"⚠️ Search tools unavailable: {exc}"
+        return {
+            "messages": [AIMessage(content=res_text)],
+            "response": res_text,
+        }
 
     search_cfg = get_settings().tools.search
     tagged: list[tuple[str, Any]] = []
@@ -749,7 +755,11 @@ async def research_node(
         report = _normalize_references_section(report)
     except Exception as exc:
         log.error("research_report_failed", exc=str(exc)[:200])
-        return {"response": "I was unable to synthesize the research report. Please try again."}
+        res_text = "I was unable to synthesize the research report. Please try again."
+        return {
+            "messages": [AIMessage(content=res_text)],
+            "response": res_text,
+        }
 
     log.info(
         "research_report_written",
@@ -882,6 +892,7 @@ async def research_node(
         log.info("research_fallback_text_response")
 
     return {
+        "messages": [AIMessage(content=response)],
         "response": response,
         "research_plan": plan.model_dump(),
         "research_sources": all_sources,

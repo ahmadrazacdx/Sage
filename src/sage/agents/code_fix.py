@@ -150,8 +150,10 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpe
     t_start = time.perf_counter()
 
     if not query:
+        res_text = "I was unable to diagnose the code issue. Please provide the error message and relevant code."
         return {
-            "response": ("I was unable to diagnose the code issue. Please provide the error message and relevant code.")
+            "messages": [AIMessage(content=res_text)],
+            "response": res_text,
         }
 
     _active_ctx = get_settings().llm.active_context_size
@@ -188,7 +190,10 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpe
         except Exception as exc:
             log.error("code_fix_non_python_failed", exc=str(exc)[:200])
             text = f"This appears to be {non_python} code. I cannot execute it in the sandbox."
-        return {"response": text}
+        return {
+            "messages": [AIMessage(content=text)],
+            "response": text,
+        }
 
     # Diagnosis
     diag_prompt = ChatPromptTemplate.from_messages(
@@ -226,8 +231,10 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpe
             log.warning("code_fix_diagnosis_retry", attempt=attempt, exc=str(exc)[:200])
 
     if diagnosis is None:
+        res_text = "I was unable to diagnose the code issue. Please provide the error message and relevant code."
         return {
-            "response": ("I was unable to diagnose the code issue. Please provide the error message and relevant code.")
+            "messages": [AIMessage(content=res_text)],
+            "response": res_text,
         }
 
     # Framework detection
@@ -407,8 +414,10 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpe
         elapsed_ms=elapsed_ms,
     )
 
+    res_text = "\n\n".join(parts)
     return {
-        "response": "\n\n".join(parts),
+        "messages": [AIMessage(content=res_text)],
+        "response": res_text,
         "tool_calls": [
             {
                 "tool": "code_fix",
