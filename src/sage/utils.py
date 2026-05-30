@@ -318,9 +318,7 @@ def _structured_candidates(raw: Any) -> list[str]:
     return ordered
 
 
-def parse_structured_output[_StructuredModelT: BaseModel](
-    raw: Any, schema: type[_StructuredModelT]
-) -> _StructuredModelT:
+def parse_structured_output[StructuredModelT: BaseModel](raw: Any, schema: type[StructuredModelT]) -> StructuredModelT:
     """Parse model output into a Pydantic schema using tolerant JSON extraction."""
     if isinstance(raw, schema):
         return raw
@@ -341,17 +339,17 @@ def parse_structured_output[_StructuredModelT: BaseModel](
     raise ValueError(f"Unable to parse structured output for {schema.__name__}. Preview: {preview!r}") from last_exc
 
 
-async def ainvoke_structured_with_fallback[_StructuredModelT: BaseModel](
+async def ainvoke_structured_with_fallback[StructuredModelT: BaseModel](
     *,
     prompt: Any,
     llm: Any,
-    schema: type[_StructuredModelT],
+    schema: type[StructuredModelT],
     payload: dict[str, Any],
     timeout_s: float,
     logger: Any,
     event_prefix: str,
     prefer_raw_json: bool = False,
-) -> _StructuredModelT:
+) -> StructuredModelT:
     """Invoke structured output; fall back to raw JSON parsing on grammar failures."""
     import asyncio
 
