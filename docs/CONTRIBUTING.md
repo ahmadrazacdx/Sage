@@ -1,121 +1,103 @@
 # Contributing
 
-Guidelines for contributing to the Sage project.
-
----
-
-## Table of Contents
-
-- [Development Setup](#development-setup)
-- [Branching Strategy](#branching-strategy)
-- [Commit Conventions](#commit-conventions)
-- [Code Style](#code-style)
-- [Testing](#testing)
-- [Pull Request Process](#pull-request-process)
-- [Issue Reporting](#issue-reporting)
-
----
+> Development workflow and contribution guidelines for the Sage project.
 
 ## Development Setup
 
-Refer to [SETUP.md](SETUP.md) for complete environment setup instructions.
-
-Quick start:
+See [SETUP.md](SETUP.md) for complete environment configuration.
 
 ```bash
 git clone https://github.com/ahmadrazacdx/Sage.git
 cd Sage
 uv sync --all-extras
-pre-commit install
 ```
 
 ## Branching Strategy
 
 | Branch | Purpose |
-|---|---|
-| `main` | Stable release branch |
+| --- | --- |
+| `main` | Stable release branch. Protected. |
 | `dev-main` | Active development integration branch |
-| `dev-<name>` | Feature branches, branched from `dev-main` |
+| `dev-<name>` | Feature/fix branches, created from `dev-main` |
 
-All feature and fix branches should be merged into `dev-main` via pull request.
-Releases are created by merging `dev-main` into `main` and tagging with a version
-number.
+All work is merged into `dev-main` via pull request. Releases are created by merging `dev-main` into `main` and tagging with a semver version.
 
 ## Commit Conventions
 
-This project follows the
-[Conventional Commits](https://www.conventionalcommits.org/) specification.
+This project uses [Conventional Commits](https://www.conventionalcommits.org/).
 
 ### Format
 
-```
+```text
 <type>(<scope>): <description>
 ```
 
 ### Types
 
 | Type | Usage |
-|---|---|
+| --- | --- |
 | `feat` | New feature |
 | `fix` | Bug fix |
 | `docs` | Documentation changes |
-| `style` | Code style changes (formatting, no logic change) |
-| `refactor` | Code restructuring without behavior change |
+| `style` | Code style (formatting, no logic change) |
+| `refactor` | Restructuring without behavior change |
 | `perf` | Performance improvement |
 | `test` | Adding or modifying tests |
 | `ci` | CI/CD pipeline changes |
-| `chore` | Build scripts, dependency updates, maintenance |
+| `chore` | Build scripts, dependencies, maintenance |
 
 ### Examples
 
 ```text
 feat(quiz): add adaptive difficulty scaling
 fix(research): handle timeout in digest phase
-docs(setup): add Vulkan GPU setup instructions
+docs(setup): add CUDA binary setup instructions
 refactor(llm): extract port allocation to utility function
+test(agents): add diagram validation edge cases
+ci(release): add R2 upload step
 ```
 
 ## Code Style
 
 ### Python
 
-- **Linter and formatter**: Ruff (configuration in `pyproject.toml`)
-- **Type checking**: mypy with strict mode
-- **Line length**: 120 characters
-- **Docstrings**: Required for all public functions and classes
-- **Imports**: Sorted by Ruff (isort rules)
-- **Type annotations**: Required for all function signatures
+| Tool | Configuration | Purpose |
+| --- | --- | --- |
+| Ruff | `pyproject.toml` `[tool.ruff]` | Linting and formatting |
+| Mypy | `pyproject.toml` `[tool.mypy]` | Static type checking (strict mode) |
 
-Run checks:
+- Line length: 120 characters
+- Type annotations required on all function signatures
+- Import order managed by Ruff isort rules (`sage` as first-party)
 
 ```bash
-ruff check src/ tests/
-ruff format --check src/ tests/
-mypy src/
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
+uv run mypy src/
 ```
 
 ### TypeScript (Frontend)
 
-- Standard ESLint and Prettier configuration (defined in the frontend workspace)
+- ESLint and Prettier configuration in the frontend workspace
 - Strict TypeScript mode enabled
 
-### Pre-commit
+### Pre-commit Hooks
 
-The following hooks run automatically on each commit:
+The project uses pre-commit hooks to enforce code quality before each commit:
 
 | Hook | Purpose |
-|---|---|
-| `ruff` | Lint and format Python code |
-| `mypy` | Type check Python code |
-| `conventional-commits` | Validate commit message format |
+| --- | --- |
+| `ruff` | Lint and auto-fix Python code |
+| `ruff-format` | Format Python code |
+| `mypy` | Type check `src/` |
 
-Install hooks:
+Setup:
 
 ```bash
 pre-commit install
 ```
 
-Run manually on all files:
+Run manually against all files:
 
 ```bash
 pre-commit run --all-files
@@ -126,34 +108,49 @@ pre-commit run --all-files
 ### Running Tests
 
 ```bash
-python -m pytest tests/
+uv run pytest
 ```
+
+The test suite covers 30 modules with a minimum 80% coverage threshold (enforced in `pyproject.toml`). CI runs on **Ubuntu + Windows** with **Python 3.12**.
 
 ### Writing Tests
 
-- Use `pytest` fixtures for shared setup.
-- Mock LLM calls using `unittest.mock` to avoid requiring a running server.
+- Use `pytest` fixtures (defined in `tests/conftest.py`) for shared setup.
+- Mock LLM calls via `unittest.mock`, tests must not require a running `llama-server`.
 - Test each agent node independently by providing crafted `AgentState` input.
-- Verify both success paths and error handling.
+- Cover both success paths and error boundary behavior.
+- Use `pytest-asyncio` for async node and router tests.
 
 ## Pull Request Process
 
-1. Create a feature branch from `dev-main`.
-2. Make changes, ensuring all pre-commit hooks pass.
-3. Write or update tests as appropriate.
-4. Run the full test suite locally.
-5. Push the branch and open a pull request targeting `dev-main`.
+1. Create a branch from `dev-main`: `git checkout -b dev-<feature>`.
+2. Make changes and ensure linting/type checks pass.
+3. Write or update tests for any behavior changes.
+4. Run the full test suite locally: `uv run pytest`.
+5. Push and open a pull request targeting `dev-main`.
 6. Provide a clear description of the changes and their motivation.
-7. Address any review feedback.
-8. The pull request is merged after approval and passing CI checks.
+7. Address review feedback.
+8. Merged after approval and passing CI (lint, test, build, architecture check).
+
+## Architecture Constraints
+
+The codebase enforces strict import layering, verified by CI on every push:
+
+```text
+tools/  - Must NOT import from agents/ or rag/
+rag/    - Must NOT import from agents/
+agents/ - May import from rag/ and tools/
+```
+
+Violating these boundaries will fail the `architecture-check` CI job.
 
 ## Issue Reporting
 
 When reporting issues, include:
 
-1. Steps to reproduce the problem.
-2. Expected behavior.
-3. Actual behavior.
-4. System information (OS version, RAM, GPU if applicable).
-5. Relevant log output (found in the terminal or log files).
-6. Configuration overrides in `config/config.toml`, if any.
+1. Steps to reproduce.
+2. Expected vs. actual behavior.
+3. System information: OS version, RAM, GPU (if applicable).
+4. Relevant terminal or log output.
+5. Configuration overrides in `config/institution.toml`, if any.
+6. The agent mode and query that triggered the issue.

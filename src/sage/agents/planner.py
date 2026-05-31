@@ -221,6 +221,10 @@ class RoadmapSchedule(BaseModel):
                 cp.setdefault("after_day", idx)
                 cp.setdefault("milestone", "Progress checkpoint")
                 out.append(cp)
+            elif hasattr(item, "model_dump"):
+                out.append(item.model_dump())
+            elif hasattr(item, "dict"):
+                out.append(item.dict())
         return out
 
 
