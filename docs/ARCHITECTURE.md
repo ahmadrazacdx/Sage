@@ -1,353 +1,193 @@
 # Architecture
 
-This document describes the internal architecture of Sage, covering the
-component topology, data flow, agent orchestration, LLM lifecycle management,
-RAG pipeline, persistence layer, and desktop integration.
-
----
-
-## Table of Contents
-
-- [System Overview](#system-overview)
-- [Component Diagram](#component-diagram)
-- [Agent Graph Topology](#agent-graph-topology)
-- [LLM Lifecycle Management](#llm-lifecycle-management)
-- [Hierarchical Model Strategy](#hierarchical-model-strategy)
-- [RAG Pipeline](#rag-pipeline)
-- [Memory and Persistence](#memory-and-persistence)
-- [Database Schema](#database-schema)
-- [Network Monitoring](#network-monitoring)
-- [Desktop Integration](#desktop-integration)
-- [Frontend Architecture](#frontend-architecture)
-- [Configuration System](#configuration-system)
-
----
+> Internal architecture reference for the Sage desktop application.
 
 ## System Overview
 
-Sage is structured as a layered system:
+Sage is structured as five layers, each with a single responsibility:
 
-1. **Presentation Layer**: React SPA served via FastAPI static mount, or
-   rendered inside a pywebview native window.
-2. **API Layer**: FastAPI application with REST endpoints and Server-Sent Events
-   (SSE) for real-time streaming.
-3. **Orchestration Layer**: LangGraph state graph that routes user queries to
-   specialized agent nodes.
-4. **Inference Layer**: llama-server processes (primary and utility) managed as
-   subprocesses with health-check polling.
-5. **Storage Layer**: SQLite for conversations and memory, ChromaDB for vector
-   storage, filesystem for exports.
+| Layer | Component | Responsibility |
+| --- | --- | --- |
+| **Presentation** | React SPA (Vite, TypeScript, Tailwind CSS) | Renders the chat interface inside a `pywebview` native window |
+| **API** | FastAPI + Uvicorn | REST endpoints, SSE streaming, static file serving |
+| **Orchestration** | LangGraph `StateGraph` | Intent routing, agent node dispatch, error boundaries |
+| **Inference** | `llama-server` subprocesses | GGUF model loading, token generation, health monitoring |
+| **Storage** | SQLite (WAL) + ChromaDB | Conversations, semantic memory, vector indices |
 
-## Component Diagram
+## Layer Diagram
 
-```mermaid
-graph TB
-    subgraph Presentation
-        FE["React SPA"]
-        PW["pywebview Window"]
-    end
+<div align="center">
+  <img src="../assets/sage_architecture.svg" alt="Sage Architecture" width="500">
+</div>
 
-    subgraph API["FastAPI Server"]
-        CR["Chat Router"]
-        SR["Sessions Router"]
-        DR["Documents Router"]
-        SYS["System Router"]
-    end
+## Inference Layer
 
-    subgraph Orchestration["LangGraph Agent Graph"]
-        RT["Router Node"]
-        RET["Retrieval Node"]
-        GEN["General Node"]
-        REA["Reasoning Node"]
-        QZ["Quiz Node"]
-        DG["Diagram Node"]
-        PL["Planner Node"]
-        RS["Research Node"]
-        CF["CodeFix Node"]
-        RF["Response Formatter"]
-    end
+Sage manages two concurrent `llama-server` instances as child processes. Each runs as an OpenAI-compatible HTTP server on a dynamically allocated loopback port.
 
-    subgraph Inference
-        PLLM["Primary LLM Server\n2B CPU / 4B CUDA"]
-        ULLM["Utility LLM Server\n0.8B"]
-    end
+### Primary Model
 
-    subgraph Storage
-        SQL["SQLite\nConversations + Memory"]
-        CHROMA["ChromaDB\nVector Store"]
-        FS["Filesystem\nExports + Figures"]
-    end
+| Attribute | CPU Build | CUDA Build |
+| --- | --- | --- |
+| Model | Qwen3.5-2B (Q4_K_M) | Qwen3.5-4B (Q4_K_M) |
+| Context window | Auto-scaled by available RAM (3K–32K) | Auto-scaled by VRAM (3K–64K) |
+| GPU layers | 0 | Auto (partial or full offload by VRAM) |
+| KV cache quantization | `q4_0` (K and V) | `q4_0` (K and V) |
+| Parallel slots | 4 (continuous batching) | 1 |
 
-    subgraph Tools
-        SEARCH["Search\narXiv, Web, Wikipedia"]
-        SANDBOX["Python Sandbox"]
-        MERMAID["Mermaid Validator + Renderer"]
-        CALC["Calculator"]
-        EXPORT["PDF + Markdown Export"]
-    end
+### Utility Model
 
-    FE <-->|SSE + REST| CR
-    PW --> FE
-    CR --> RT
-    RT --> RET
-    RT --> GEN
-    RT --> REA
-    RT --> QZ
-    RT --> DG
-    RT --> PL
-    RT --> RS
-    RT --> CF
-    RET --> REA
-    RET --> QZ
-    RET --> DG
-    REA --> RF
-    Orchestration --> PLLM
-    Orchestration --> ULLM
-    RS --> SEARCH
-    CF --> SANDBOX
-    DG --> MERMAID
-    REA --> CALC
-    RS --> EXPORT
-    Orchestration --> SQL
-    RET --> CHROMA
-    EXPORT --> FS
-```
+| Attribute | Value |
+| --- | --- |
+| Model | Qwen3.5-0.8B (Q4_K_M) |
+| Context window | 4096 tokens (configurable) |
+| Backend | Always CPU |
+| Purpose | Memory extraction, history compression, title generation, auxiliary structured output |
 
-## Agent Graph Topology
+### Hardware Auto-Detection
 
-The agent graph is assembled in `src/sage/agents/graph.py` using LangGraph's
-`StateGraph`. Each node is a Python async function that receives the shared
-`AgentState` (a TypedDict) and returns a partial state update.
+On startup, `llm.py` performs the following resolution sequence:
 
-### Node Definitions
+1. **GPU Probe:** Calls `nvidia-smi` to detect CUDA GPUs and available VRAM.
+2. **Binary Selection:** Selects CUDA or CPU `llama-server` binary. Falls back to CPU if the CUDA installation is incomplete (missing DLLs).
+3. **Context Scaling** Determines context window size from available RAM (CPU) or VRAM (GPU) using tiered thresholds.
+4. **GPU Layer Offload** Resolves `--n-gpu-layers` based on VRAM (full offload ≥ 4 GB, partial at ≥ 2 GB).
+5. **Thread Allocation** Sets generation and batch thread counts from physical core count, with hybrid CPU topology detection.
+6. **Orphan Cleanup:** Kills any stale `llama-server` processes from previous runs.
+7. **Health Poll:** Blocks until `/health` returns 200 or the timeout expires.
+8. **JIT Warmup:** Sends a single-token completion to trigger GGML graph compilation.
 
-| Node | Module | Input State Keys | Output State Keys |
-| --- | --- | --- | --- |
-| `router` | `router.py` | `query`, `mode` | `intent` |
-| `retrieval` | `retrieval.py` | `query`, `intent`, `course_code` | `knowledge_units` |
-| `general` | `general.py` | `query`, `student_memory` | `response` |
-| `reasoning` | `reasoning.py` | `query`, `knowledge_units`, `student_memory` | `response` |
-| `quiz` | `quiz.py` | `query`, `knowledge_units`, `student_memory` | `response`, `last_quiz_questions` |
-| `diagram` | `diagram.py` | `query`, `knowledge_units` | `response`, `diagrams` |
-| `planner` | `planner.py` | `query`, `student_memory` | `response` |
-| `research` | `research.py` | `query`, `online_mode` | `response`, `artifact_paths` |
-| `code_fix` | `code_fix.py` | `query` | `response` |
-| `response_generator` | `response.py` | `response`, `knowledge_units` | `response` |
+### Process Lifecycle
 
-### Edge Routing
+- Teardown is registered via both `atexit` and `SIGTERM` handlers.
+- A background stderr drain thread prevents Windows pipe buffer deadlocks during model loading.
+- The primary and utility servers are independent processes on separate ports.
 
-```text
-START --> router
+## Orchestration Layer
 
-router --(intent)--> retrieval    [explain, quiz, diagram]
-router --(intent)--> general      [general]
-router --(intent)--> reasoning    [reasoning]
-router --(intent)--> planner      [roadmap]
-router --(intent)--> research     [research]
-router --(intent)--> code_fix     [fix]
+The orchestration layer is a LangGraph `StateGraph` compiled in `agents/graph.py`. All state is passed through a single typed dict (`AgentState`).
 
-retrieval --(intent)--> reasoning [explain]
-retrieval --(intent)--> quiz      [quiz]
-retrieval --(intent)--> diagram   [diagram]
+### Graph Topology
 
-reasoning --(intent)--> response_generator [explain]
-reasoning -----------------------> END     [thinking]
+<div align="center">
+  <img src="../assets/sage_langgraph_graph.svg" alt="Agent Graph" width="500">
+</div>
 
-general ---------> END
-quiz ------------> END
-diagram ---------> END
-planner ---------> END
-research --------> END
-code_fix --------> END
-response_generator -> END
-```
+### Agent Nodes
 
-### Error Boundaries
+| Node | Module | Description |
+| --- | --- | --- |
+| `router` | `agents/router.py` | Classifies user intent via LLM structured output |
+| `retrieval` | `agents/retrieval.py` | Executes hybrid RAG (dense + sparse + RRF) |
+| `general` | `agents/general.py` | Open-ended conversation with memory context |
+| `reasoning` | `agents/reasoning.py` | Chain-of-thought explanation with optional thinking mode |
+| `quiz` | `agents/quiz.py` | Generates and evaluates quizzes from retrieved material |
+| `diagram` | `agents/diagram.py` | Mermaid diagram generation with syntax validation and SVG rendering |
+| `planner` | `agents/planner.py` | Structured study roadmap generation |
+| `research` | `agents/research.py` | Multi-source search (arXiv, web, Wikipedia) with digest and PDF export |
+| `code_fix` | `agents/code_fix.py` | Code diagnosis, repair, and explanation |
+| `response_generator` | `agents/response.py` | Citation formatting for explain-mode responses |
 
-Every node is wrapped with `with_error_boundary()`, which catches exceptions and
-returns a safe fallback response containing the error message. This ensures that
-a failure in any single node does not crash the entire graph execution.
+### Error Handling
 
-## LLM Lifecycle Management
+Every node is wrapped with `with_error_boundary` (defined in `utils.py`). If a node raises an exception, the boundary catches it and injects a fallback error response into `AgentState`, preventing graph-level failures from surfacing as unhandled crashes.
 
-The LLM subsystem is implemented in `src/sage/llm.py` and manages two
-llama-server processes: primary and utility.
+### Tools
 
-### Startup Sequence
+Agent nodes invoke tools through LangChain's tool interface:
 
-1. **Hardware detection**: Probe for CUDA, Vulkan, or CPU-only backend. Select
-   the appropriate server binary and model file.
-2. **Context window sizing**: Compute the maximum context window that fits in
-   available memory, accounting for KV-cache quantization (`q4_k_m`).
-3. **Server launch**: Start the llama-server subprocess on an available port with
-   computed parameters (`--n-gpu-layers`, `--ctx-size`, `--cache-type-k`,
-   `--cache-type-v`).
-4. **Health polling**: Poll the server's `/health` endpoint until it reports
-   ready, with configurable timeout.
-5. **Utility server**: Start a second server for the `0.8B` utility model on a
-   separate port, with a reduced context window.
-6. **Client creation**: Instantiate `ChatOpenAI` clients pointed at the local
-   servers.
+| Tool | Module | Description |
+| --- | --- | --- |
+| `execute_python` | `tools/sandbox.py` | Sandboxed subprocess execution with NumPy, Pandas, SciPy, SymPy, Matplotlib, scikit-learn |
+| `calculator` | `tools/calculator.py` | Mathematical expression evaluation |
+| `search_web` | `tools/search.py` | DuckDuckGo web search |
+| `search_arxiv` | `tools/search.py` | arXiv paper search |
+| `search_wikipedia` | `tools/search.py` | Wikipedia article search |
+| `export_pdf` | `tools/export.py` | PDF report generation via Typst |
+| `export_markdown` | `tools/export.py` | Markdown file export |
 
-### Shutdown
+## Retrieval-Augmented Generation
 
-Both server processes are terminated on application shutdown via the FastAPI
-lifespan context manager. Registered `atexit` handlers provide a safety net for
-ungraceful exits.
-
-### Port Allocation
-
-Ports are allocated dynamically. The system scans from a base port (default 8080)
-upward until an available port is found, preventing conflicts with other local
-services.
-
-## Hierarchical Model Strategy
-
-Sage uses two models concurrently:
-
-| Model | Parameters | Role | Context Window |
-| --- | --- | --- | --- |
-| Primary (CPU) | 2B (Qwen3.5-2B-Q4_K_M) | Reasoning, generation, complex output | Auto-scaled |
-| Primary (CUDA) | 4B (Qwen3.5-4B-Q4_K_M) | Reasoning, generation, complex output | Auto-scaled |
-| Utility | 0.8B (Qwen3.5-0.8B-Q4_K_M) | Memory, compression, structured extraction | 2500 tokens |
-
-On CPU-only builds, the utility model is passed to agent nodes as `util_llm`.
-Each node uses it for structured extraction steps (diagnosis, analysis,
-description, evaluation, digest) while the primary model handles all generation
-and reasoning. On CUDA builds, the utility model is not passed to agent nodes,
-and the primary model handles all steps.
-
-The memory subsystem (fact extraction, history compression, title generation)
-always uses the utility model regardless of hardware backend.
-
-## RAG Pipeline
-
-The retrieval-augmented generation pipeline is implemented across
-`src/sage/rag/`, `src/sage/agents/retrieval.py`, and `src/sage/embedding.py`.
+The RAG pipeline is implemented in `rag/` and combines dense and sparse retrieval:
 
 ### Indexing
 
-1. Documents are chunked using a recursive text splitter (512 tokens, 64-token
-   overlap).
-2. Each chunk is embedded using BGE-small-en-v1.5 (384-dimensional dense
-   vectors).
-3. Chunks are stored in ChromaDB with metadata (source file, course code, chunk
-   index).
+1. Documents are chunked at 512 tokens with 64-token overlap.
+2. Chunks are embedded using `BGE-small-en-v1.5` (ONNX via FastEmbed).
+3. Vectors and metadata are stored in ChromaDB with separate collections for curriculum and user uploads.
 
 ### Retrieval
 
-The retrieval node performs hybrid search:
+1. **Dense retrieval** — Cosine similarity search against ChromaDB embeddings.
+2. **Sparse retrieval** — BM25 scoring via `rank-bm25` over the same chunk corpus.
+3. **Fusion** — Results from both retrievers are merged using Reciprocal Rank Fusion (RRF) with a configurable `k` constant (default: 60).
+4. **Top-K selection** — The fused ranking is truncated to `top_k` results (default: 5).
 
-1. **Dense retrieval**: Cosine similarity search against ChromaDB embeddings.
-2. **Sparse retrieval**: BM25 keyword matching over chunk text.
-3. **Reciprocal Rank Fusion (RRF)**: Merged ranking with a configurable
-   `rrf_k_constant` (default 60).
-4. **Top-K selection**: Returns the top K results (default 5) as structured
-   `knowledge_units`.
+### Document Support
 
-Two separate collections are maintained: `curriculum` for institutionally
-ingested materials and `user_uploads` for student-uploaded documents.
+Ingestion (`scripts/ingest.py`) supports: `.pdf`, `.docx`, `.pptx`, `.md`, `.txt`.
 
-## Memory and Persistence
+## State and Persistence
 
-### Semantic Memory
+### Conversations
 
-The memory system (`src/sage/memory.py`) maintains long-term facts about
-students across sessions:
+- Stored in SQLite with WAL mode enabled for concurrent read/write access.
+- LangGraph's `AsyncSqliteSaver` manages graph state checkpointing per `thread_id`.
+- Each conversation tracks metadata (title, last message preview, message count, timestamps).
 
-1. **Extraction**: After each conversation turn, the utility model extracts
-   structured facts in three categories: `identity`, `study`, `preference`.
-2. **Quality gate**: Only facts that are specific, student-revealed, and useful
-   beyond the current session are retained.
-3. **Deduplication**: New facts are compared against existing memories using
-   full-text search scoring. Duplicates are merged by timestamp refresh.
-4. **Injection**: At query time, relevant memories are retrieved via FTS and
-   injected into the system prompt as contextual background.
+### Vector Store
 
-### History Compression
+- ChromaDB manages two collections: `curriculum` (pre-ingested course material) and `user_uploads` (runtime document uploads).
+- Persisted to disk at `artifacts/data/databases/vectordb/`.
 
-When conversation history exceeds the token budget, older messages are
-summarized into a single system message using the utility model. The most recent
-turns (configurable, default 6) are preserved verbatim.
+## Semantic Memory
 
-### State Checkpointing
+The memory subsystem (`memory.py`) provides cross-session context:
 
-LangGraph's `AsyncSqliteSaver` provides automatic state persistence. Each graph
-invocation with a `thread_id` saves and restores the full agent state, enabling
-conversation continuity across application restarts.
-
-## Database Schema
-
-SQLite is the sole relational store, accessed via `src/sage/database.py` with
-asynchronous I/O through aiosqlite.
-
-### Tables
-
-| Table | Purpose | Key Columns |
-| --- | --- | --- |
-| `conversations` | Conversation metadata | `id`, `title`, `last_message`, `message_count`, `updated_at` |
-| `memories` | Long-term student facts | `id`, `content`, `category`, `confidence`, `created_at`, `updated_at` |
-
-WAL (Write-Ahead Logging) mode is enabled by default for concurrent read/write
-performance.
-
-## Network Monitoring
-
-The `NetworkMonitor` class (`src/sage/network.py`) runs a background task that
-periodically probes external connectivity. Its state is exposed to the frontend
-via the `/api/status` endpoint and controls whether online tools (arXiv, web
-search, Wikipedia) are available to the research agent.
-
-The `[network].force_offline` configuration flag overrides the probe and forces
-all online tools to be disabled, which is the recommended setting for
-air-gapped deployments.
+1. **Extraction:** After each conversation turn, the utility model extracts facts categorized as `identity`, `study`, or `preference`.
+2. **Deduplication:** New facts are compared against existing entries using full-text search. Facts exceeding a similarity threshold (default: 0.88) are rejected as duplicates.
+3. **Injection:** On each new query, relevant facts are retrieved by keyword search and injected into the system prompt.
+4. **History Compression:** After a configurable number of turns (default: 6), the utility model summarizes old messages into a compact summary, which replaces the raw history in the graph state.
 
 ## Desktop Integration
 
-The desktop layer (`src/sage/desktop.py`) provides:
+The native Windows application is managed by `desktop.py`:
 
-- **pywebview window**: Renders the React SPA in the system's native webview
-  engine, eliminating the need for a separate browser.
-- **System tray**: Background operation with tray icon and context menu
-  (show/hide window, quit).
-- **Startup orchestration**: Coordinates the FastAPI server, LLM server, and
-  webview window lifecycle.
-
-The application can also run in browser mode (`--browser`) or headless backend
-mode (`--dev`) for development.
-
-## Frontend Architecture
-
-The frontend is a React single-page application built with Vite and TypeScript.
-It is organized as a pnpm monorepo under `frontend/`:
-
-| Package | Purpose |
-| --- | --- |
-| `artifacts/sage` | Main Vite application |
-| `lib/api-client-react` | React hooks and context for API communication |
-| `lib/api-spec` | OpenAPI specification |
-| `lib/api-zod` | Zod schemas for runtime validation |
-| `lib/db` | Client-side database utilities |
-
-Communication with the backend uses:
-
-- **REST** (`POST /api/chat`, `GET /api/sessions`) for request submission and
-  data retrieval.
-- **SSE** (`GET /api/stream/{thread_id}`) for real-time streaming of agent
-  progress, tool calls, and response chunks.
+- **pywebview** renders the React SPA in a native window (no Electron, no browser dependency).
+- **pystray** provides a system tray icon with minimize/restore/quit controls.
+- The FastAPI server, both `llama-server` instances, and the webview window are coordinated in a single process tree.
+- Window lifecycle events (close, minimize) are handled to keep the tray icon and backend alive when the window is dismissed.
 
 ## Configuration System
 
-Configuration is managed by Pydantic settings models in `src/sage/config.py`,
-loaded from TOML files with environment variable overrides.
+Settings are managed via Pydantic models validated against TOML files `config/default.toml` and `config/institution.toml`.
 
-### Runtime-Computed Fields
+### Configuration Sections
 
-Several fields are computed at startup and not present in TOML:
+| Section | Pydantic Model | Key Parameters |
+| --- | --- | --- |
+| `[app]` | `AppSettings` | `name`, `data_dir`, `log_level`, `desktop_mode` |
+| `[llm]` | `LLMSettings` | Model paths, GPU layers, context window, temperature, thinking mode |
+| `[embedding]` | `EmbeddingSettings` | Embedding model path |
+| `[rag]` | `RAGSettings` | Collections, chunk size/overlap, top-k, RRF constant |
+| `[database]` | `DatabaseSettings` | SQLite path, WAL mode |
+| `[agent]` | `AgentSettings` | Token limits, timeouts, retry counts |
+| `[memory]` | `MemorySettings` | Max memories, dedup threshold, compression trigger |
+| `[tools.*]` | `ToolsSettings` | Sandbox timeout, search timeouts, export paths, Mermaid binary |
+| `[corpus]` | `CorpusSettings` | Max user documents, allowed file extensions |
+| `[network]` | `NetworkSettings` | `force_offline`, check interval, timeout |
+| `[ui]` | `UISettings` | Host, port, auto-open browser |
+| `[institution]` | `InstitutionSettings` | Institution name, department, programs, social links |
 
-- `llm.active_context_size`: Determined by hardware probing
-- `llm.active_model_name`: Selected based on CUDA availability
-- `llm.active_parallel_slots`: Computed from available resources
+All settings are loaded once at startup via `get_settings()` (LRU-cached singleton). Hardware-dependent parameters (context window, GPU layers, active model path) are resolved dynamically during LLM server initialization.
 
-All settings are validated at load time via Pydantic, and invalid configurations
-produce clear error messages rather than silent failures.
+## Import Layering
+
+The codebase enforces strict import boundaries, verified by CI (`architecture-check` job):
+
+```text
+tools/  - Cannot import from agents/ or rag/
+rag/    - Cannot import from agents/
+agents/ - May import from rag/ and tools/
+```
+
+This prevents circular dependencies and ensures each layer can be tested in isolation.

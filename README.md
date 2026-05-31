@@ -1,342 +1,227 @@
-Sage is a desktop application that runs large language models locally to provide students with an intelligent study companion. It operates entirely offline after initial setup, ensuring data privacy and removing dependency on cloud services.
+<div align="center">
 
-> Final Year Project, BS Software Engineering (Session 2022-2026)
-> Department of Computer Science, Thal University Bhakkar
-> Authors: Ahmad Raza, Abdullah Khan
+<!-- <img src="assets/banner.png" alt="Sage" width="800" /> -->
 
-## Table of Contents
+# Sage
 
-- [Overview](#overview)
-- [Features](#features)
-- [System Architecture](#system-architecture)
-- [Technology Stack](#technology-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Configuration](#configuration)
-- [Agent Flows](#agent-flows)
-- [Development](#development)
-- [Deployment](#deployment)
-- [Institutional Customization](#institutional-customization)
-- [Limitations and Future Work](#limitations-and-future-work)
-- [License](#license)
-- [References](#references)
+<p><em>An Offline-First Academic Assistant Using Retrieval Augmented Generation with Tool-Integrated Workflows</em></p>
+
+<p>
+  <a href="https://github.com/ahmadrazacdx/Sage/actions/workflows/ci.yml"><img src="https://github.com/ahmadrazacdx/Sage/workflows/CI/badge.svg" alt="CI" /></a>
+  <a href="https://codecov.io/gh/ahmadrazacdx/Sage"><img src="https://codecov.io/gh/ahmadrazacdx/Sage/branch/main/graph/badge.svg" alt="Codecov" /></a>
+  <a href="https://github.com/ahmadrazacdx/Sage/releases/latest"><img src="https://img.shields.io/github/v/release/ahmadrazacdx/Sage?style=flat-square" alt="Release" /></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-Apache%202.0-111827?style=flat-square" alt="Apache 2.0 License" /></a>
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square" alt="Python 3.12" />
+  <img src="https://img.shields.io/badge/Platform-Windows-0078D4?style=flat-square" alt="Windows" />
+</p>
+
+<p>
+  <a href="#overview">Overview</a> ·
+  <a href="#preview">Preview</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#getting-started">Getting Started</a> ·
+  <a href="#documentation">Documentation</a>
+</p>
+
+</div>
 
 ---
 
 ## Overview
 
-Students in resource-constrained institutions often lack access to reliable internet or cloud-based AI tools. **Sage** addresses this gap by packaging a complete AI assistant into a standalone Windows desktop application. It uses quantized open-weight language models, a hybrid retrieval-augmented generation (RAG) pipeline, and a multi-agent orchestration framework to deliver seven distinct academic workflows, all running on consumer-grade hardware without requiring a GPU.
+Sage is a desktop application that runs quantized LLMs locally via `llama.cpp` and orchestrates multiple specialized agentic workflows through LangGraph to handle academic tasks such as explanation, quiz generation, diagram creation, study planning, research, code diagnosis, and extended reasoning.
 
-The system employs a hierarchical model strategy: a primary model (`2B` parameters on `CPU`, `4B` on `CUDA`) handles complex reasoning and generation, while a secondary `0.8B` utility model offloads structured extraction and memory management tasks.
-This separation allows concurrent processing and reduces latency on CPU-only deployments.
+Everything runs on-device. No API keys, no cloud dependencies, no data leaves the machine.
 
-## Features
+### How It Works
 
-| Capability | Description |
-| --- | --- |
-| **Explain** | Context-aware explanations with cited references from ingested course materials |
-| **Quiz** | Adaptive quiz generation with structured evaluation and per-question feedback |
-| **Diagram** | Mermaid diagram generation with syntax validation and SVG rendering |
-| **Roadmap** | Personalized day-by-day study plans with prerequisite sequencing |
-| **Research** | Multi-source academic research with arXiv, web, and Wikipedia integration |
-| **Code Fix** | Code diagnosis, automated repair, sandboxed verification, and explanation |
-| **Thinking** | Extended chain-of-thought reasoning with visible thought process |
+The system manages two concurrent `llama-server` instances:
 
-**Additional capabilities:**
+| Role | Model | Purpose |
+| --- | --- | --- |
+| **Primary** | Qwen3.5-2B (CPU) / Qwen3.5-4B (CUDA) | Generation, reasoning, structured output |
+| **Utility** | Qwen3.5-0.8B | Memory extraction, history compression, auxiliary tasks |
 
-- Offline-first execution with optional online mode for research
-- Hybrid RAG pipeline combining dense vector retrieval and sparse BM25 search
-- Long-term semantic memory with automatic fact extraction and deduplication
-- Context-aware history compression using sliding-window summarization
-- PDF and Markdown export for research reports and study materials
-- Sandboxed Python code execution with figure generation
-- Desktop application with system tray integration via pywebview
-- Windows installer with NSIS packaging and automated build pipeline
-- CI/CD pipeline with linting, type checking, security scanning, and release automation
+User queries enter a LangGraph state graph where a router classifies intent and dispatches to the appropriate agent node. Each node has access to a hybrid RAG pipeline (dense retrieval via `BGE-small-en-v1.5` + sparse BM25, fused with Reciprocal Rank Fusion), a long-term semantic memory store, and a set of tools including sandboxed Python execution, web/arXiv/Wikipedia search, Mermaid diagram rendering, and PDF/Markdown export via Typst.
 
-## System Architecture
+### Agent Modes
 
-Sage follows a modular pipeline architecture built on LangGraph for agent orchestration. A detailed breakdown is available [here](docs/ARCHITECTURE.md).
+| Mode | Agent | What It Does |
+|:---|:---|:---|
+| Explain | `reasoning` | Chain-of-thought explanation with RAG context |
+| Quiz Me | `quiz` | Generates and evaluates quizzes from course material |
+| Diagram | `diagram` | Produces Mermaid diagrams with validation and SVG rendering |
+| Study Plan | `planner` | Builds structured study roadmaps |
+| Research | `research` | Multi-source wikipedia style research through (arXiv, web, Wikipedia) search with citations |
+| Fix Code | `code_fix` | Code diagnosis and repair |
+| Thinking | `reasoning` | Extended reasoning with configurable token budget |
+| General | `general` | Open-ended conversation with memory |
 
-### High-Level Data Flow
+## Preview
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <!-- <img src="assets/screenshots/chat.png" alt="Chat interface" width="100%" /> -->
+      <br />
+      <strong>Chat Interface</strong>
+      <br />
+      <sub>Placeholder — add screenshot</sub>
+    </td>
+    <td width="50%" align="center">
+      <!-- <img src="assets/screenshots/diagram.png" alt="Diagram generation" width="100%" /> -->
+      <br />
+      <strong>Diagram Generation</strong>
+      <br />
+      <sub>Placeholder — add screenshot</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <!-- <img src="assets/screenshots/research.png" alt="Research mode" width="100%" /> -->
+      <br />
+      <strong>Research Mode</strong>
+      <br />
+      <sub>Placeholder — add screenshot</sub>
+    </td>
+    <td width="50%" align="center">
+      <!-- <img src="assets/screenshots/quiz.png" alt="Quiz generation" width="100%" /> -->
+      <br />
+      <strong>Quiz Generation</strong>
+      <br />
+      <sub>Placeholder — add screenshot</sub>
+    </td>
+  </tr>
+</table>
+
+## Architecture
 
 ```text
-User Input
-    |
-    v
-[Router] -- intent classification --> [Retrieval] -- RAG context -->
-    |                                      |
-    v                                      v
-[General / Reasoning / Quiz / Diagram / Planner / Research / CodeFix]
-    |
-    v
-[Response Formatter] --> SSE Stream --> Frontend
+┌─────────────────────────────────────────────────────────┐
+│                    pywebview Window                      │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │            React / TypeScript SPA                 │  │
+│  │         (Vite, SSE streaming, Mermaid)            │  │
+│  └──────────────────────┬────────────────────────────┘  │
+│                         │ HTTP / SSE                     │
+│  ┌──────────────────────▼────────────────────────────┐  │
+│  │              FastAPI Backend                       │  │
+│  │         REST endpoints + SSE streaming             │  │
+│  └──────────────────────┬────────────────────────────┘  │
+│                         │                                │
+│  ┌──────────────────────▼────────────────────────────┐  │
+│  │         LangGraph Orchestration Layer             │  │
+│  │  router → retrieval → agent node → response       │  │
+│  └───────┬──────────┬──────────────┬─────────────────┘  │
+│          │          │              │                      │
+│  ┌───────▼───┐ ┌────▼─────┐ ┌─────▼──────┐              │
+│  │  Hybrid   │ │ Semantic │ │   Tools    │              │
+│  │   RAG     │ │  Memory  │ │ sandbox,   │              │
+│  │ ChromaDB  │ │  SQLite  │ │ search,    │              │
+│  │ + BM25    │ │          │ │ export     │              │
+│  └───────────┘ └──────────┘ └────────────┘              │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │            llama-server (Primary + Utility)       │   │
+│  │           Qwen3.5 GGUF · llama.cpp                │   │
+│  └──────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Hierarchical Model Strategy
-
-#### Primary LLM (2B CPU / 4B CUDA)
-
-- Reasoning, generation, report writing, schedule planning
-- Creative and complex structured output
-
-#### Utility LLM (0.8B, CPU-only offload)
-
-- Memory extraction and history compression
-- Diagnosis and analysis steps in agent flows
-- Quiz evaluation and diagram validation
-
-## Technology Stack
+## Tech Stack
 
 | Layer | Technology |
 | --- | --- |
-| Language | `Python` 3.12+ |
-| LLM Inference | `llama.cpp` (llama-server), GGUF quantized models |
-| Agent Framework | `LangGraph` (stateful multi-node graph orchestration) |
-| LLM Client | `LangChain` (ChatOpenAI interface to local server) |
-| RAG | `ChromaDB` (vector store), `FastEmbed` (BGE-small-en-v1.5 ONNX), `BM25` (sparse) |
-| API Server | `FastAPI`, `Uvicorn`, `Server-Sent Events` |
-| Database | `SQLite` with WAL mode, `aiosqlite` |
-| Frontend | `React`, `TypeScript`, `Vite` |
-| Desktop | `pywebview` (system webview), `pystray` (system tray) |
-| Installer | `NSIS` (Windows installer packaging) |
-| CI/CD | `GitHub Actions` (lint, test, build, release, security scan) |
-| Code Quality | `Ruff` (linting/formatting), `mypy` (type checking), `pre-commit hooks` |
-| Configuration | `TOML`-based with `Pydantic` settings validation |
-| Logging | `structlog` (structured JSON logging) |
-
-## Project Structure
-
-```text
-📦 sage/
-├── 📂 config/                     # TOML configuration files
-│   └── 📄 default.toml            # Default system configuration
-├── 📂 docs/                       # Technical documentation
-├── 📂 frontend/                   # React/TypeScript SPA (pnpm monorepo)
-│   ├── 📂 artifacts/sage/         # Vite application
-│   └── 📂 lib/                    # Shared libraries (API client, DB, Zod schemas)
-├── 📂 installer/                  # NSIS installer scripts and staging
-├── 📂 scripts/                    # Utility scripts (model download, ingestion, benchmark)
-├── 📂 src/sage/                   # Python package root
-│   ├── 📂 agents/                 # LangGraph agent nodes
-│   │   ├── 📄 graph.py            # Graph assembly and compilation
-│   │   ├── 📄 router.py           # Intent classification
-│   │   ├── 📄 retrieval.py        # RAG retrieval node
-│   │   ├── 📄 reasoning.py        # Chain-of-thought reasoning
-│   │   ├── 📄 general.py          # General conversation
-│   │   ├── 📄 quiz.py             # Quiz generation and evaluation
-│   │   ├── 📄 diagram.py          # Mermaid diagram pipeline
-│   │   ├── 📄 planner.py          # Study roadmap generation
-│   │   ├── 📄 research.py         # Multi-source research pipeline
-│   │   ├── 📄 code_fix.py         # Code diagnosis and repair
-│   │   ├── 📄 response.py         # Citation formatting
-│   │   └── 📄 state.py            # AgentState TypedDict
-│   ├── 📂 routers/                # FastAPI endpoint modules
-│   │   ├── 📄 chat.py             # Chat submission and SSE streaming
-│   │   ├── 📄 sessions.py         # Conversation session management
-│   │   ├── 📄 documents.py        # Document upload and management
-│   │   └── 📄 system.py           # Health and status endpoints
-│   ├── 📂 rag/                    # Retrieval-augmented generation
-│   ├── 📂 tools/                  # LangChain tool implementations
-│   │   ├── 📄 search.py           # arXiv, web, Wikipedia search
-│   │   ├── 📄 sandbox.py          # Sandboxed Python execution
-│   │   ├── 📄 mermaid.py          # Mermaid validation and rendering
-│   │   ├── 📄 calculator.py       # Mathematical computation
-│   │   └── 📄 export.py           # PDF and Markdown export
-│   ├── 📄 app.py                  # FastAPI application factory
-│   ├── 📄 config.py               # Pydantic settings with TOML loading
-│   ├── 📄 database.py             # SQLite schema and queries
-│   ├── 📄 desktop.py              # pywebview and system tray integration
-│   ├── 📄 embedding.py            # Embedding model management
-│   ├── 📄 llm.py                  # LLM server lifecycle management
-│   ├── 📄 memory.py               # Semantic memory extraction and compression
-│   ├── 📄 network.py              # Network connectivity monitoring
-│   ├── 📄 prompts.py              # All prompt templates
-│   └── 📄 utils.py                # Shared utilities
-├── 📂 tests/                      # Test suite
-├── 📂 .github/workflows/          # CI/CD pipeline definitions
-├── 📄 build.ps1                   # Windows build orchestration script
-└── 📄 pyproject.toml              # Project metadata and dependencies
-```
+| LLM Inference | `llama.cpp` (`llama-server`), Qwen3.5 GGUF models |
+| Orchestration | `LangGraph`, `LangChain` |
+| Backend | `FastAPI`, `Uvicorn`, `Pydantic`, `SQLite` (WAL), `ChromaDB` |
+| Embeddings | `BGE-small-en-v1.5` (ONNX via `FastEmbed`) |
+| Frontend | `React` 18, `TypeScript`, `Vite`, `Tailwind CSS` |
+| Desktop Shell |  `pywebview`, `pystray` |
+| Code Sandbox | Subprocess isolation with `NumPy`, `Pandas`, `SciPy`, `SymPy`, `Matplotlib`, `scikit-learn` |
+| Export | `Typst` (PDF), Markdown |
+| Search | `DuckDuckGo`, arXiv, Wikipedia |
+| Build & CI | `uv`, `pnpm`, `Ruff`, `Mypy`, `pytest`, GitHub Actions |
+| Installer | `NSIS`, `PowerShell` (`build.ps1`) |
+| Release | GitHub Releases, Cloudflare R2 CDN |
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python >=3.12
-- Node.js 18+ and pnpm (for frontend development)
-- Windows 10/11 (desktop mode requires pywebview)
-- 8 GB RAM minimum (16 GB recommended for CUDA builds)
+- Python 3.12
+- Node.js 18+ and `pnpm`
+- Windows 10/11
+- 8 GB RAM minimum (16 GB recommended)
 
-### Installation
+### Install
 
 ```bash
-# Clone the repository
 git clone https://github.com/ahmadrazacdx/Sage.git
 cd Sage
 
-# Create a virtual environment and install dependencies
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e ".[dev]"
-
-#Using uv
+# Python dependencies
 uv sync --all-extras
-```
 
-**Download the required model files:**
-
-```bash
-python scripts/download_model.py
-```
-
-This places GGUF model files and the embedding model into `artifacts/models/`.
-
-**Build the frontend (production):**
-
-```bash
+# Frontend
 cd frontend/artifacts/sage
 pnpm install
+pnpm dev
 pnpm build
-cd ../../..
 ```
 
-### Running Sage
-
-**Desktop mode** (default, pywebview window):
+### Run
 
 ```bash
+# Desktop mode (pywebview window)
 python -m sage
-```
 
-**Browser mode** (backend + auto-open browser tab):
-
-```bash
-python -m sage --browser
-```
-
-**Development mode** (backend only, use with Vite dev server):
-
-```bash
+# API/headless mode (for development)
 python -m sage --dev
 ```
 
-In a separate terminal for frontend hot-reload:
+## Repository Structure
 
-```bash
-cd frontend/artifacts/sage
-pnpm dev
+```text
+Sage/
+├── src/sage/               # Core Python package
+│   ├── agents/             # LangGraph agent nodes (router, reasoning, quiz, diagram, ...)
+│   ├── rag/                # Hybrid retrieval pipeline (ChromaDB + BM25 + RRF)
+│   ├── routers/            # FastAPI route handlers (chat, sessions, documents, system)
+│   ├── tools/              # Sandboxed execution, search, export, calculator
+│   ├── llm.py              # llama-server subprocess management
+│   ├── memory.py           # Semantic memory extraction and retrieval
+│   ├── database.py         # SQLite persistence layer
+│   ├── config.py           # Pydantic settings + TOML loader
+│   ├── app.py              # FastAPI application factory
+│   └── desktop.py          # pywebview + system tray integration
+├── frontend/               # pnpm monorepo
+│   └── artifacts/sage/     # React SPA (Vite, TypeScript, Tailwind)
+├── config/                 # TOML configuration files
+├── docs/                   # Technical documentation
+├── tests/                  # pytest suite (30 modules, 80%+ coverage)
+├── scripts/                # Model download, ingestion, benchmarking
+├── installer/              # NSIS scripts, build manifest, staging
+├── assets/                 # Logo and static assets
+├── .github/workflows/      # CI, release, build-test, security
+├── pyproject.toml          # Project metadata and tool configuration
+└── build.ps1               # End-to-end installer build script
 ```
 
-## Configuration
+## Documentation
 
-Sage uses a TOML configuration system. The default configuration is in `config/default.toml`. Refer to [docs/SETUP.md](docs/SETUP.md) for a detailed configuration reference.
-
-## Agent Flows
-
-All agent flows are orchestrated as a `LangGraph` state graph. The router node classifies user intent and dispatches to the appropriate pipeline.
-
-| Flow | Pipeline Stages |
+| Document | Description |
 | --- | --- |
-| Explain | Router, Retrieval, Reasoning, Response Formatter |
-| Quiz | Router, Retrieval, Quiz Generation or Evaluation |
-| Diagram | Router, Retrieval, Description, Mermaid Generation, Validation, SVG Render |
-| Roadmap | Router, Analysis, Schedule Generation |
-| Research | Router, Plan, Parallel Search, Digest, Report Writing, Review |
-| Code Fix | Router, Diagnosis, Fix Generation, Sandbox Verification, Explanation |
-| Thinking | Router, Retrieval, Extended Reasoning (visible thought chain) |
-| General | Router, Direct LLM Response |
+| [Architecture](docs/ARCHITECTURE.md) | System layers, agent nodes, data flow, inference strategy |
+| [Setup Guide](docs/SETUP.md) | Environment setup, model downloads, server binaries |
+| [API Reference](docs/API.md) | REST endpoints and SSE streaming contract |
+| [Deployment](docs/DEPLOYMENT.md) | Build pipeline, NSIS packaging, CI/CD |
+| [Institution Guide](docs/INSTITUTION_GUIDE.md) | Customizing Sage for a specific institution/ department |
 
-> On CPU-only builds, the utility model (0.8B) handles the structured extraction steps (diagnosis, analysis, description, evaluation, digest) to reduce latency, while the primary model handles all generation and reasoning steps.
-
-## Development
-
-### Code Quality
-
-```bash
-# Lint and format
-ruff check src/ tests/
-ruff format src/ tests/
-
-# Type checking
-mypy src/
-
-# Run tests
-python -m pytest tests/
-
-# Pre-commit hooks (runs automatically on commit)
-pre-commit run --all-files
-```
-
-### CI/CD Pipeline
-
-The project uses GitHub Actions with the following workflows:
-
-| Workflow | Trigger | Purpose |
-| --- | --- | --- |
-| `ci.yml` | Push, Pull Request | Linting, type checking, unit tests |
-| `build-test.yml` | Push, Pull Request | Build verification |
-| `security.yml` | Push, Schedule | Dependency vulnerability scanning |
-| `release.yml` | Tag push | Build installer, create GitHub Release |
-
-Refer to [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines.
-
-## Deployment
-
-Sage is distributed as a Windows installer built with NSIS. The build pipeline
-is orchestrated by `build.ps1`, which:
-
-1. Builds the frontend production bundle
-2. Packages the Python application
-3. Stages all artifacts (models, servers, configuration)
-4. Compiles the NSIS installer
-
-Refer to [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the complete build and distribution process.
-
-## Institutional Customization
-
-Sage can be adapted for any educational institution. The primary customization
-points are:
-
-- **Curriculum ingestion**: ingest course materials via `scripts/ingest.py` into the RAG vector store
-- **Configuration overrides**: institution-specific settings in `config/institution.toml`
-- **Network policy**: enable or disable online research via the `[network].force_offline` flag
-
-Refer to [docs/INSTITUTION_GUIDE.md](docs/INSTITUTION_GUIDE.md) for a complete customization guide.
-
-## Limitations and Future Work
-
-### Current Limitations
-
-- Windows-only for the desktop application (the backend is cross-platform)
-- Model quality is constrained by the parameter count of models that fit
-  in consumer-grade RAM (2B to 4B parameters)
-- RAG retrieval quality depends on the volume and format of ingested materials
-- Research mode requires an active internet connection
-- No multi-user or authentication support (single-user desktop application)
-
-### Future Improvements
-
-- Cross-platform desktop support (macOS, Linux)
-- Larger model support for systems with dedicated GPUs (7B+ parameters)
-- Collaborative features for classroom and instructor use
-- Automated curriculum ingestion from institutional LMS platforms
-- Voice input and accessibility enhancements
-- Mobile companion application
-
-## License
-
-This project is licensed under the Apache License 2.0. See [LICENSE.md](LICENSE.md) for the full license text.
-
-Copyright 2026 Ahmad Raza.
-
-## References
-
-1. LangGraph Documentation. <https://langchain-ai.github.io/langgraph/>
-2. LangChain Documentation. <https://python.langchain.com/>
-3. llama.cpp. <https://github.com/ggerganov/llama.cpp>
-4. ChromaDB. <https://docs.trychroma.com/>
-5. FastEmbed (Qdrant). <https://github.com/qdrant/fastembed>
-6. FastAPI. <https://fastapi.tiangolo.com/>
-7. Qwen 3.5 Model Family. <https://huggingface.co/Qwen>
-8. NSIS (Nullsoft Scriptable Install System). <https://nsis.sourceforge.io/>
+<div align="center">
+  <sub>BSc Software Engineering · Final Year Project</sub>
+  <br />
+  <sub><a href="https://tu.edu.pk">Thal University Bhakkar</a> · Department of Computer Science & Information Technology</sub>
+  <br />
+  <sub>Built by <a href="https://github.com/ahmadrazacdx">Ahmad Raza</a> and <a href="https://github.com/abdullahkhan001">Abdullah Khan</a></sub>
+</div>
