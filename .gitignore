@@ -65,7 +65,6 @@ models/
 
 # Misc
 system-design/
-notebooks/
 
 .windsurf/
 .agents/

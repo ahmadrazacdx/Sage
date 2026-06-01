@@ -145,26 +145,45 @@ class RAGSettings(BaseSettings):
     vectordb_lite_dir: Path = Path("artifacts/data/databases/vectordb-lite")
     vectordb_standard_dir: Path = Path("artifacts/data/databases/vectordb-standard")
 
+    # Chunking
     chunk_size: int = Field(default=512, ge=64, le=4096)
-    chunk_overlap: int = Field(default=64, ge=0, le=512)
+    chunk_overlap: int = Field(default=80, ge=0, le=512)
+    min_chunk_tokens: int = Field(default=100, ge=10, le=512)
 
+    # Hybrid retrieval
     top_k: int = Field(default=5, ge=1, le=50)
+    retrieval_multiplier: int = Field(default=2, ge=1, le=10)
     rrf_k_constant: int = Field(default=60, ge=1)
     max_retrieval_iterations: int = Field(default=3, ge=1, le=10)
-
-    @property
-    def active_vectordb_dir(self) -> Path:
-        # Resolved at call-time so EmbeddingSettings.tier changes propagate.
-        raise NotImplementedError("Use settings.vectordb_dir_for(tier) instead")
-
-    def vectordb_dir_for(self, tier: Literal["lite", "standard"]) -> Path:
-        return self.vectordb_lite_dir if tier == "lite" else self.vectordb_standard_dir
 
     @model_validator(mode="after")
     def _overlap_lt_size(self) -> RAGSettings:
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError(f"chunk_overlap ({self.chunk_overlap}) must be less than chunk_size ({self.chunk_size})")
         return self
+
+
+class PreprocessingSettings(BaseSettings):
+    """Parameters for the offline preprocessing pipeline."""
+
+    model_config = SettingsConfigDict(extra="ignore")
+
+    max_file_size_mb: int = Field(default=200, ge=1)
+    min_chars_per_page: int = Field(default=50, ge=1)
+
+    # OCR
+    ocr_dpi: int = Field(default=300, ge=72, le=600)
+    ocr_engine: Literal["tesseract", "easyocr"] = "tesseract"
+    ocr_language: str = "eng"
+
+    # LLM-based KU extraction window
+    llm_window_tokens: int = Field(default=1500, ge=100, le=8000)
+    llm_window_overlap: int = Field(default=200, ge=0, le=500)
+    llm_concurrency: int = Field(default=5, ge=1, le=20)
+    llm_retry_attempts: int = Field(default=3, ge=1, le=10)
+
+    # Process-level parallelism
+    workers: int = Field(default=0, ge=0)
 
 
 class DatabaseSettings(BaseSettings):
@@ -299,6 +318,7 @@ class Settings(BaseSettings):
     llm: LLMSettings = LLMSettings()
     embedding: EmbeddingSettings = EmbeddingSettings()
     rag: RAGSettings = RAGSettings()
+    preprocessing: PreprocessingSettings = PreprocessingSettings()
     database: DatabaseSettings = DatabaseSettings()
     agent: AgentSettings = AgentSettings()
     tools: ToolsSettings = ToolsSettings()
@@ -335,6 +355,7 @@ def get_settings() -> Settings:
         llm=LLMSettings(**raw.get("llm", {})),
         embedding=EmbeddingSettings(**raw.get("embedding", {})),
         rag=RAGSettings(**raw.get("rag", {})),
+        preprocessing=PreprocessingSettings(**raw.get("preprocessing", {})),
         database=DatabaseSettings(**raw.get("database", {})),
         agent=AgentSettings(**raw.get("agent", {})),
         tools=ToolsSettings(
