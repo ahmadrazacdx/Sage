@@ -8,7 +8,7 @@ from sage.agents.code_fix import code_fix_node
 from sage.agents.diagram import diagram_node
 from sage.agents.general import general_node
 from sage.agents.planner import RoadmapAnalysis, RoadmapSchedule, planner_node
-from sage.agents.quiz import quiz_node
+from sage.agents.quiz import quiz_node, quiz_evaluate_node
 from sage.agents.reasoning import reasoning_node
 from sage.agents.state import AgentState
 
@@ -17,12 +17,13 @@ def create_mock_llm(responses=None, tool_calls=None):
     llm = MagicMock(spec=ChatOpenAI)
     llm.bind.return_value = llm
     llm.bind_tools.return_value = llm
+    llm.ainvoke = AsyncMock()
 
     if responses:
         if isinstance(responses, list):
-            llm.ainvoke = AsyncMock(side_effect=responses)
+            llm.ainvoke.side_effect = responses
         else:
-            llm.ainvoke = AsyncMock(return_value=responses)
+            llm.ainvoke.return_value = responses
     else:
         llm.ainvoke = AsyncMock(return_value=AIMessage(content="mocked"))
     return llm
@@ -318,3 +319,93 @@ async def test_code_fix_node_sandbox_fail_loop():
         res = await code_fix_node(state, llm)
 
     assert "Could not fully resolve the issue" in res["response"]
+
+
+def test_planner_coercions_and_validations():
+    from sage.agents.planner import RoadmapAnalysis, RoadmapSchedule
+    assert RoadmapAnalysis._coerce_aliases([]) == []
+    assert RoadmapSchedule._coerce_aliases([]) == []
+    assert RoadmapSchedule._coerce_checkpoints([]) == []
+
+
+def test_planner_normalize_schedule_padding_and_checkpoints():
+    from sage.agents.planner import _normalize_schedule, ScheduleDay
+    analysis = RoadmapAnalysis(subject="Physics", timeline_days=3)
+    d1 = ScheduleDay(day=1, session_type="study", topics=["Mechanics"], hours=2, checkpoint={"milestone": "CP1"})
+    d2 = ScheduleDay(day=1, session_type="study", topics=["Mechanics"], hours=2)
+    
+    schedule = RoadmapSchedule(
+        schedule=[d1, d2],
+        checkpoints=[{"after_day": 1, "milestone": "CP1"}, {"after_day": 1, "milestone": "CP2"}],
+        self_assessment_questions=["Q1"]
+    )
+    res = _normalize_schedule(analysis, schedule)
+    
+    assert len(res.schedule) == 3
+    assert len(res.checkpoints) == 1
+    assert len(res.self_assessment_questions) == 3
+
+
+@pytest.mark.asyncio
+async def test_planner_node_analysis_failure_all_retries():
+    state = {"query": "Plan subject", "intent": "planner"}
+    mock_llm = create_mock_llm()
+    with patch("sage.agents.planner.ainvoke_structured_with_fallback", side_effect=Exception("Structured Analysis Failed")):
+        res = await planner_node(state, mock_llm)
+    assert "unable to analyse" in res["response"]
+
+
+@pytest.mark.asyncio
+async def test_reasoning_node_thinking_fast_path_exception():
+    state = {"query": "what is 2 + 2?", "intent": "thinking"}
+    mock_llm = create_mock_llm(AIMessage(content="<think>T</think>4"))
+    with patch("sage.tools.calculator.calculator") as mock_calc:
+        mock_calc.invoke.side_effect = Exception("Fast path error")
+        res = await reasoning_node(state, mock_llm)
+        assert "4" in res["response"]
+
+
+@pytest.mark.asyncio
+async def test_reasoning_node_thinking_exceptions():
+    state = {"query": "solve complex problem", "intent": "thinking"}
+    mock_llm = create_mock_llm()
+    mock_llm.ainvoke.side_effect = TimeoutError("LLM timeout")
+    res = await reasoning_node(state, mock_llm)
+    assert "timed out" in res["response"]
+    mock_llm.ainvoke.side_effect = ValueError("Some random value error")
+    res2 = await reasoning_node(state, mock_llm)
+    assert "ran into an issue" in res2["response"]
+
+
+@pytest.mark.asyncio
+async def test_code_fix_node_query_truncation():
+    state = {"query": "x = 1\n" * 2000, "intent": "code_fix"}
+    mock_llm = create_mock_llm()
+    with patch("sage.agents.code_fix.ainvoke_structured_with_fallback", side_effect=Exception("End of test")):
+        res = await code_fix_node(state, mock_llm)
+        assert "unable to diagnose" in res["response"]
+
+
+@pytest.mark.asyncio
+async def test_quiz_node_generation_exception_path():
+    state = {"query": "generate a quiz", "intent": "quiz", "knowledge_units": []}
+    mock_llm = create_mock_llm()
+    mock_llm.ainvoke.side_effect = Exception("LLM down")
+    
+    res = await quiz_node(state, mock_llm)
+    assert "Unable to generate a quiz" in res["response"]
+
+
+@pytest.mark.asyncio
+async def test_quiz_evaluate_node_exception_path():
+    state = {
+        "query": "1. A\n2. B", 
+        "intent": "quiz", 
+        "last_quiz_questions": '[{"id": 1, "type": "short_answer", "question": "Q1", "answer": "A"}]'
+    }
+    mock_llm = create_mock_llm()
+    mock_llm.ainvoke.side_effect = Exception("Grading failed")
+    
+    res = await quiz_evaluate_node(state, mock_llm)
+    assert "Unable to evaluate your answers" in res["response"]
+

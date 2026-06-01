@@ -1,152 +1,85 @@
 # Institution Guide
 
-This document describes how to customize and deploy Sage for a specific educational institution or department, including curriculum ingestion, network policy, and branding.
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Configuration Hierarchy](#configuration-hierarchy)
-- [Curriculum Ingestion](#curriculum-ingestion)
-- [Network Policy](#network-policy)
-- [Supported Document Formats](#supported-document-formats)
-- [Vector Store Management](#vector-store-management)
-- [Deployment Considerations](#deployment-considerations)
-
----
+> Customizing Sage for a specific institution or department.
 
 ## Overview
 
-Sage is designed to be institution-agnostic. Any university or college can deploy it by:
+Sage is designed to be deployed across different educational environments without modifying source code. All institution-specific behavior is controlled through a single TOML configuration file and a curriculum ingestion script.
 
-1. Ingesting their course materials into the RAG vector store.
-2. Providing institution-specific configuration overrides.
-3. Setting the network policy (online or offline operation).
-4. Distributing the configured installer to students.
+## Configuration File
 
-No source code modifications are required for standard institutional deployments.
-
-## Configuration Hierarchy
-
-Institution-specific settings should be placed in `config/institution.toml`.
-
-Example institution configuration:
+Edit `config/institution.toml`. Values in this file override the corresponding keys in `config/default.toml`.
 
 ```toml
-[app]
-name = "Sage - University of Example"
+[institution]
+name            = "Example University"
+department      = "Department of Computer Science"
+contact_email   = "cs@example.edu"
+academic_year   = "2025-2026"
 
-[network]
-force_offline = true
-
-[corpus]
-max_user_documents = 50
-allowed_extensions = [".pdf", ".docx", ".pptx", ".md", ".txt"]
-
-[rag]
-chunk_size = 512
-chunk_overlap = 64
-top_k = 5
+[institution.social]
+website = "https://example.edu"
 ```
+
+### Supported Fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Institution display name |
+| `department` | `string` | Department name |
+| `contact_email` | `string` | Contact email for support references |
+| `academic_year` | `string` | Active academic year |
+| `social` | `dict` | Official website URL |
 
 ## Curriculum Ingestion
 
-Course materials are ingested into the ChromaDB vector store using the ingestion script:
+Course materials must be indexed into the ChromaDB vector store before deployment.
+
+### Usage
 
 ```bash
 python scripts/ingest.py --source /path/to/materials --course CS101
 ```
 
-### Parameters
+### Supported Document Formats
 
-| Parameter | Description |
+| Format | Extension |
 | --- | --- |
-| `--source` | Path to a directory containing course documents |
-| `--course` | Course code used as metadata for filtered retrieval |
+| PDF (Text-based only) | `.pdf` |
+| Word | `.docx` |
+| PowerPoint | `.pptx` |
+| Markdown | `.md` |
+| Plain text | `.txt` |
 
-### Process
+### Indexing Details
 
-1. The script recursively scans the source directory for supported file types.
-2. Each document is parsed, chunked (recursive text splitter, 512 tokens with 64-token overlap), and embedded using BGE-small-en-v1.5.
-3. Chunks are indexed in the `curriculum` ChromaDB collection with metadata including the source filename and course code.
+- Documents are chunked at 512 tokens with 64-token overlap.
+- Chunks are embedded using `BGE-small-en-v1.5` (ONNX via FastEmbed).
+- Vectors are stored in ChromaDB at `artifacts/data/databases/vectordb/`.
+- Each course gets its own metadata filter within the `curriculum` collection.
+- Multiple courses can be ingested by running the script for each.
 
-### Multiple Courses
+### Organizing Materials
 
-Run the ingestion script:
+```text
+# Enforced directory structure:
+#   raw/
+#     <PROGRAM_CODE>/             - folder name IS the program code
+#       <1-8>/                    - semester number
+#         <COURSE_CODE>_<Title>/  - enables course-level metadata (RECOMMENDED)
+#           <files>               - .pdf  .pptx  .docx  .md  .txt
+```
 
 ```bash
-python scripts/ingest.py
+python scripts/ingest.py --source materials/CS101 --course CS101
+python scripts/ingest.py --source materials/CS201 --course CS201
 ```
 
-Students can then filter retrieval by course code in the application interface.
+## Deployment Workflow
 
-### Re-ingestion
+1. **Configure identity:** Update `config/institution.toml` with institution details and any setting overrides.
+2. **Ingest curriculum:** Run `scripts/ingest.py` to get the vector store.
+3. **Build installer:** Run `build.ps1 -Tier <tier>` to compile the NSIS installer. See [DEPLOYMENT.md](DEPLOYMENT.md) for tier options.
+4. **Distribute:** Provide the generated installer to end users. No development tools are required on target machines.
 
-To update materials for an existing course, re-ingest. The vector store does not perform automatic deduplication of document content.
-
-## Network Policy
-
-The `[network].force_offline` flag controls whether online tools (arXiv search,web search, Wikipedia) are available.
-
-| Setting | Behavior |
-| --- | --- |
-| `force_offline = false` | Online tools are available when connectivity is detected |
-| `force_offline = true` | All online tools are disabled regardless of connectivity |
-
-For air-gapped deployments (no internet access), set `force_offline = true` to
-prevent timeout errors when students attempt to use the Research mode.
-
-The network monitor probes connectivity every 5 seconds (configurable via
-`check_interval`). When `force_offline` is `false`, the system automatically
-enables or disables online tools based on the probe result.
-
-## Supported Document Formats
-
-The following file formats are supported for curriculum ingestion:
-
-| Format | Extension | Notes |
-| --- | --- | --- |
-| PDF | `.pdf` | Text-based PDFs; scanned image PDFs are not supported |
-| Word | `.docx` | Microsoft Word documents |
-| PowerPoint | `.pptx` | Slide text is extracted; images are not indexed |
-| Markdown | `.md` | Plain text with markdown formatting |
-| Plain text | `.txt` | Raw text files |
-
-## Vector Store Management
-
-The vector database is stored at `artifacts/data/databases/vectordb/`. To reset
-the vector store entirely, delete this directory and re-run the ingestion
-script.
-
-## Deployment Considerations
-
-### Lab or Shared Computer Deployment
-
-For shared computers, configure:
-
-```toml
-[memory]
-max_memories = 0
-```
-
-This disables the long-term memory system, preventing student information from
-persisting between sessions on shared machines.
-
-### Institutional Distribution
-
-1. Configure `config/institution.toml` with institution-specific settings.
-2. Ingest course materials using `scripts/ingest.py`.
-3. Build the installer using `build.ps1`.
-4. Distribute the installer to students via institutional channels.
-
-The installer is self-contained and does not require internet access during
-installation or runtime (when `force_offline = true`).
-
-### Minimum Hardware Requirements for Student Machines
-
-| Component | Minimum | Recommended |
-| --- | --- | --- |
-| RAM | 8 GB | 16 GB |
-| Disk (free) | 4 GB | 8 GB |
-| CPU | 4 cores, AVX2 | 6+ cores, AVX2 |
-| GPU | Not required | NVIDIA with 4+ GB VRAM |
-| OS | Windows 10 | Windows 11 |
+For build pipeline details, see [DEPLOYMENT.md](DEPLOYMENT.md).

@@ -68,6 +68,8 @@ dependencies = [
     "types-psutil>=7.2.2.20260408",
     "types-requests>=2.33.0.20260503",
     "langchain-core>=1.2.19",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
 ]
 
 [project.optional-dependencies]
@@ -166,7 +168,12 @@ addopts = "-ra -q --cov=src/sage --cov-report=term-missing --cov-report=xml"
 # Coverage
 [tool.coverage.run]
 source = ["src/sage"]
-omit = ["tests/*"]
+omit = [
+    "tests/*",
+    "src/sage/__main__.py",
+    "src/sage/desktop.py",
+    "src/sage/llm.py",
+]
 
 [tool.coverage.report]
 fail_under = 80

@@ -1,197 +1,131 @@
 # Deployment Guide
 
-This document describes the build pipeline, artifact staging, Windows installer packaging, and release workflow for distributing Sage as a standalone application.
-
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Build Pipeline](#build-pipeline)
-- [Artifact Structure](#artifact-structure)
-- [Frontend Build](#frontend-build)
-- [Python Package Build](#python-package-build)
-- [Staging](#staging)
-- [NSIS Installer](#nsis-installer)
-- [Release Workflow](#release-workflow)
-- [Build Manifest](#build-manifest)
-- [Distribution Checklist](#distribution-checklist)
-
----
+> Build pipeline, installer packaging, and release process for Sage.
 
 ## Overview
 
-Sage is distributed as a self-contained Windows installer. The build pipeline orchestrates the following steps:
+Sage is distributed as a self-contained Windows NSIS installer that bundles a portable Python runtime, all application code, the frontend build, pre-compiled `llama-server` binaries, and optionally the GGUF model files. The end user does not need Python, Node.js, or any development tools installed.
 
-1. Build the frontend production bundle.
-2. Package the Python application and its dependencies.
-3. Stage all required artifacts (models, server binaries, configuration, embedding model) into a single directory tree.
-4. Compile the NSIS installer script into an executable installer.
+## Installer Tiers
 
-The entire process is automated by `build.ps1` (PowerShell) and can be triggered
-manually or via the GitHub Actions release workflow.
+The build system produces four installer variants:
+
+| Tier | Backend | Models Bundled | Typical Size | Use Case |
+| --- | --- | --- | --- | --- |
+| `fast` | CPU | Yes | ~3 GB | CPU-only machines, fully offline |
+| `pro` | CUDA | Yes | ~5 GB | GPU-accelerated, fully offline |
+| `fast-lite` | CPU | No | ~1.2 GB | Smaller download; models added separately |
+| `pro-lite` | CUDA | No | ~1.6 GB | Smaller download; models added separately |
+
+Tier configuration is defined in `installer/build-manifest.json`, which specifies download sources, SHA-256 checksums, and per-tier artifact inclusion rules.
 
 ## Build Pipeline
 
-### build.ps1
+The primary build script is `build.ps1` (PowerShell). It performs the following steps:
 
-The primary build script is `build.ps1` in the repository root. It performs:
+### Pipeline Steps
 
-1. **Environment validation**: Checks for required tools (Python, Node.js, pnpm,
-   NSIS compiler).
-2. **Frontend build**: Runs `pnpm build` in `frontend/artifacts/sage/`.
-3. **Python packaging**: Builds the wheel distribution using the standard Python
-   build toolchain.
-4. **Staging**: Copies all artifacts into `installer/staging/` with the required
-   directory layout.
-5. **Installer compilation**: Invokes `makensis` on `installer/sage.nsi` to
-   produce the final installer executable.
+| Step | Description |
+| --- | --- |
+| **1. Frontend Build** | Compiles the React SPA via `pnpm build` in `frontend/artifacts/sage/` |
+| **2. Python Packaging** | Builds the wheel distribution via `uv build` |
+| **3. Artifact Download** | Downloads models, server binaries, embedding model, and Typst from sources in `build-manifest.json`. Cached in `installer/.cache/`. |
+| **4. Python Standalone** | Downloads a portable CPython 3.12 distribution (no system install required) |
+| **5. Staging** | Copies all components into `installer/staging/` in the final application layout |
+| **6. NSIS Compilation** | Executes `makensis` against `installer/sage.nsi` to produce the installer executable |
+| **7. Checksum** | Generates `SHA256SUMS.txt` for the output archive |
 
-### Usage
+## Build Script
 
-```powershell
-.\build.ps1
+```bash
+# Build the 'fast' tier (CPU with bundled models)
+.\build.ps1 -Tier fast
+
+# Build the 'pro' tier (CUDA with bundled models)
+.\build.ps1 -Tier pro
+
+# Build a lite variant (no models)
+.\build.ps1 -Tier fast-lite
 ```
 
-The resulting installer is placed in `installer/output/`.
+The compiled installer is placed in `installer/output/`.
 
-## Artifact Structure
+## Staging Layout
 
-The staging directory mirrors the installed application layout:
+The staging directory represents the exact filesystem layout installed on the end-user machine:
 
 ```text
 installer/staging/
-  artifacts/
-    models/
-      Qwen3.5-2B-Q4_K_M.gguf
-      Qwen3.5-4B-Q4_K_M.gguf
-      Qwen3.5-0.8B-Q4_K_M.gguf
-      embedding-models/
-        bge-small-en-v1.5/
-    servers/
-      cpu/llama-server.exe
-      cuda/llama-server.exe
-      vulkan/llama-server.exe
-    data/
-      databases/
-      exports/
-    sandbox/
-      data/
-    mmdr/
-      mmdr.exe
-    typst/
-      typst.exe
-  config/
-    default.toml
-  frontend/
-    artifacts/sage/dist/
-  src/
-    sage/
-  launcher/
-    sage-launcher.exe
+├── artifacts/
+│   ├── models/              # GGUF model files + embedding model
+│   ├── servers/             # llama-server binaries (cpu/ and/or cuda/)
+│   ├── typst/               # Typst binary for PDF export
+│   ├── mmdr/                # Mermaid renderer binary
+│   └── data/                # Runtime data (databases, exports, sandbox)
+├── config/
+│   ├── default.toml         # Base configuration
+│   └── institution.toml     # Institution overrides
+├── frontend/
+│   └── artifacts/sage/dist/ # Compiled React SPA
+├── src/
+│   └── sage/                # Python application source
+├── python/                  # Portable CPython 3.12 runtime
+└── launcher/                # Native application entry point
 ```
 
-## Frontend Build
+## CI/CD Pipeline
 
-The frontend is built independently before staging:
+### Continuous Integration (`ci.yml`)
 
-```bash
-cd frontend/artifacts/sage
-pnpm install
-pnpm build
-```
+Runs on every push to `main`, `dev`, and `dev/**` branches, and on PRs to `main`:
 
-The output in `dist/` contains the production-ready static files (HTML, CSS,
-JavaScript) that the FastAPI backend serves.
+| Job | Description |
+| --- | --- |
+| `lint` | Ruff lint + format check, Mypy type checking |
+| `test` | pytest on Ubuntu + Windows × Python 3.12 |
+| `build` | Wheel build + install verification |
+| `architecture-check` | Validates import layering |
 
-## Python Package Build
+### Security (`security.yml`)
 
-The Python package is built as a standard wheel:
+| Job | Trigger | Description |
+| --- | --- | --- |
+| `secrets-scan` | Every push | Gitleaks secret detection |
+| `dependency-audit` | PRs + weekly | pip-audit against exported requirements |
+| `codeql` | PRs + weekly | GitHub CodeQL static analysis |
 
-```bash
-python -m build
-```
+### Release (`release.yml`)
 
-The built distribution is placed in `dist/`. For the installer, the source tree (`src/sage/`) is staged directly rather than the wheel, to simplify the runtime
-layout.
+Triggered by pushing a semver tag (e.g., `v0.1.0`):
 
-## Staging
+| Step | Description |
+| --- | --- |
+| Build | Runs `build.ps1` for all four tiers on `windows-latest` |
+| Upload to R2 | Pushes installer archives to Cloudflare R2 CDN |
+| GitHub Release | Creates a release with auto-generated changelog (via `git-cliff`) and attached installer archives |
 
-The staging step copies all required files into `installer/staging/`. This
-includes:
+## Release Process
 
-- Python source tree (`src/sage/`)
-- Frontend production build (`frontend/artifacts/sage/dist/`)
-- Configuration files (`config/default.toml`)
-- Model files (GGUF format)
-- Server binaries (llama-server for CPU, CUDA, Vulkan)
-- Tool binaries (Typst for PDF export)
-- Embedding model directory
+1. Ensure all CI checks pass on `main`.
+2. Update version in `pyproject.toml` and `installer/build-manifest.json`.
+3. Update `CHANGELOG.md`.
+4. Tag the release:
 
-The staging directory is self-contained: the application can run from this directory without any external dependencies beyond a Python interpreter.
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
 
-## NSIS Installer
+5. The release workflow builds all four installer tiers, uploads to R2, and creates a GitHub Release.
 
-The installer is defined in `installer/sage.nsi` using the Nullsoft Scriptable Install System (NSIS). It provides:
+## Release Validation
 
-- Standard Windows installer UI with license agreement
-- Installation directory selection
-- Start menu and desktop shortcut creation
-- Uninstaller registration in Windows Add/Remove Programs
-- File association and registry entries
-- Complete uninstall procedure
+Before tagging a release:
 
-### Compiling the Installer
-
-```bash
-makensis installer/sage.nsi
-```
-
-The output executable is placed in `installer/output/`.
-
-### Launcher
-
-The installer includes a compiled launcher (`launcher/sage-launcher.exe`) that serves as the application entry point. It locates the bundled Python interpreter
-and starts the Sage application.
-
-## Release Workflow
-
-The GitHub Actions workflow `release.yml` automates the release process:
-
-1. **Trigger**: Pushing a tag matching the pattern `v*` (for example, `v0.1.0`).
-2. **Build**: Runs the full build pipeline on a Windows runner.
-3. **Test**: Executes the test suite to verify the build.
-4. **Package**: Stages artifacts and compiles the NSIS installer.
-5. **Release**: Creates a GitHub Release with the installer attached as a downloadable asset.
-
-### Triggering a Release
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-## Build Manifest
-
-The file `installer/build-manifest.json` records metadata about each build:
-
-- Build timestamp
-- Git commit hash
-- Model versions and checksums
-- Server binary versions
-- Frontend build hash
-
-This manifest is included in the installer for traceability.
-
-## Distribution Checklist
-
-Before creating a release:
-
-1. All CI checks pass (linting, type checking, tests).
-2. `CHANGELOG.md` is updated with the release notes.
-3. `pyproject.toml` version is incremented.
-4. Model files are verified against their checksums.
-5. The installer is tested on a clean Windows system.
-6. The application starts successfully in desktop mode.
-7. All agent flows produce valid outputs.
-8. The uninstaller removes all files and registry entries.
+- [ ] All CI checks pass (lint, test, build, architecture).
+- [ ] Model SHA-256 checksums in `build-manifest.json` are current.
+- [ ] Application starts successfully on a clean Windows 10/11 environment.
+- [ ] All agent modes produce valid responses.
+- [ ] RAG retrieval returns relevant results from ingested curriculum.
+- [ ] Online tools (arXiv, web search) function when `force_offline = false`.
+- [ ] Uninstaller removes all registry entries and filesystem traces.

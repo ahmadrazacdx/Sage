@@ -196,3 +196,69 @@ async def test_ainvoke_structured_with_fallback():
         await ainvoke_structured_with_fallback(
             prompt=prompt, llm=llm4, schema=DummySchema, payload={}, timeout_s=1.0, logger=logger, event_prefix="test"
         )
+
+
+def test_reasoning_math_extraction_rules():
+    from sage.agents.reasoning import _extract_math_expression, _format_calculator_result
+
+    assert _extract_math_expression("") is None
+    assert _extract_math_expression("the result of 100 * 200") == "100 * 200"
+    assert _extract_math_expression("value of 5^2") == "5^2"
+    assert _extract_math_expression("calculate 5 + 5?   ") == "5 + 5"
+    assert _extract_math_expression("calculate 10 = 2*5") == "10"
+    assert _extract_math_expression("calculate simple expression") is None
+    assert _extract_math_expression("calculate 5 + 5 # invalid") is None
+    assert _format_calculator_result(5.0) == "5"
+    assert _format_calculator_result(5.00000000000001) == "5"
+    assert _format_calculator_result(5.5) == "5.5"
+    assert _format_calculator_result("string result") == "string result"
+
+
+def test_reasoning_ensure_think_wrapped_heuristic():
+    from sage.agents.reasoning import _ensure_think_wrapped
+
+    assert _ensure_think_wrapped("") == "<think>\nReasoning completed.\n</think>"
+    assert _ensure_think_wrapped("<think>Already wrapped</think>\n\nFinal answer") == "<think>Already wrapped</think>\n\nFinal answer"
+    text1 = "let me think about this.\nI will calculate the sum.\n\nThe final result is 10."
+    res1 = _ensure_think_wrapped(text1)
+    assert "<think>" in res1
+    assert "let me think about this." in res1
+    assert "The final result is 10." in res1
+    text2 = "Reasoning step.\n\n## Final Conclusion"
+    res2 = _ensure_think_wrapped(text2)
+    assert "<think>\nReasoning step.\n</think>\n\n## Final Conclusion"
+    text3 = "Para one.\n\nPara two."
+    assert _ensure_think_wrapped(text3) == "<think>\nPara one.\n</think>\n\nPara two."
+    text4 = "Single paragraph."
+    assert _ensure_think_wrapped(text4) == "<think>\nCompleted reasoning and tool steps.\n</think>\n\nSingle paragraph."
+
+
+def test_planner_markdown_escaping_and_cleaner():
+    from sage.agents.planner import _clean, _escape_md
+
+    assert _clean("text | day | value") == "text \\| day \\| value"
+    assert _clean("| Day | Type | Topics | Hours | Activities |") == ""
+    assert _escape_md("hello <world>") == "hello \\<world\\>"
+
+
+def test_code_fix_ast_and_fences():
+    from sage.agents.code_fix import (
+        _strip_code_fences,
+        _fenced_block,
+        _detect_non_python,
+        _detect_framework_imports
+    )
+
+    noisy = "<think>t</think>\n```python\nprint(1)\n```"
+    assert _strip_code_fences(noisy) == "print(1)"
+
+    text = "code with stray ``` backticks"
+    res = _fenced_block(text, "python")
+    assert "````python" in res
+    assert "````" in res
+    assert _detect_non_python("#include <iostream>") == "C/C++"
+    assert _detect_non_python("def foo(): pass") is None
+    assert _detect_framework_imports("import syntaxerror(") is None
+    assert _detect_framework_imports("import flask") == "flask"
+    assert _detect_framework_imports("from django.db import models") == "django"
+
