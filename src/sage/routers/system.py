@@ -52,7 +52,6 @@ async def get_status(request: Request) -> SystemStatus:
         embedding_model=cfg.embedding.embed_model.name,
         vectordb_collections=[
             cfg.rag.curriculum_collection,
-            cfg.rag.user_uploads_collection,
         ],
         network_online=network.online if network is not None else False,
         institution_name=cfg.institution.name,

@@ -212,12 +212,15 @@ def stage7_math_preservation(text: str) -> str:
     protected = text
     placeholders: dict[str, str] = {}
     counter = 0
+
+    def _placeholder(m: re.Match) -> str:
+        nonlocal counter
+        key = f"\x00MATHPH{counter}\x00"
+        placeholders[key] = m.group(0)
+        counter += 1
+        return key
+
     for pat in (_INLINE_MATH_RE, _PAREN_MATH_RE):
-        def _placeholder(m: re.Match, c: list[int] = [counter]) -> str:  # noqa: B023
-            key = f"\x00MATHPH{c[0]}\x00"
-            placeholders[key] = m.group(0)
-            c[0] += 1
-            return key
         protected = pat.sub(_placeholder, protected)
 
     # Wrap bare symbol sequences

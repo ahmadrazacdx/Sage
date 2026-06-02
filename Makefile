@@ -23,12 +23,6 @@ help:
 	@echo "    make format      - Auto-fix & format Python code"
 	@echo "    make test        - Run full test suite"
 	@echo ""
-	@echo "  Build & Clean"
-	@echo "    make build       - Run end-to-end production build & installer"
-	@echo "    make clean       - Remove caches and build builds"
-	@echo ""
-	@echo "--------------------------------------------------"
-	@echo ""
 
 install:
 	uv sync --all-extras
@@ -52,11 +46,3 @@ format:
 
 test:
 	uv run pytest tests/
-
-build:
-	@echo "Building installer tier: $(TIER)"
-	powershell.exe -ExecutionPolicy Bypass -File build.ps1 -Tier $(TIER)
-
-clean:
-	rm -rf dist/ build/ src/*.egg-info htmlcov .coverage coverage.xml
-	@find . -type d -name __pycache__ -not -path "./.venv/*" -exec rm -rf {} + 2>/dev/null || true
