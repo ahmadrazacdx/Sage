@@ -174,8 +174,10 @@ def is_think_grammar_error(exc: Exception) -> bool:
     return "failed to initialize samplers" in msg and "empty grammar stack" in msg and "<think>" in msg
 
 
-def strip_think_markers(text: str) -> str:
+def strip_think_markers(text: Any) -> str:
     """Remove `<think>...</think>` blocks and stray tag fragments."""
+    if not isinstance(text, str):
+        text = _content_to_text(text)
     if not text:
         return ""
     cleaned = _THINK_BLOCK_RE.sub("", text)

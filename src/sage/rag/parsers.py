@@ -363,7 +363,8 @@ def parse_docx(path: Path) -> ParsedDocument:
         text = para.text.strip()
         if not text:
             continue
-        prefix = _HEADING_PREFIX.get(para.style.name, "")
+        style_name = para.style.name if para.style else ""
+        prefix = _HEADING_PREFIX.get(style_name, "")
         parts.append(f"{prefix}{text}")
 
     for table in document.tables:
