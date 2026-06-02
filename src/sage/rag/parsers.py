@@ -19,7 +19,6 @@ import re
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import structlog
 
@@ -41,6 +40,7 @@ _OCR_LIGATURE_MAP: dict[str, str] = {
     "ﬅ": "ft",
     "ﬆ": "st",
 }
+
 
 @dataclass
 class PageBlock:
@@ -73,12 +73,10 @@ class ParsedDocument:
         """Return all block texts joined by double-newline."""
         return "\n\n".join(b.text for b in self.blocks if b.text.strip())
 
+
 def _require(pkg: str, install: str) -> None:
     """Raise ImportError with an actionable message if pkg is missing."""
-    raise ImportError(
-        f"Required package '{pkg}' is not installed. "
-        f"Install it with:  uv add {install}"
-    )
+    raise ImportError(f"Required package '{pkg}' is not installed. Install it with:  uv add {install}")
 
 
 def _validate_pdf_magic(path: Path) -> bool:
@@ -88,6 +86,7 @@ def _validate_pdf_magic(path: Path) -> bool:
             return fh.read(4) == _PDF_MAGIC
     except OSError:
         return False
+
 
 # PDF Parser
 def _parse_pdf_pymupdf(path: Path) -> list[PageBlock]:
@@ -111,6 +110,7 @@ def _parse_pdf_pymupdf(path: Path) -> list[PageBlock]:
     finally:
         doc.close()
     return blocks
+
 
 def _parse_pdf_pdfplumber(path: Path) -> list[PageBlock]:
     """PDF parser using pdfplumber with layout=True."""
@@ -147,9 +147,7 @@ def _apply_ocr_ligature_cleanup(text: str) -> str:
     return text
 
 
-def _parse_pdf_ocr_tesseract(
-    path: Path, dpi: int, language: str
-) -> tuple[list[PageBlock], str]:
+def _parse_pdf_ocr_tesseract(path: Path, dpi: int, language: str) -> tuple[list[PageBlock], str]:
     """OCR via pytesseract + pdf2image. Returns (blocks, engine_name)."""
     try:
         import pytesseract  # type: ignore[import-untyped]
@@ -176,8 +174,7 @@ def _parse_pdf_ocr_easyocr(path: Path, dpi: int) -> tuple[list[PageBlock], str]:
         from pdf2image import convert_from_path  # type: ignore[import-untyped]
     except ImportError as exc:
         raise ImportError(
-            f"OCR fallback requires easyocr and pdf2image: uv add easyocr pdf2image. "
-            f"Error: {exc}"
+            f"OCR fallback requires easyocr and pdf2image: uv add easyocr pdf2image. Error: {exc}"
         ) from exc
 
     reader = easyocr.Reader(["en"], gpu=False)
@@ -255,9 +252,7 @@ def parse_pdf(
         )
         try:
             if ocr_engine == "tesseract":
-                blocks, actual_ocr_engine = _parse_pdf_ocr_tesseract(
-                    path, ocr_dpi, ocr_language
-                )
+                blocks, actual_ocr_engine = _parse_pdf_ocr_tesseract(path, ocr_dpi, ocr_language)
             else:
                 blocks, actual_ocr_engine = _parse_pdf_ocr_easyocr(path, ocr_dpi)
             ocr_applied = True
@@ -320,9 +315,7 @@ def parse_pptx(path: Path) -> ParsedDocument:
             # Tables — row-major order
             if shape.has_table:
                 for row in shape.table.rows:
-                    row_text = "\t".join(
-                        cell.text.strip() for cell in row.cells if cell.text.strip()
-                    )
+                    row_text = "\t".join(cell.text.strip() for cell in row.cells if cell.text.strip())
                     if row_text:
                         parts.append(row_text)
 
@@ -375,9 +368,7 @@ def parse_docx(path: Path) -> ParsedDocument:
 
     for table in document.tables:
         for row in table.rows:
-            row_text = "\t".join(
-                cell.text.strip() for cell in row.cells if cell.text.strip()
-            )
+            row_text = "\t".join(cell.text.strip() for cell in row.cells if cell.text.strip())
             if row_text:
                 parts.append(row_text)
 
@@ -399,7 +390,7 @@ def parse_text(path: Path) -> ParsedDocument:
 
     Content is returned as a single page block.
     """
-    text: Optional[str] = None
+    text: str | None = None
 
     # Primary: UTF-8
     try:
@@ -442,7 +433,7 @@ def dispatch_parser(
     ocr_engine: str = "tesseract",
     ocr_dpi: int = 300,
     ocr_language: str = "eng",
-) -> Optional[ParsedDocument]:
+) -> ParsedDocument | None:
     """
     Route *meta.abs_path* to the correct parser based on its extension.
 
@@ -463,9 +454,7 @@ def dispatch_parser(
 
     try:
         if fmt == "pdf":
-            return parse_pdf(
-                path, meta, min_chars_per_page, ocr_engine, ocr_dpi, ocr_language
-            )
+            return parse_pdf(path, meta, min_chars_per_page, ocr_engine, ocr_dpi, ocr_language)
         if fmt == "pptx":
             return parse_pptx(path)
         if fmt == "docx":

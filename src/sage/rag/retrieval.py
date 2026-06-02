@@ -74,9 +74,7 @@ def _load_bm25_index() -> tuple[Any, list[str], list[str]]:
     cfg = get_settings()
     bm25_path = Path(cfg.rag.bm25_curriculum_file)
     if not bm25_path.exists():
-        raise FileNotFoundError(
-            f"BM25 index not found at {bm25_path}. Run the ingestion pipeline first."
-        )
+        raise FileNotFoundError(f"BM25 index not found at {bm25_path}. Run the ingestion pipeline first.")
     log.info("bm25_index_loading", path=str(bm25_path))
     with bm25_path.open("rb") as fh:
         payload: dict[str, Any] = pickle.load(fh)
@@ -286,9 +284,7 @@ async def hybrid_retrieve(
 
     (dense_ids, dense_metas), sparse_ids = await asyncio.gather(dense_task, sparse_task)
 
-    dense_meta_map: dict[str, dict[str, Any]] = {
-        cid: meta for cid, meta in zip(dense_ids, dense_metas, strict=False)
-    }
+    dense_meta_map: dict[str, dict[str, Any]] = {cid: meta for cid, meta in zip(dense_ids, dense_metas, strict=False)}
     fused_ids = _rrf_fuse(dense_ids, sparse_ids, k=rrf_k)
     chunks = _hydrate_chunks(fused_ids, dense_meta_map, top_k=top_k)
 

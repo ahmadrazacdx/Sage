@@ -1,15 +1,12 @@
-import pytest
+import sys
 from pathlib import Path
-import tempfile
-import structlog
+from unittest.mock import patch
+
+import pytest
 from pydantic import ValidationError
-from sage.rag.corpus import (
-    DocumentMetadata,
-    _extract_metadata,
-    _load_sage_version,
-    walk_raw_dir,
-    _MAX_FILE_SIZE_BYTES
-)
+
+from sage.rag.corpus import DocumentMetadata, _extract_metadata, _load_sage_version, walk_raw_dir
+
 
 def test_document_metadata_validation():
     doc = DocumentMetadata(
@@ -20,7 +17,7 @@ def test_document_metadata_validation():
         doc_title="Lec1",
         source_format="pdf",
         source_path="CS/1/CS101_Intro/Lec1.pdf",
-        last_modified="2023-01-01T00:00:00Z"
+        last_modified="2023-01-01T00:00:00Z",
     )
     assert doc.program_code == "CS"
     with pytest.raises(ValidationError):
@@ -32,7 +29,7 @@ def test_document_metadata_validation():
             doc_title="Lec1",
             source_format="pdf",
             source_path="CS/1/CS101_Intro/Lec1.pdf",
-            last_modified="2023-01-01T00:00:00Z"
+            last_modified="2023-01-01T00:00:00Z",
         )
     with pytest.raises(ValidationError):
         DocumentMetadata(
@@ -43,7 +40,7 @@ def test_document_metadata_validation():
             doc_title="Lec1",
             source_format="pdf",
             source_path="CS/1/CS101_Intro/Lec1.pdf",
-            last_modified="2023-01-01T00:00:00Z"
+            last_modified="2023-01-01T00:00:00Z",
         )
     with pytest.raises(ValidationError):
         DocumentMetadata(
@@ -54,21 +51,23 @@ def test_document_metadata_validation():
             doc_title="Lec1",
             source_format="exe",
             source_path="CS/1/CS101_Intro/Lec1.exe",
-            last_modified="2023-01-01T00:00:00Z"
+            last_modified="2023-01-01T00:00:00Z",
         )
+
 
 def test_load_sage_version(tmp_path):
     version = _load_sage_version()
     assert isinstance(version, str)
 
+
 def test_extract_metadata(tmp_path):
     raw_root = tmp_path / "raw"
     course_dir = raw_root / "CS" / "1" / "CS101_Intro"
     course_dir.mkdir(parents=True)
-    
+
     file_path = course_dir / "Lec1.pdf"
     file_path.write_text("dummy")
-    
+
     meta = _extract_metadata(file_path, raw_root)
     assert meta.program_code == "CS"
     assert meta.semester == 1
@@ -100,15 +99,16 @@ def test_extract_metadata(tmp_path):
     with pytest.raises(ValueError, match="COURSE directory"):
         _extract_metadata(bad_course, raw_root)
 
+
 def test_walk_raw_dir(tmp_path):
     raw_root = tmp_path / "raw"
     assert list(walk_raw_dir(raw_root)) == []
 
     raw_root.mkdir()
-    
+
     course_dir = raw_root / "CS" / "1" / "CS101_Intro"
     course_dir.mkdir(parents=True)
-    
+
     valid_pdf = course_dir / "Lec1.pdf"
     valid_pdf.write_text("dummy")
 
@@ -132,17 +132,16 @@ def test_walk_raw_dir(tmp_path):
         docs_small = list(walk_raw_dir(raw_root))
         assert len(docs_small) == 0
 
-import sys
-from unittest.mock import patch
 
 def test_walk_raw_dir_exceptions(tmp_path):
     raw_root = tmp_path / "raw"
     course_dir = raw_root / "CS" / "1" / "CS101_Intro"
     course_dir.mkdir(parents=True)
-    
+
     valid_pdf = course_dir / "Lec1.pdf"
     valid_pdf.write_text("dummy")
     original_stat = Path.stat
+
     def mock_stat(self, *args, **kwargs):
         if "Lec1.pdf" in self.name:
             frame = sys._getframe(1)
@@ -157,4 +156,3 @@ def test_walk_raw_dir_exceptions(tmp_path):
 
     with patch("sage.rag.corpus._extract_metadata", side_effect=ValueError("fake parse error")):
         assert list(walk_raw_dir(raw_root)) == []
-

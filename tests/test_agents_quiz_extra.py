@@ -40,6 +40,7 @@ def test_render_evaluation_high_score():
 
 def test_looks_like_answers_heuristics():
     from sage.agents.quiz import _looks_like_answers
+
     assert _looks_like_answers("1. B\n2. C\n3. A") is True
     assert _looks_like_answers("1. A\n" * 150) is False
     assert _looks_like_answers("1. A") is False
@@ -47,16 +48,16 @@ def test_looks_like_answers_heuristics():
 
 
 def test_stateless_payload_codec():
-    from sage.agents.quiz import _encode_payload, _decode_payload, _serialize, _deserialize
+    from sage.agents.quiz import _decode_payload, _deserialize, _encode_payload
 
     q = QuizQuestion(id=1, question="Q1", answer="A", type="mcq", options=["A", "B"])
     payload = _encode_payload([q])
-    
+
     assert "<!--SAGE_QUIZ_PAYLOAD:" in payload
-    
+
     recovered_json = _decode_payload(payload)
     assert recovered_json is not None
-    
+
     recovered_objs = _deserialize(recovered_json)
     assert len(recovered_objs) == 1
     assert recovered_objs[0].question == "Q1"
@@ -68,14 +69,18 @@ def test_stateless_payload_codec():
 
 def test_validate_quiz_handling():
     import pytest
+
     from sage.agents.quiz import _validate_quiz
+
     with pytest.raises(ValueError, match="Structured output returned None"):
         _validate_quiz(None)
     with pytest.raises(ValueError, match="Model returned zero usable questions"):
         _validate_quiz(QuizOutput(questions=[]))
     q1 = QuizQuestion(question="**Q1**: What is 2+2?", type="mcq", options=["3", "4"], answer="5")
-    q2 = QuizQuestion(question="Question 2 - which of the following is correct?", type="short_answer", options=["A", "B"], answer="A")
-    
+    q2 = QuizQuestion(
+        question="Question 2 - which of the following is correct?", type="short_answer", options=["A", "B"], answer="A"
+    )
+
     quiz = QuizOutput(questions=[q1, q2])
     validated = _validate_quiz(quiz)
     assert len(validated.questions) == 2
@@ -88,6 +93,7 @@ def test_validate_quiz_handling():
 
 def test_validate_evaluation_matching():
     from sage.agents.quiz import _validate_evaluation
+
     ev = QuizEvaluation(results=[])
     res = _validate_evaluation(ev, [])
     assert res.score == "0/0"
@@ -95,9 +101,8 @@ def test_validate_evaluation_matching():
     r1 = QuizResult(id=0, correct=True, student_answer="A")
     prior = [QuizQuestion(id=5, question="Q1")]
     ev_new = QuizEvaluation(results=[r1])
-    
+
     res_new = _validate_evaluation(ev_new, prior)
     assert res_new.results[0].id == 5
     assert res_new.score == "1/1"
     assert res_new.percentage == 100.0
-

@@ -218,7 +218,10 @@ def test_reasoning_ensure_think_wrapped_heuristic():
     from sage.agents.reasoning import _ensure_think_wrapped
 
     assert _ensure_think_wrapped("") == "<think>\nReasoning completed.\n</think>"
-    assert _ensure_think_wrapped("<think>Already wrapped</think>\n\nFinal answer") == "<think>Already wrapped</think>\n\nFinal answer"
+    assert (
+        _ensure_think_wrapped("<think>Already wrapped</think>\n\nFinal answer")
+        == "<think>Already wrapped</think>\n\nFinal answer"
+    )
     text1 = "let me think about this.\nI will calculate the sum.\n\nThe final result is 10."
     res1 = _ensure_think_wrapped(text1)
     assert "<think>" in res1
@@ -226,7 +229,7 @@ def test_reasoning_ensure_think_wrapped_heuristic():
     assert "The final result is 10." in res1
     text2 = "Reasoning step.\n\n## Final Conclusion"
     res2 = _ensure_think_wrapped(text2)
-    assert "<think>\nReasoning step.\n</think>\n\n## Final Conclusion"
+    assert res2 == "<think>\nReasoning step.\n</think>\n\n## Final Conclusion"
     text3 = "Para one.\n\nPara two."
     assert _ensure_think_wrapped(text3) == "<think>\nPara one.\n</think>\n\nPara two."
     text4 = "Single paragraph."
@@ -242,12 +245,7 @@ def test_planner_markdown_escaping_and_cleaner():
 
 
 def test_code_fix_ast_and_fences():
-    from sage.agents.code_fix import (
-        _strip_code_fences,
-        _fenced_block,
-        _detect_non_python,
-        _detect_framework_imports
-    )
+    from sage.agents.code_fix import _detect_framework_imports, _detect_non_python, _fenced_block, _strip_code_fences
 
     noisy = "<think>t</think>\n```python\nprint(1)\n```"
     assert _strip_code_fences(noisy) == "print(1)"
@@ -261,4 +259,3 @@ def test_code_fix_ast_and_fences():
     assert _detect_framework_imports("import syntaxerror(") is None
     assert _detect_framework_imports("import flask") == "flask"
     assert _detect_framework_imports("from django.db import models") == "django"
-

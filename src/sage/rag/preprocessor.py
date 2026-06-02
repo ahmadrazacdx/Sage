@@ -24,7 +24,6 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import Counter
-from typing import Optional
 
 import structlog
 
@@ -80,6 +79,7 @@ _MATH_SYMBOLS_RE = re.compile(r"[∑∫∂∇∆∏√≤≥≠≈±×÷∈∉�
 # Stage 8: Minimum word count for a non-empty document
 _MIN_WORD_COUNT: int = 30
 
+
 def stage1_unicode_normalisation(text: str) -> str:
     """
     Apply NFC normalisation, remove zero-width characters,
@@ -122,20 +122,13 @@ def stage3_header_footer_removal(text: str) -> str:
     # Detect repeating short lines across the full text
     lines = text.split("\n")
     short_lines = [
-        ln.strip()
-        for ln in lines
-        if 1 < len(ln.strip()) <= _MAX_HEADER_LINE_LEN
-        and not ln.strip().startswith("#")
+        ln.strip() for ln in lines if 1 < len(ln.strip()) <= _MAX_HEADER_LINE_LEN and not ln.strip().startswith("#")
     ]
     counts = Counter(short_lines)
-    repeated: frozenset[str] = frozenset(
-        ln for ln, cnt in counts.items() if cnt >= _MIN_REPEAT_COUNT
-    )
+    repeated: frozenset[str] = frozenset(ln for ln, cnt in counts.items() if cnt >= _MIN_REPEAT_COUNT)
 
     if repeated:
-        cleaned_lines = [
-            ln for ln in lines if ln.strip() not in repeated
-        ]
+        cleaned_lines = [ln for ln in lines if ln.strip() not in repeated]
         text = "\n".join(cleaned_lines)
         log.debug(
             "header_footer_removed",
@@ -155,10 +148,10 @@ def stage4_encoding_repair(text: str) -> str:
 
         return ftfy.fix_text(text)  # type: ignore[no-any-return]
     except ImportError:
-            log.warning(
-                "ftfy_unavailable",
-                hint="Install ftfy for Mojibake repair: uv add ftfy",
-            )
+        log.warning(
+            "ftfy_unavailable",
+            hint="Install ftfy for Mojibake repair: uv add ftfy",
+        )
     return text
 
 
@@ -187,7 +180,7 @@ def stage6_reference_isolation(text: str) -> tuple[str, str]:
     if heading_match is None:
         return text, ""
 
-    ref_section = text[heading_match.start():]
+    ref_section = text[heading_match.start() :]
     citation_count = len(_CITATION_LINE_RE.findall(ref_section))
 
     if citation_count < _MIN_CITATION_LINES:
@@ -233,7 +226,7 @@ def stage7_math_preservation(text: str) -> str:
     return protected
 
 
-def stage8_content_length_gate(text: str, source_file: str = "") -> Optional[str]:
+def stage8_content_length_gate(text: str, source_file: str = "") -> str | None:
     """Return text unchanged if it has ≥30 words, else return None."""
     word_count = len(text.split())
     if word_count < _MIN_WORD_COUNT:
@@ -251,7 +244,7 @@ def stage8_content_length_gate(text: str, source_file: str = "") -> Optional[str
 def run_preprocessing_pipeline(
     raw_text: str,
     source_file: str = "",
-) -> Optional[tuple[str, str]]:
+) -> tuple[str, str] | None:
     """
     Apply all preprocessing stages in strict order.
 

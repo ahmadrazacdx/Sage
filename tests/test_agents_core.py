@@ -8,7 +8,7 @@ from sage.agents.code_fix import code_fix_node
 from sage.agents.diagram import diagram_node
 from sage.agents.general import general_node
 from sage.agents.planner import RoadmapAnalysis, RoadmapSchedule, planner_node
-from sage.agents.quiz import quiz_node, quiz_evaluate_node
+from sage.agents.quiz import quiz_evaluate_node, quiz_node
 from sage.agents.reasoning import reasoning_node
 from sage.agents.state import AgentState
 
@@ -323,24 +323,26 @@ async def test_code_fix_node_sandbox_fail_loop():
 
 def test_planner_coercions_and_validations():
     from sage.agents.planner import RoadmapAnalysis, RoadmapSchedule
+
     assert RoadmapAnalysis._coerce_aliases([]) == []
     assert RoadmapSchedule._coerce_aliases([]) == []
     assert RoadmapSchedule._coerce_checkpoints([]) == []
 
 
 def test_planner_normalize_schedule_padding_and_checkpoints():
-    from sage.agents.planner import _normalize_schedule, ScheduleDay
+    from sage.agents.planner import ScheduleDay, _normalize_schedule
+
     analysis = RoadmapAnalysis(subject="Physics", timeline_days=3)
     d1 = ScheduleDay(day=1, session_type="study", topics=["Mechanics"], hours=2, checkpoint={"milestone": "CP1"})
     d2 = ScheduleDay(day=1, session_type="study", topics=["Mechanics"], hours=2)
-    
+
     schedule = RoadmapSchedule(
         schedule=[d1, d2],
         checkpoints=[{"after_day": 1, "milestone": "CP1"}, {"after_day": 1, "milestone": "CP2"}],
-        self_assessment_questions=["Q1"]
+        self_assessment_questions=["Q1"],
     )
     res = _normalize_schedule(analysis, schedule)
-    
+
     assert len(res.schedule) == 3
     assert len(res.checkpoints) == 1
     assert len(res.self_assessment_questions) == 3
@@ -350,7 +352,9 @@ def test_planner_normalize_schedule_padding_and_checkpoints():
 async def test_planner_node_analysis_failure_all_retries():
     state = {"query": "Plan subject", "intent": "planner"}
     mock_llm = create_mock_llm()
-    with patch("sage.agents.planner.ainvoke_structured_with_fallback", side_effect=Exception("Structured Analysis Failed")):
+    with patch(
+        "sage.agents.planner.ainvoke_structured_with_fallback", side_effect=Exception("Structured Analysis Failed")
+    ):
         res = await planner_node(state, mock_llm)
     assert "unable to analyse" in res["response"]
 
@@ -391,7 +395,7 @@ async def test_quiz_node_generation_exception_path():
     state = {"query": "generate a quiz", "intent": "quiz", "knowledge_units": []}
     mock_llm = create_mock_llm()
     mock_llm.ainvoke.side_effect = Exception("LLM down")
-    
+
     res = await quiz_node(state, mock_llm)
     assert "Unable to generate a quiz" in res["response"]
 
@@ -399,13 +403,12 @@ async def test_quiz_node_generation_exception_path():
 @pytest.mark.asyncio
 async def test_quiz_evaluate_node_exception_path():
     state = {
-        "query": "1. A\n2. B", 
-        "intent": "quiz", 
-        "last_quiz_questions": '[{"id": 1, "type": "short_answer", "question": "Q1", "answer": "A"}]'
+        "query": "1. A\n2. B",
+        "intent": "quiz",
+        "last_quiz_questions": '[{"id": 1, "type": "short_answer", "question": "Q1", "answer": "A"}]',
     }
     mock_llm = create_mock_llm()
     mock_llm.ainvoke.side_effect = Exception("Grading failed")
-    
+
     res = await quiz_evaluate_node(state, mock_llm)
     assert "Unable to evaluate your answers" in res["response"]
-

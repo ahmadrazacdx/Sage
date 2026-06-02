@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import re
 import tomllib
-from datetime import datetime, timezone
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator
 
 import structlog
 from pydantic import BaseModel, Field, field_validator
+
 from sage.config import get_settings
 
 log = structlog.get_logger(__name__)
@@ -68,6 +69,7 @@ _SEMESTER_RE = re.compile(r"^[1-8]$")
 _COURSE_DIR_RE = re.compile(r"^([A-Z]{2,4}\d{3,4})[\s_\-]+(.+)$")
 _MAX_FILE_SIZE_BYTES: int = _settings.preprocessing.max_file_size_mb * 1024 * 1024
 
+
 class DocumentMetadata(BaseModel):
     """
     All metadata extractable from a `raw/` file path and filesystem stat."""
@@ -103,6 +105,7 @@ class DocumentMetadata(BaseModel):
             raise ValueError(f"source_format must be one of {allowed}, got {v!r}")
         return v
 
+
 def _extract_metadata(abs_path: Path, raw_root: Path) -> DocumentMetadata:
     """
     Parse metadata from a file's path.
@@ -114,24 +117,17 @@ def _extract_metadata(abs_path: Path, raw_root: Path) -> DocumentMetadata:
     parts = rel.parts
 
     if len(parts) != _REQUIRED_DEPTH:
-        raise ValueError(
-            f"Path depth {len(parts)} ≠ {_REQUIRED_DEPTH} "
-            f"(expected PROGRAM/SEMESTER/COURSE/FILE)"
-        )
+        raise ValueError(f"Path depth {len(parts)} ≠ {_REQUIRED_DEPTH} (expected PROGRAM/SEMESTER/COURSE/FILE)")
 
     program_code, semester_str, course_dir, filename = parts
 
     # Validate program code
     if not _PROGRAM_CODE_RE.match(program_code):
-        raise ValueError(
-            f"PROGRAM_CODE {program_code!r} must be 2–6 uppercase alpha characters"
-        )
+        raise ValueError(f"PROGRAM_CODE {program_code!r} must be 2–6 uppercase alpha characters")
 
     # Validate semester
     if not _SEMESTER_RE.match(semester_str):
-        raise ValueError(
-            f"SEMESTER {semester_str!r} must be an integer 1–8 with no leading zeros"
-        )
+        raise ValueError(f"SEMESTER {semester_str!r} must be an integer 1–8 with no leading zeros")
     semester = int(semester_str)
 
     # Validate course directory name
@@ -150,9 +146,7 @@ def _extract_metadata(abs_path: Path, raw_root: Path) -> DocumentMetadata:
 
     # File modification time
     mtime = abs_path.stat().st_mtime
-    last_modified = (
-        datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat().replace("+00:00", "Z")
-    )
+    last_modified = datetime.fromtimestamp(mtime, tz=UTC).isoformat().replace("+00:00", "Z")
 
     # Normalise path separators
     source_path = str(abs_path.relative_to(raw_root.parent)).replace("\\", "/")
@@ -169,12 +163,13 @@ def _extract_metadata(abs_path: Path, raw_root: Path) -> DocumentMetadata:
         abs_path=abs_path,
     )
 
+
 def walk_raw_dir(raw_root: Path) -> Iterator[DocumentMetadata]:
     """
     Recursively discover all valid source documents under `raw_root`.
 
     Yields one :class:`DocumentMetadata` per accepted file.  Skips,
-    warns, or logs errors inline so the pipeline can process the maximum number 
+    warns, or logs errors inline so the pipeline can process the maximum number
     of valid files even when some are broken.
 
     Args:

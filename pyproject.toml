@@ -118,6 +118,7 @@ build-backend = "uv_build"
 target-version = "py312"
 line-length = 120
 src = ["src", "tests", "scripts"]
+exclude = ["notebooks/ingest.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -137,6 +138,9 @@ disallow_untyped_defs = false
 disallow_untyped_calls = false
 disallow_untyped_decorators = false
 disable_error_code = ["type-arg", "attr-defined"]
+exclude = [
+    'notebooks/ingest\.ipynb',
+]
 
 [[tool.mypy.overrides]]
 module = [
@@ -166,6 +170,28 @@ module = [
     "psutil.*",
     "bs4.*",
     "langchain_mcp_adapters.*",
+    "ftfy.*",
+    "ftfy",
+    "fastembed.*",
+    "fastembed",
+    "fitz.*",
+    "fitz",
+    "pdfplumber.*",
+    "pdfplumber",
+    "pytesseract.*",
+    "pytesseract",
+    "pdf2image.*",
+    "pdf2image",
+    "easyocr.*",
+    "easyocr",
+    "numpy.*",
+    "numpy",
+    "pptx.*",
+    "pptx",
+    "docx.*",
+    "docx",
+    "chardet.*",
+    "chardet",
 ]
 ignore_missing_imports = true
 

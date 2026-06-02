@@ -23,12 +23,11 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import tomllib
 import time
+import tomllib
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
 
 import structlog
 import yaml
@@ -37,30 +36,30 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
-from sage.config import get_settings
-from sage.rag.corpus import DocumentMetadata, walk_raw_dir
-from sage.rag.parsers import ParsedDocument, dispatch_parser
-from sage.rag.preprocessor import run_preprocessing_pipeline
-from sage.utils import configure_logging
+from sage.config import get_settings  # noqa: E402
+from sage.rag.corpus import DocumentMetadata, walk_raw_dir  # noqa: E402
+from sage.rag.parsers import ParsedDocument, dispatch_parser  # noqa: E402
+from sage.rag.preprocessor import run_preprocessing_pipeline  # noqa: E402
+from sage.utils import configure_logging  # noqa: E402
 
 log = structlog.get_logger(__name__)
 
 _MAX_WORKERS_WINDOWS: int = 4
+_MAX_WORKERS_UNIX: int = 32
+
 
 def _default_worker_count(configured: int) -> int:
     """Return a safe worker count respecting the OS-specific cap."""
     cpu_count = os.cpu_count() or 2
-    if configured > 0:
-        raw = configured
-    else:
-        raw = max(1, cpu_count - 1)
+    raw = configured if configured > 0 else max(1, cpu_count - 1)
 
     cap = _MAX_WORKERS_WINDOWS if sys.platform == "win32" else _MAX_WORKERS_UNIX
     return min(raw, cap)
 
+
 def _load_sage_version() -> str:
     script_path = Path(__file__).resolve()
-    pyproject_path: Optional[Path] = None
+    pyproject_path: Path | None = None
     for parent in script_path.parents:
         candidate = parent / "pyproject.toml"
         if candidate.exists():
@@ -79,8 +78,11 @@ def _load_sage_version() -> str:
         log.warning("sage_version_fallback", path=str(pyproject_path))
         return "0.0.0"
 
+
 SAGE_VERSION: str = _load_sage_version()
 _FM_DELIMITER: str = "---"
+
+
 # YAML front-matter serialisation
 def _build_front_matter(meta: DocumentMetadata) -> str:
     """
@@ -107,6 +109,7 @@ def _build_front_matter(meta: DocumentMetadata) -> str:
     }
     yaml_str = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
     return f"{_FM_DELIMITER}\n{yaml_str}{_FM_DELIMITER}\n"
+
 
 # Atomic file write
 def _atomic_write(output_path: Path, content: str) -> None:
@@ -213,12 +216,7 @@ def _emit_terminal_summary(
         "Error",
     ]
 
-    all_types = sorted(
-        set(discovered_by_type)
-        | set(queued_by_type)
-        | set(duplicate_by_type)
-        | set(status_by_type)
-    )
+    all_types = sorted(set(discovered_by_type) | set(queued_by_type) | set(duplicate_by_type) | set(status_by_type))
 
     type_rows: list[list[object]] = []
     for fmt in all_types:
@@ -293,9 +291,9 @@ def _process_one_file(
     out_root = Path(out_root_str)
 
     # Reconstruct DocumentMetadata from plain dict (crosses process boundary)
-    meta = DocumentMetadata(abs_path=Path(meta_dict["abs_path"]), **{
-        k: v for k, v in meta_dict.items() if k != "abs_path"
-    })
+    meta = DocumentMetadata(
+        abs_path=Path(meta_dict["abs_path"]), **{k: v for k, v in meta_dict.items() if k != "abs_path"}
+    )
 
     output_path = _resolve_output_path(meta, raw_root, out_root)
 
@@ -314,7 +312,7 @@ def _process_one_file(
     cfg = get_settings().preprocessing
 
     # --- Step 2–4: Parse ---
-    parsed: Optional[ParsedDocument] = dispatch_parser(
+    parsed: ParsedDocument | None = dispatch_parser(
         meta,
         min_chars_per_page=cfg.min_chars_per_page,
         ocr_engine=cfg.ocr_engine,
@@ -356,9 +354,7 @@ def _process_one_file(
     raw_text = parsed.full_text()
 
     # Step 5: 8-stage mechanical preprocessing
-    preprocess_result = run_preprocessing_pipeline(
-        raw_text, source_file=meta.source_path
-    )
+    preprocess_result = run_preprocessing_pipeline(raw_text, source_file=meta.source_path)
 
     if preprocess_result is None:
         log.warning("file_empty_after_preprocessing", source=meta.source_path)
@@ -437,7 +433,7 @@ def run_pipeline(
     out_root: Path,
     dry_run: bool,
     force: bool,
-    course_filter: Optional[str],
+    course_filter: str | None,
     worker_count: int,
     log_level: str,
 ) -> int:
@@ -470,7 +466,7 @@ def run_pipeline(
 
             def __exit__(self, *_):
                 pass
-    
+
     # Collect all valid document metadata
     all_docs = list(walk_raw_dir(raw_root))
 
@@ -529,10 +525,7 @@ def run_pipeline(
     )
 
     # Serialise metadata to plain dicts for cross-process pickling
-    meta_dicts = [
-        {**doc.model_dump(exclude={"abs_path"}), "abs_path": str(doc.abs_path)}
-        for doc in deduped_docs
-    ]
+    meta_dicts = [{**doc.model_dump(exclude={"abs_path"}), "abs_path": str(doc.abs_path)} for doc in deduped_docs]
     worker_kwargs = dict(
         raw_root_str=str(raw_root),
         out_root_str=str(out_root),
@@ -593,10 +586,7 @@ def run_pipeline(
                 finally:
                     bar.update(1)
                     bar.set_postfix_str(
-                        (
-                            f"ok={n_ok} skip={n_skipped} "
-                            f"ocrskip={n_skipped_ocr} empty={n_empty} err={n_error}"
-                        )
+                        f"ok={n_ok} skip={n_skipped} ocrskip={n_skipped_ocr} empty={n_empty} err={n_error}"
                     )
 
     log.info(
@@ -680,9 +670,7 @@ def main() -> None:
     out_root: Path = args.out_dir or (data_root / "processed")
 
     # Resolve worker count
-    worker_count: int = _default_worker_count(
-        args.workers if args.workers is not None else preprocess_cfg.workers
-    )
+    worker_count: int = _default_worker_count(args.workers if args.workers is not None else preprocess_cfg.workers)
 
     log.info(
         "preprocess_startup",
