@@ -22,8 +22,7 @@ from sage.rag.retrieval import (  # noqa: E402
 
 def test_get_embed_model():
     _get_embed_model.cache_clear()
-    with patch("sage.rag.retrieval.get_settings") as mock_settings, \
-         patch("sage.rag.retrieval.TextEmbedding"):
+    with patch("sage.rag.retrieval.get_settings") as mock_settings, patch("sage.rag.retrieval.TextEmbedding"):
         mock_settings.return_value.embedding.embed_model = "dummy/path"
         model = _get_embed_model()
         model2 = _get_embed_model()
