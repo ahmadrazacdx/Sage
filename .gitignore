@@ -65,9 +65,29 @@ models/
 
 # Misc
 system-design/
-notebooks/
 
 .windsurf/
 .agents/
+
+# Typst
+artifacts/typst/
+
+# mmdr
+artifacts/mmdr/
+
+# sandbox
+artifacts/sandbox/data/sessions/
+artifacts/sandbox/data/figures/
+
 artifacts/servers/
-artifacts/models/
+
+# Installer artifacts (large/generated)
+installer/staging/
+installer/.cache/
+installer/output/
+installer/*.exe
+installer/launcher/
+
+# Node dependencies
+node_modules/
+**/node_modules/
