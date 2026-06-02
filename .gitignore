@@ -86,8 +86,3 @@ installer/staging/
 installer/.cache/
 installer/output/
 installer/*.exe
-installer/launcher/
-
-# Node dependencies
-node_modules/
-**/node_modules/

@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sage</title>
+    <meta name="description"
+        content="Download and deploy Sage AI Study Assistant release tiers. Fully local, hyper-optimized LLM and embedding pipelines for CPU and GPU workstations.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&family=Syne:wght@700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css">
+    <link rel="icon" type="image/x-icon" href="./assets/favicon.ico">
+</head>
+
+<body>
+    <div class="glow-bg glow-primary"></div>
+    <div class="glow-bg glow-secondary"></div>
+    <div class="glow-bg glow-tertiary"></div>
+
+    <header class="main-header">
+        <div class="header-container">
+            <a href="#" class="logo-area">
+                <img src="./assets/sage-logo.svg" alt="Sage Logo" class="sage-logo-img">
+                <span class="logo-text">Sage</span>
+            </a>
+
+            <div class="header-actions">
+                <a href="https://github.com/ahmadrazacdx/Sage" class="btn btn-secondary btn-icon" target="_blank">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+                    </svg>
+                    <span>GitHub</span>
+                </a>
+            </div>
+
+            <button class="mobile-menu-btn" aria-label="Toggle Navigation">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </header>
+
+    <main class="page-content">
+        <section class="hero-section">
+            <div class="hero-container">
+                <h1 class="hero-title">Offline-First Academic Intelligence.<br><span class="gradient-text">Unlimited.
+                        100%
+                        Private.</span></h1>
+                <p class="hero-subtitle">
+                    Sage integrates llama.cpp inference runtimes, ONNX embeddings, undergrad CS course materials, and
+                    open-weight LLMs into standalone, zero-dependency distributions.
+                </p>
+                <div class="hero-cta-group">
+                    <a href="#tiers" class="btn btn-primary btn-lg">Browse Artifact Tiers</a>
+                    <a href="#recommendations" class="btn btn-secondary btn-lg">Advisory Calculator</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="recommendations" class="recommendations-section">
+            <div class="section-container">
+                <div class="section-header">
+                    <span class="section-category">Hardware Optimizer</span>
+                    <h2 class="section-title">Identify Your Ideal Build Configuration</h2>
+                    <p class="section-subtitle">Input your local system specifications to estimate expected token
+                        generation speeds and determine the optimal Sage distribution tier.</p>
+                </div>
+
+                <div class="advisory-card glass-panel">
+                    <div class="calculator-inputs">
+                        <div class="input-group">
+                            <label for="calc-gpu">Graphics Card (GPU)</label>
+                            <select id="calc-gpu" class="form-select">
+                                <option value="none">No Discrete GPU (CPU Only)</option>
+                                <option value="nvidia-mid">NVIDIA RTX Card (4GB - 6GB VRAM)</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="calc-ram">System RAM</label>
+                            <select id="calc-ram" class="form-select">
+                                <option value="8">8 GB RAM</option>
+                                <option value="16" selected>16 GB RAM or Higher</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="calc-connection">Internet Speed</label>
+                            <select id="calc-connection" class="form-select">
+                                <option value="slow">Slow / Metered Connection</option>
+                                <option value="fast" selected>Fast / Broadband</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="calculator-result">
+                        <div class="result-label">Recommended Deployment Tier</div>
+                        <div id="recommended-tier-name" class="result-tier-name gradient-text">Sage Pro (GPU Full)</div>
+                        <div id="recommended-tier-desc" class="result-tier-desc">Your local system specifications will
+                            be analyzed to map the optimal staged release, calculating expected performance parameters
+                            dynamically.
+                        </div>
+                        <div class="result-metrics">
+                            <div class="metric-box">
+                                <div class="metric-val" id="rec-speed">~35+ t/s</div>
+                                <div class="metric-lbl">Expected Generation Speed</div>
+                            </div>
+                            <div class="metric-box">
+                                <div class="metric-val" id="rec-size">~4.0 GB</div>
+                                <div class="metric-lbl">Archive Download Size</div>
+                            </div>
+                            <div class="metric-box">
+                                <div class="metric-val" id="rec-backend">CUDA 12.4</div>
+                                <div class="metric-lbl">Execution Mode</div>
+                            </div>
+                        </div>
+                        <a href="#tiers" id="rec-cta" class="btn btn-primary btn-block">Go to Sage Pro Download</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="tiers" class="artifacts-section">
+            <div class="section-container">
+                <div class="section-header">
+                    <span class="section-category">Release Distribution</span>
+                    <h2 class="section-title">Sage Build Staging Distributions</h2>
+                    <p class="section-subtitle">Select and download the pre-compiled installer package corresponding to
+                        your hardware capabilities.</p>
+                </div>
+
+                <div class="filter-wrapper">
+                    <button class="filter-chip active" data-filter="all">All Tiers</button>
+                    <button class="filter-chip" data-filter="gpu">GPU Optimized (CUDA)</button>
+                    <button class="filter-chip" data-filter="cpu">CPU Compatible</button>
+                    <button class="filter-chip" data-filter="lite">Lite Packages</button>
+                </div>
+            </div>
+
+            <div class="artifacts-grid">
+                <div class="tier-card glass-panel featured" data-tier-type="gpu">
+                    <div class="card-badge">RECOMMENDED FOR GPU</div>
+                    <div class="card-header">
+                        <div class="tier-icon-wrapper"
+                            style="border-color: rgba(118, 185, 0, 0.3); background: rgba(118, 185, 0, 0.05);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="color: #76B900;">
+                                <path
+                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-3.62 2.38-6.7 5.74-7.66C10.45 5.56 9 7.6 9 10c0 3.87 3.13 7 7 7 1.05 0 2.04-.23 2.94-.65-.77 2.14-2.58 3.8-4.94 4.58z" />
+                            </svg>
+                        </div>
+                        <div class="tier-meta">
+                            <h3 class="tier-title">Sage Pro</h3>
+                            <span class="tier-tagline">GPU Full Pack</span>
+                        </div>
+                    </div>
+
+                    <div class="tier-price-row">
+                        <span class="tier-size">~5.41 GB</span>
+                        <span class="tier-type-tag gpu">CUDA 12.4</span>
+                    </div>
+
+                    <p class="tier-desc">Our flagship GPU tier. Pre-configures a CUDA 12.4 backend with Qwen-3.5 4B
+                        (core LLM) and 0.8B (reasoning agent). Optimized for advanced coding, planning, and real-time
+                        inference.
+                    </p>
+
+                    <div class="tier-features-list">
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text"><strong>Qwen-3.5 4B Instruct</strong> GGUF (GPU)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text"><strong>Qwen-3.5 0.8B Instruct</strong> GGUF (Utility)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text"><strong>BGE-Small-EN-v1.5</strong> ONNX (Embedding)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">llama.cpp CUDA + CPU Fallback Engine</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">Typst Document Engine + Standalone Python</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">Built-in Carriculum Vector DB</span>
+                        </div>
+                    </div>
+
+                    <div class="tier-actions">
+                        <a href="https://pub-bd9548bbe1db4308b025de406732a5fa.r2.dev/vdev-ci/sage-pro-0.1.0-windows-x86_64.zip"
+                            class="btn btn-primary btn-block download-trigger" data-tier="pro">
+                            <span>Download ZIP Bundle</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="tier-card glass-panel" data-tier-type="cpu">
+                    <div class="card-header">
+                        <div class="tier-icon-wrapper"
+                            style="border-color: rgba(0, 113, 197, 0.3); background: rgba(0, 113, 197, 0.05);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0071C5"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="4" y="4" width="16" height="16" rx="2" />
+                                <rect x="9" y="9" width="6" height="6" fill="rgba(0, 113, 197, 0.1)" />
+                                <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" />
+                            </svg>
+                        </div>
+                        <div class="tier-meta">
+                            <h3 class="tier-title">Sage Fast</h3>
+                            <span class="tier-tagline">CPU Full Pack</span>
+                        </div>
+                    </div>
+
+                    <div class="tier-price-row">
+                        <span class="tier-size">~3.42 GB</span>
+                        <span class="tier-type-tag cpu">AVX2 CPU</span>
+                    </div>
+
+                    <p class="tier-desc">The standard CPU package. Deploys an AVX2-optimized llama.cpp execution engine
+                        preloaded with Qwen-3.5 2B (core LLM) and 0.8B (reasoning agent) for private local setups.
+                    </p>
+
+                    <div class="tier-features-list">
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text"><strong>Qwen-3.5 2B Instruct</strong> GGUF (CPU)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text"><strong>Qwen-3.5 0.8B Instruct</strong> GGUF (Utility)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text"><strong>BGE-Small-EN-v1.5</strong> ONNX (Embedding)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">llama.cpp AVX2 Optimized CPU Engine</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">Typst Document Engine + Standalone Python</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">Built-in Carriculum Vector DB</span>
+                        </div>
+                    </div>
+
+                    <div class="tier-actions">
+                        <a href="https://pub-bd9548bbe1db4308b025de406732a5fa.r2.dev/vdev-ci/sage-fast-0.1.0-windows-x86_64.zip"
+                            class="btn btn-primary btn-block download-trigger" data-tier="fast">
+                            <span>Download ZIP Bundle</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="tier-card glass-panel" data-tier-type="lite gpu">
+                    <div class="card-header">
+                        <div class="tier-icon-wrapper"
+                            style="border-color: rgba(118, 185, 0, 0.3); background: rgba(118, 185, 0, 0.05);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="color: #76B900;">
+                                <path
+                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-3.62 2.38-6.7 5.74-7.66C10.45 5.56 9 7.6 9 10c0 3.87 3.13 7 7 7 1.05 0 2.04-.23 2.94-.65-.77 2.14-2.58 3.8-4.94 4.58z" />
+                            </svg>
+                        </div>
+                        <div class="tier-meta">
+                            <h3 class="tier-title">Sage Pro-Lite</h3>
+                            <span class="tier-tagline">GPU Engine Only</span>
+                        </div>
+                    </div>
+
+                    <div class="tier-price-row">
+                        <span class="tier-size">~2.14 GB</span>
+                        <span class="tier-type-tag gpu">CUDA 12.4</span>
+                    </div>
+
+                    <p class="tier-desc">Minimal GPU runner engine. Pre-packages CUDA llama.cpp servers, ONNX embedding
+                        pipelines, and Typst. Excludes preloaded model weights to support custom user GGUF
+                        configurations.
+                    </p>
+
+                    <div class="tier-features-list">
+                        <div class="feature-item">
+                            <span class="feature-icon cross">✗</span>
+                            <span class="feature-text disabled">No 4B model (Download & Add Manually)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon cross">✗</span>
+                            <span class="feature-text disabled">No 0.8B Utility model (Download & Add
+                                Manually)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text"><strong>BGE-Small-EN-v1.5</strong> ONNX (Embedding)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">llama.cpp CUDA server binaries</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">Typst Compiler + Standalone Python</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">Built-in Carriculum Vector DB</span>
+                        </div>
+                    </div>
+
+                    <div class="tier-actions">
+                        <a href="https://pub-bd9548bbe1db4308b025de406732a5fa.r2.dev/vdev-ci/sage-pro-lite-0.1.0-windows-x86_64.zip"
+                            class="btn btn-primary btn-block download-trigger" data-tier="pro-lite">
+                            <span>Download ZIP Bundle</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="tier-card glass-panel" data-tier-type="lite cpu">
+                    <div class="card-header">
+                        <div class="tier-icon-wrapper"
+                            style="border-color: rgba(0, 113, 197, 0.3); background: rgba(0, 113, 197, 0.05);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0071C5"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="4" y="4" width="16" height="16" rx="2" />
+                                <rect x="9" y="9" width="6" height="6" fill="rgba(0, 113, 197, 0.1)" />
+                                <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" />
+                            </svg>
+                        </div>
+                        <div class="tier-meta">
+                            <h3 class="tier-title">Sage Fast-Lite</h3>
+                            <span class="tier-tagline">CPU Engine Only</span>
+                        </div>
+                    </div>
+
+                    <div class="tier-price-row">
+                        <span class="tier-size">~1.61 GB</span>
+                        <span class="tier-type-tag cpu">AVX2 CPU</span>
+                    </div>
+
+                    <p class="tier-desc">Minimal CPU runner engine. Pre-packages AVX2 llama.cpp servers, ONNX embedding
+                        pipelines, and Typst. Excludes preloaded model weights to support custom user GGUF
+                        configurations.
+                    </p>
+
+                    <div class="tier-features-list">
+                        <div class="feature-item">
+                            <span class="feature-icon cross">✗</span>
+                            <span class="feature-text disabled">No 2B model (Download & Add Manually)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon cross">✗</span>
+                            <span class="feature-text disabled">No 0.8B Utility model (Download & Add
+                                Manually)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text"><strong>BGE-Small-EN-v1.5</strong> ONNX (Embedding)</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">llama.cpp CPU server binaries</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">Typst Compiler + Standalone Python</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon tick">✓</span>
+                            <span class="feature-text">Built-in Carriculum Vector DB</span>
+                        </div>
+                    </div>
+
+                    <div class="tier-actions">
+                        <a href="https://pub-bd9548bbe1db4308b025de406732a5fa.r2.dev/vdev-ci/sage-fast-lite-0.1.0-windows-x86_64.zip"
+                            class="btn btn-primary btn-block download-trigger" data-tier="fast-lite">
+                            <span>Download ZIP Bundle</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="comparison" class="comparison-section">
+            <div class="section-container">
+                <div class="section-header">
+                    <span class="section-category">Architectural Specs</span>
+                    <h2 class="section-title">Technical Staging Matrix</h2>
+                    <p class="section-subtitle">Inspect the deep technical composition and architectural capabilities
+                        mapped across all four package releases.</p>
+                </div>
+
+                <div class="table-scroll-container glass-panel">
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th class="sticky-col">Technical Attributes</th>
+                                <th class="highlight-th">
+                                    <div class="tier-th-badge pro">FLAGSHIP</div>
+                                    <div class="tier-th-name">Sage Pro</div>
+                                    <div class="tier-th-sub">GPU Full</div>
+                                </th>
+                                <th>
+                                    <div class="tier-th-name">Sage Fast</div>
+                                    <div class="tier-th-sub">CPU Full</div>
+                                </th>
+                                <th>
+                                    <div class="tier-th-name">Sage Pro-Lite</div>
+                                    <div class="tier-th-sub">GPU Engine</div>
+                                </th>
+                                <th>
+                                    <div class="tier-th-name">Sage Fast-Lite</div>
+                                    <div class="tier-th-sub">CPU Engine</div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="section-row">
+                                <td colspan="5">Core Infrastructure</td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Execution Model</td>
+                                <td class="highlight-td text-primary font-weight-600">NVIDIA CUDA Acceleration</td>
+                                <td>CPU Optimized Threading</td>
+                                <td class="text-primary font-weight-600">NVIDIA CUDA Acceleration</td>
+                                <td>CPU Optimized Threading</td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Download Archive Size</td>
+                                <td class="highlight-td font-code text-high">~5.41 GB</td>
+                                <td class="font-code">~3.42 GB</td>
+                                <td class="font-code">~2.14 GB</td>
+                                <td class="font-code">~1.61 GB</td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Hardware Requirements</td>
+                                <td class="highlight-td text-primary">NVIDIA GPU (CUDA 12.4+)<br>16GB+ RAM, 5GB SSD
+                                    space</td>
+                                <td>x86_64 CPU (AVX2 Support)<br>8GB+ RAM, 4GB disk space</td>
+                                <td class="text-primary">NVIDIA GPU (CUDA 12.4+)<br>8GB+ RAM, 1GB disk space</td>
+                                <td>x86_64 CPU (AVX2 Support)<br>8GB+ RAM, 1GB disk space</td>
+                            </tr>
+
+                            <tr class="section-row">
+                                <td colspan="5">LLM & Embedding Models</td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Primary LLM Model</td>
+                                <td class="highlight-td text-high"><strong>Qwen-3.5 4B GGUF</strong> (Q4_K_M)<br><span
+                                        class="label-sub text-muted">Higher intelligence, advanced coding</span></td>
+                                <td><strong>Qwen-3.5 2B GGUF</strong> (Q4_K_M)<br><span
+                                        class="label-sub text-muted">Super lightweight, rapid response</span></td>
+                                <td class="text-muted">None Pre-packaged<br><span class="label-sub">Download & Add
+                                        Manually</span></td>
+                                <td class="text-muted">None Pre-packaged<br><span class="label-sub">Download & Add
+                                        Manually</span></td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Utility LLM Model</td>
+                                <td class="highlight-td"><strong>Qwen-3.5 0.8B GGUF</strong> (Q4_K_M)<br><span
+                                        class="label-sub text-muted">Pre-packaged for auxiliary tasks</span></td>
+                                <td><strong>Qwen-3.5 0.8B GGUF</strong> (Q4_K_M)<br><span
+                                        class="label-sub text-muted">Pre-packaged for auxiliary tasks</span></td>
+                                <td class="text-muted">None Pre-packaged<br><span class="label-sub">Download & Add
+                                        Manually</span></td>
+                                <td class="text-muted">None Pre-packaged<br><span class="label-sub">Download & Add
+                                        Manually</span></td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Embedding Engine</td>
+                                <td class="highlight-td font-code text-high">bge-small-en-v1.5 ONNX Q</td>
+                                <td class="font-code">bge-small-en-v1.5 ONNX Q</td>
+                                <td class="font-code text-high">bge-small-en-v1.5 ONNX Q</td>
+                                <td class="font-code">bge-small-en-v1.5 ONNX Q</td>
+                            </tr>
+
+                            <tr class="section-row">
+                                <td colspan="5">Server & Runtimes</td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">LLM Server Binary</td>
+                                <td class="highlight-td">llama.cpp b9010 CUDA 12.4<br><span
+                                        class="label-sub text-muted">CUDA Included</span></td>
+                                <td>llama.cpp b9010 CPU x64<br><span class="label-sub text-muted">Custom stripped
+                                        executables</span></td>
+                                <td>llama.cpp b9010 CUDA 12.4<br><span class="label-sub text-muted">Custom stripped
+                                        executables</span></td>
+                                <td>llama.cpp b9010 CPU x64<br><span class="label-sub text-muted">Custom stripped
+                                        executables</span></td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Document Compiler</td>
+                                <td class="highlight-td font-code">Typst v0.13.1 CLI</td>
+                                <td class="font-code">Typst v0.13.1 CLI</td>
+                                <td class="font-code">Typst v0.13.1 CLI</td>
+                                <td class="font-code">Typst v0.13.1 CLI</td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Python Environment</td>
+                                <td class="highlight-td">CPython 3.12.9 Standalone<br><span
+                                        class="label-sub text-muted">Stripped installation, 100% portable</span></td>
+                                <td>CPython 3.12.9 Standalone<br><span class="label-sub text-muted">Stripped
+                                        installation, 100% portable</span></td>
+                                <td>CPython 3.12.9 Standalone<br><span class="label-sub text-muted">Stripped
+                                        installation, 100% portable</span></td>
+                                <td>CPython 3.12.9 Standalone<br><span class="label-sub text-muted">Stripped
+                                        installation, 100% portable</span></td>
+                            </tr>
+
+                            <tr class="section-row">
+                                <td colspan="5">Best Suited Cases</td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Primary Audience</td>
+                                <td class="highlight-td text-primary font-weight-600">GPU Power Users</td>
+                                <td>Standard Laptop/Desktop Users</td>
+                                <td>Standard Laptop/Desktop Users</td>
+                                <td>Standard Laptop/Desktop Users</td>
+                            </tr>
+                            <tr>
+                                <td class="sticky-col">Generation Latency</td>
+                                <td class="highlight-td text-high">⚡ Real-time (Extremely Fast)</td>
+                                <td>🚀 Smooth (12-18 tokens/sec)</td>
+                                <td>⚡ Real-time (Extremely Fast)</td>
+                                <td>🚀 Smooth (12-18 tokens/sec)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="checksums" class="checksums-section">
+            <div class="section-container">
+                <div class="section-header">
+                    <span class="section-category">Staged Verification</span>
+                    <h2 class="section-title">SHA-256 Release Signatures</h2>
+                    <p class="section-subtitle">Verify the absolute integrity of your downloaded package. Compare your
+                        calculated SHA-256 hash against the official build signatures below.</p>
+                </div>
+
+                <div class="checksum-grid">
+                    <div class="checksum-viewer-card glass-panel">
+                        <div class="card-title-row">
+                            <span class="card-icon">🔐</span>
+                            <h3>Official SHA256SUMS.txt</h3>
+                        </div>
+                        <div class="checksum-block">
+                            <pre><code id="sha256-sums-content"># Official SHA256 signatures for Sage v0.1.0
+8ef9a09bf9c0520ee914699223aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d  sage-pro-0.1.0-windows-x86_64.zip
+411c4d17a6505c210f4b977450420f630fbe7d9db7942dea809f077976968ef90  sage-pro-0.1.0-windows-x86_64.exe
+00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a41  sage-pro-0.1.0-windows-x86_64.bin
+
+90ee9973d48f16c731c0520ee914699223aaf42c8b7c3cab2bf3d69c355048d4a  sage-fast-0.1.0-windows-x86_64.zip
+430f2107d69aa6fe22623fcdcb5a01f5b2126d16f6c2606fb52e5ff4db09bf90a  sage-fast-0.1.0-windows-x86_64.exe
+bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517a  sage-fast-0.1.0-windows-x86_64.bin
+
+c8938d4834b44358871698a7a8c050ad9769c60a4aa14a7e862455821146049db  sage-pro-lite-0.1.0-windows-x86_64.zip
+52414b40932449029e2e3adb8f7a8f244e53b073373f41f785bd6828ab574115a  sage-pro-lite-0.1.0-windows-x86_64.exe
+
+4e53b073373f41f785bd6828ab57411552414b40932449029e2e3adb8f7a8f24a  sage-fast-lite-0.1.0-windows-x86_64.zip
+351887614dd249d2860e4a5f8dcbe5936558b7e8038248bf4a5f8dcbe5936558b  sage-fast-lite-0.1.0-windows-x86_64.exe</code></pre>
+                        </div>
+                        <button class="btn btn-secondary btn-block" id="copy-checksums-btn">Copy Signatures</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="main-footer">
+        <div class="footer-container">
+            <div class="footer-brand">
+                <div class="logo-area">
+                    <img src="./assets/sage-logo.svg" alt="Sage Logo" class="sage-logo-img">
+                    <span class="logo-text">Sage</span>
+                </div>
+                <p class="brand-slogan">The private local AI Academic Assistant for Computer Science Education and
+                    Research.</p>
+            </div>
+
+            <div class="footer-links-group">
+                <div class="footer-column">
+                    <h4>Documentation</h4>
+                    <a href="https://github.com/ahmadrazacdx/Sage/blob/main/docs/SETUP.md" class="footer-link"
+                        target="_blank">Setup
+                        Manual</a>
+                    <a href="https://github.com/ahmadrazacdx/Sage/blob/main/docs/ARCHITECTURE.md" class="footer-link"
+                        target="_blank">Developer
+                        Guide</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 Sage. Built by Ahmad Raza & Abdullah Khan.</p>
+        </div>
+    </footer>
+
+    <script src="./script.js"></script>
+</body>
+
+</html>

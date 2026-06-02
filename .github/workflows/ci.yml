@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main, dev, "dev/**"]
   pull_request:
     branches: [main]
 
@@ -25,45 +24,34 @@ jobs:
       - name: Mypy
         run: uv run mypy src/
 
-  # test:
-  #   needs: lint
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       os: [ubuntu-latest, windows-latest]
-  #       python-version: ["3.11", "3.12"]
-  #   runs-on: ${{ matrix.os }}
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: astral-sh/setup-uv@v5
-  #     - run: uv python install ${{ matrix.python-version }}
-  #     - run: uv sync --all-extras
-  #     - name: Run tests
-  #       run: uv run pytest --cov --cov-report=xml --cov-report=term-missing
-  #     - name: Upload coverage
-  #       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: coverage-report
-  #         path: coverage.xml
-
-  build:
+  test:
     needs: lint
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv python install 3.12
-      - name: Build wheel
-        run: uv build
-      - name: Verify wheel installs
-        run: |
-          uv venv /tmp/test-install
-          uv pip install dist/*.whl --python /tmp/test-install/bin/python
-      - uses: actions/upload-artifact@v4
+      - run: uv python install ${{ matrix.python-version }}
+      - run: uv sync --all-extras
+      - name: Run tests
+        run: uv run pytest
+      - name: Upload coverage reports to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
         with:
-          name: dist
-          path: dist/
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
 
   architecture-check:
     runs-on: ubuntu-latest

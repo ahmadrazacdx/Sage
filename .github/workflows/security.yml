@@ -36,7 +36,7 @@ jobs:
       - run: uv sync --all-extras
       - name: Audit dependencies
         run: |
-          uv export --no-dev -o /tmp/requirements.txt
+          uv export --no-dev --no-emit-project -o /tmp/requirements.txt
           uvx pip-audit -r /tmp/requirements.txt --strict --desc
 
   codeql:
@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       security-events: write
+      contents: read
     if: github.event_name == 'pull_request' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4

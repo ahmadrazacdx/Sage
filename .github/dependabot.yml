@@ -6,7 +6,7 @@ updates:
       interval: weekly
     groups:
       langchain:
-        patterns: ["langchain*", "langgraph*", "langmem*"]
+        patterns: ["langchain*", "langgraph*"]
       security:
         patterns: ["pydantic*", "chromadb*", "aiosqlite*"]
 

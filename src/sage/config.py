@@ -13,16 +13,33 @@ Usage anywhere in the codebase:
 
 from __future__ import annotations
 
+import os
 import tomllib
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 # ----Paths----
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+def _get_project_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "artifacts").is_dir() and (parent / "config").is_dir():
+            os.environ["SAGE_HOME"] = str(parent)
+            return parent
+
+    env_root = os.environ.get("SAGE_HOME")
+    if env_root:
+        return Path(env_root).resolve()
+
+    # Last resort fallback
+    return Path(__file__).resolve().parents[2]
+
+
+_PROJECT_ROOT = _get_project_root()
 _DEFAULT_TOML = _PROJECT_ROOT / "config" / "default.toml"
 _INSTITUTION_TOML = _PROJECT_ROOT / "config" / "institution.toml"
 
@@ -54,21 +71,37 @@ class AppSettings(BaseSettings):
     name: str = "Sage"
     data_dir: Path = Path("artifacts/data")
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+    desktop_mode: bool = True
 
 
 class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     # --- Deployment tier ---
-    # Controls which model, embedding model, and llama-server flags are active.
-    # "auto" = inferred from available RAM at startup.
+    # "auto" = inferred from available RAM.
     deployment_tier: Literal["auto", "nano", "mid", "turbo"] = "auto"
 
-    small_model_path: Path = Path("artifacts/models/Qwen3.5-2B-Q4_K_M.gguf")
-    small_model_name: str = "Qwen3.5-2B"
-    large_model_path: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
-    large_model_name: str = "Qwen3.5-4B"
-    llama_cpp_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")
+    model_path_cpu: Path = Path("artifacts/models/Qwen3.5-2B-Q4_K_M.gguf")
+    model_path_cuda: Path = Path("artifacts/models/Qwen3.5-4B-Q4_K_M.gguf")
+    model_name_cpu: str = "Qwen3.5-2B"
+    model_name_cuda: str = "Qwen3.5-4B"
+
+    # Active instance configuration dynamically populated by llm.py
+    active_model_path: Path = Path(".")
+    active_model_name: str = "uninitialized"
+    active_context_size: int = 0
+    active_parallel_slots: int = 1
+
+    # Utility model
+    util_model_path: Path = Path("artifacts/models/Qwen3.5-0.8B-Q4_K_M.gguf")
+    util_model_name: str = "Qwen3.5-0.8B"
+    util_context_window: int = Field(default=4096, ge=512, le=16384)
+    util_startup_timeout: float = Field(default=60.0, ge=10.0, le=300.0)
+
+    # Per-backend llama-server binaries.
+    llama_cpp_cpu_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")
+    llama_cpp_cuda_bin: Path = Path("artifacts/servers/cuda/llama-server.exe")
+    llama_cpp_vulkan_bin: Path = Path("artifacts/servers/vulkan/llama-server.exe")
 
     # "auto" or an integer string
     gpu_layers: str = "auto"
@@ -79,42 +112,10 @@ class LLMSettings(BaseSettings):
 
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, ge=256, le=131072)
-    thinking_mode: bool = False
-
-    # Caps Qwen3.5 <think>...</think> tokens server-side.
-    reasoning_budget: int = Field(default=1024, ge=0, le=32768)
-
-    # How long to wait for llama-server /health to become 200.
-    # 60s was too short: mmap cold-start on SATA SSD takes 60-120s for a 2.86 GB model.
+    thinking_mode: bool = True
+    reasoning_budget: int = Field(default=512, ge=0, le=32768)
     startup_timeout: float = Field(default=180.0, ge=30.0, le=600.0)
-
-    @property
-    def active_model_path(self) -> Path:
-        """Resolve the active model path based on deployment tier."""
-        if self.deployment_tier == "nano":
-            return self.small_model_path
-        elif self.deployment_tier in ("mid", "turbo"):
-            return self.large_model_path
-
-        # Auto mode: fall back to total system memory.
-        import psutil
-
-        total_ram_gb = psutil.virtual_memory().total / (1024**3)
-        return self.large_model_path if total_ram_gb >= 12.0 else self.small_model_path
-
-    @property
-    def active_model_name(self) -> str:
-        """Resolve the active model name based on deployment tier."""
-        if self.deployment_tier == "nano":
-            return self.small_model_name
-        elif self.deployment_tier in ("mid", "turbo"):
-            return self.large_model_name
-
-        # Auto mode: fall back to total system memory.
-        import psutil
-
-        total_ram_gb = psutil.virtual_memory().total / (1024**3)
-        return self.large_model_name if total_ram_gb >= 12.0 else self.small_model_name
+    port: int = Field(default=8080, ge=1, le=65535)
 
     @field_validator("gpu_layers", "context_window", mode="before")
     @classmethod
@@ -133,46 +134,46 @@ class LLMSettings(BaseSettings):
 class EmbeddingSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    tier: Literal["lite", "standard"] = "lite"
-    model_lite: Path = Path("artifacts/models/embedding-models/arctic-embed-s")
-    model_standard: Path = Path("artifacts/models/embedding-models/arctic-embed-m-v2")
-
-    @property
-    def active_model(self) -> Path:
-        return self.model_lite if self.tier == "lite" else self.model_standard
+    embed_model: Path = Path(
+        "artifacts/models/embedding-models/models--qdrant--bge-small-en-v1.5-onnx-q/snapshots/52398278842ec682c6f32300af41344b1c0b0bb2"
+    )
 
 
 class RAGSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     curriculum_collection: str = "curriculum"
-    user_uploads_collection: str = "user_uploads"
-    vectordb_lite_dir: Path = Path("artifacts/data/databases/vectordb-lite")
-    vectordb_standard_dir: Path = Path("artifacts/data/databases/vectordb-standard")
+    vectordb: Path = Path("artifacts/data/databases/vectordb")
+    bm25_curriculum_file: Path = Path("artifacts/data/databases/vectordb/bm25_curriculum.pkl")
 
-    chunk_size: int = Field(default=512, ge=64, le=4096)
-    chunk_overlap: int = Field(default=64, ge=0, le=512)
-
-    top_k: int = Field(default=5, ge=1, le=50)
+    # Hybrid retrieval
+    top_k: int = Field(default=3, ge=1, le=50)
+    retrieval_multiplier: int = Field(default=2, ge=1, le=10)
     rrf_k_constant: int = Field(default=60, ge=1)
-    max_retrieval_iterations: int = Field(default=3, ge=1, le=10)
+    max_retrieval_iterations: int = Field(default=2, ge=1, le=10)
 
-    @property
-    def active_vectordb_dir(self) -> Path:
-        # Resolved at call-time so EmbeddingSettings.tier changes propagate.
-        raise NotImplementedError("Use settings.vectordb_dir_for(tier) instead")
 
-    def vectordb_dir_for(self, tier: Literal["lite", "standard"]) -> Path:
-        return self.vectordb_lite_dir if tier == "lite" else self.vectordb_standard_dir
+class PreprocessingSettings(BaseSettings):
+    """Parameters for the offline preprocessing pipeline."""
 
-    @model_validator(mode="after")
-    def _overlap_lt_size(self) -> RAGSettings:
-        if self.chunk_overlap >= self.chunk_size:
-            raise ValueError(
-                f"chunk_overlap ({self.chunk_overlap}) must be "
-                f"less than chunk_size ({self.chunk_size})"
-            )
-        return self
+    model_config = SettingsConfigDict(extra="ignore")
+
+    max_file_size_mb: int = Field(default=200, ge=1)
+    min_chars_per_page: int = Field(default=50, ge=1)
+
+    # OCR
+    ocr_dpi: int = Field(default=300, ge=72, le=600)
+    ocr_engine: Literal["tesseract", "easyocr"] = "tesseract"
+    ocr_language: str = "eng"
+
+    # LLM-based KU extraction window
+    llm_window_tokens: int = Field(default=1500, ge=100, le=8000)
+    llm_window_overlap: int = Field(default=200, ge=0, le=500)
+    llm_concurrency: int = Field(default=5, ge=1, le=20)
+    llm_retry_attempts: int = Field(default=3, ge=1, le=10)
+
+    # Process-level parallelism
+    workers: int = Field(default=0, ge=0)
 
 
 class DatabaseSettings(BaseSettings):
@@ -187,8 +188,8 @@ class AgentSettings(BaseSettings):
 
     max_input_tokens: int = Field(default=2000, ge=256)
     max_history_tokens: int = Field(default=800, ge=128)
-    max_conversations: int = Field(default=100, ge=1)
-    llm_timeout: int = Field(default=120, ge=10)
+    llm_timeout: int = Field(default=180, ge=10)
+    research_writer_timeout: int = Field(default=300, ge=30)
     diagram_max_retries: int = Field(default=3, ge=1, le=10)
     research_max_iters: int = Field(default=2, ge=1, le=5)
 
@@ -198,14 +199,23 @@ class SandboxSettings(BaseSettings):
 
     timeout: int = Field(default=10, ge=1, le=60)
     max_code_length: int = Field(default=8000, ge=100)
+    sessions_dir: Path = Path("artifacts/sandbox/data/sessions")
+    figures_dir: Path = Path("artifacts/sandbox/data/figures")
+
+
+class MermaidSettings(BaseSettings):
+    model_config = SettingsConfigDict(extra="ignore")
+
+    mmdr_bin_path: Path = Path("artifacts/mmdr/mmdr.exe")
+    render_timeout: float = Field(default=15.0, ge=1.0, le=60.0)
 
 
 class SearchSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    arxiv_timeout: int = Field(default=15, ge=1)
-    web_timeout: int = Field(default=15, ge=1)
-    wiki_timeout: int = Field(default=15, ge=1)
+    arxiv_timeout: int = Field(default=30, ge=1)
+    web_timeout: int = Field(default=30, ge=1)
+    wiki_timeout: int = Field(default=30, ge=1)
     max_results: int = Field(default=5, ge=1, le=20)
 
 
@@ -222,6 +232,7 @@ class ToolsSettings(BaseSettings):
     sandbox: SandboxSettings = SandboxSettings()
     search: SearchSettings = SearchSettings()
     export: ExportSettings = ExportSettings()
+    mermaid: MermaidSettings = MermaidSettings()
 
 
 class CorpusSettings(BaseSettings):
@@ -240,7 +251,7 @@ class NetworkSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     force_offline: bool = False
-    check_interval: int = Field(default=60, ge=5)
+    check_interval: int = Field(default=5, ge=5)
     timeout: float = Field(default=2.0, ge=0.5, le=30.0)
 
 
@@ -248,8 +259,22 @@ class UISettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     host: str = "localhost"
-    port: int = Field(default=8501, ge=1024, le=65535)
+    port: int = Field(default=8765, ge=1024, le=65535)
     browser_auto_open: bool = True
+
+
+class MemorySettings(BaseSettings):
+    """Long-term semantic memory configuration."""
+
+    model_config = SettingsConfigDict(extra="ignore")
+
+    max_memories: int = Field(default=1000, ge=10)
+    extraction_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    dedup_similarity: float = Field(default=0.88, ge=0.5, le=1.0)
+    search_top_k: int = Field(default=5, ge=1, le=20)
+    search_min_score: float = Field(default=0.25, ge=0.0, le=1.0)
+    compress_after_turns: int = Field(default=6, ge=2, le=20)
+    max_history_tokens: int = Field(default=800, ge=128, le=8192)
 
 
 class InstitutionSettings(BaseSettings):
@@ -283,12 +308,14 @@ class Settings(BaseSettings):
     llm: LLMSettings = LLMSettings()
     embedding: EmbeddingSettings = EmbeddingSettings()
     rag: RAGSettings = RAGSettings()
+    preprocessing: PreprocessingSettings = PreprocessingSettings()
     database: DatabaseSettings = DatabaseSettings()
     agent: AgentSettings = AgentSettings()
     tools: ToolsSettings = ToolsSettings()
     corpus: CorpusSettings = CorpusSettings()
     network: NetworkSettings = NetworkSettings()
     ui: UISettings = UISettings()
+    memory: MemorySettings = MemorySettings()
     institution: InstitutionSettings = InstitutionSettings()
 
 
@@ -310,9 +337,7 @@ def get_settings() -> Settings:
     raw = _deep_merge(_load_toml(_DEFAULT_TOML), _load_toml(_INSTITUTION_TOML))
 
     # Flatten nested TOML tables into each sub-model's constructor kwargs.
-    # tools.sandbox / tools.search / tools.export need one extra level of unwrap.
     tools_raw: dict[str, Any] = raw.get("tools", {})
-
     inst_raw: dict[str, Any] = raw.get("institution", {})
 
     return Settings(
@@ -320,16 +345,19 @@ def get_settings() -> Settings:
         llm=LLMSettings(**raw.get("llm", {})),
         embedding=EmbeddingSettings(**raw.get("embedding", {})),
         rag=RAGSettings(**raw.get("rag", {})),
+        preprocessing=PreprocessingSettings(**raw.get("preprocessing", {})),
         database=DatabaseSettings(**raw.get("database", {})),
         agent=AgentSettings(**raw.get("agent", {})),
         tools=ToolsSettings(
             sandbox=SandboxSettings(**tools_raw.get("sandbox", {})),
             search=SearchSettings(**tools_raw.get("search", {})),
             export=ExportSettings(**tools_raw.get("export", {})),
+            mermaid=MermaidSettings(**tools_raw.get("mermaid", {})),
         ),
         corpus=CorpusSettings(**raw.get("corpus", {})),
         network=NetworkSettings(**raw.get("network", {})),
         ui=UISettings(**raw.get("ui", {})),
+        memory=MemorySettings(**raw.get("memory", {})),
         institution=InstitutionSettings(**inst_raw),
     )
 

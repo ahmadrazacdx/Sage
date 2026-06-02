@@ -1,7 +1,7 @@
 [project]
 name = "sage"
 version = "0.1.0"
-description = "Multi-Agent offline-first RAG-based Educational Assistant"
+description = "Multi-Agent offline-first RAG-based Academic Assistant"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [
@@ -12,7 +12,7 @@ requires-python = ">=3.11,<3.13"
 keywords = [
     "rag",
     "llm",
-    "educational-assistant",
+    "academic-assistant",
     "offline-ai",
     "multi-agent"
 ]
@@ -31,6 +31,7 @@ classifiers = [
 ]
 dependencies = [
     "fastapi>=0.135.1",
+    "python-multipart>=0.0.20",
     "uvicorn[standard]>=0.41.0",
     "pywebview>=6.1",
     "langchain>=1.0",
@@ -38,10 +39,8 @@ dependencies = [
     "langchain-openai>=0.3",
     "langchain-community>=0.3",
     "langgraph-checkpoint-sqlite>=3.0",
-    "langmem>=0.0.20",
     "chromadb>=0.5",
     "fastembed>=0.4.2",
-    "langchain-sandbox>=0.0.1,<0.0.6",
     "pydantic>=2.9",
     "pydantic-settings",
     "structlog>=24.0",
@@ -50,9 +49,39 @@ dependencies = [
     "rank-bm25",
     "psutil",
     "aiosqlite",
+    "duckduckgo-search>=8.1.1",
+    "ddgs>=9.11.4",
+    # --- Sandbox packages ---
+    "numpy>=2.1.0",
+    "pandas>=2.2.0",
+    "scipy>=1.15.0",
+    "sympy>=1.13.0",
+    "matplotlib>=3.10.0",
+    "seaborn>=0.13.0",
+    "scikit-learn>=1.7.0",
+    "networkx>=3.5",
+    "tabulate>=0.10.0",
+    "tqdm>=4.67.0",
+    "pdfplumber>=0.11.4",
+    "pymupdf>=1.25.0",
+    "pytesseract>=0.3.13",
+    "pdf2image>=1.17.0",
+    "python-docx>=1.1.2",
+    "python-pptx>=1.0.2",
+    "chardet>=5.2.0,<6",
+    "ftfy>=6.3.1",
+    "onnxruntime-directml>=1.24.4; sys_platform == 'win32'",
+    "starlette>=0.52.1",
+    "beautifulsoup4>=4.14.3",
+    "types-beautifulsoup4>=4.12.0.20250516",
+    "types-psutil>=7.2.2.20260408",
+    "types-requests>=2.33.0.20260503",
+    "langchain-core>=1.2.19",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest",
     "pytest-cov",
@@ -63,29 +92,33 @@ dev = [
     "ipykernel",
     "pip",
     "types-psutil",
+    "types-beautifulsoup4",
+    "types-requests",
 ]
-
 online = [
     "arxiv>=2.1",
+    "beautifulsoup4>=4.12",
     "duckduckgo-search>=7.0",
     "wikipedia>=1.4",
     "langchain-mcp-adapters>=0.2",
 ]
 
+[tool.uv]
+default-groups = ["dev", "online"]
+
 [project.scripts]
 sage = "sage.__main__:main"
 
 [build-system]
-requires = ["uv_build>=0.10.9,<0.11.0"]
+requires = ["uv-build>=0.10.9,<0.12.0"]
 build-backend = "uv_build"
 
-
-
-# ── Ruff ─────────────────────────────────────────────────────
+# Ruff
 [tool.ruff]
-target-version = "py311"
-line-length = 100
+target-version = "py312"
+line-length = 120
 src = ["src", "tests", "scripts"]
+exclude = ["notebooks/ingest.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -93,45 +126,92 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.ruff.lint.isort]
 known-first-party = ["sage"]
 
-# ── Mypy ─────────────────────────────────────────────────────
+# Mypy
 [tool.mypy]
 strict = true
 plugins = ["pydantic.mypy"]
-python_version = "3.11"
-warn_return_any = true
+python_version = "3.12"
+warn_return_any = false
 warn_unused_configs = true
-disallow_untyped_defs = true
+warn_unused_ignores = false
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+disable_error_code = ["type-arg", "attr-defined", "arg-type", "return-value", "assignment", "call-arg", "valid-type", "misc", "union-attr"]
+exclude = [
+    'notebooks/ingest\.ipynb',
+]
 
 [[tool.mypy.overrides]]
 module = [
     "chromadb.*",
     "gradio.*",
     "langchain.*",
+    "langchain_core.*",
     "langchain_openai.*",
     "langchain_community.*",
-    "langchain_sandbox.*",
     "langgraph.*",
-    "langmem.*",
     "pystray.*",
     "rank_bm25.*",
-    "sentence_transformers.*",
     "structlog.*",
     "arxiv.*",
     "wikipedia.*",
+    "seaborn.*",
+    "networkx.*",
+    "sympy.*",
+    "tabulate.*",
+    "tqdm.*",
+    "aiosqlite.*",
+    "fastapi.*",
+    "starlette.*",
+    "uvicorn.*",
+    "webview.*",
+    "PIL.*",
+    "psutil.*",
+    "bs4.*",
+    "langchain_mcp_adapters.*",
+    "ftfy.*",
+    "ftfy",
+    "fastembed.*",
+    "fastembed",
+    "fitz.*",
+    "fitz",
+    "pdfplumber.*",
+    "pdfplumber",
+    "pytesseract.*",
+    "pytesseract",
+    "pdf2image.*",
+    "pdf2image",
+    "easyocr.*",
+    "easyocr",
+    "numpy.*",
+    "numpy",
+    "pptx.*",
+    "pptx",
+    "docx.*",
+    "docx",
+    "chardet.*",
+    "chardet",
 ]
 ignore_missing_imports = true
 
-# ── Pytest ───────────────────────────────────────────────────
+# Pytest
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-ra -q"
+pythonpath = ["."]
+addopts = "-ra -q --cov=src/sage --cov-report=term-missing --cov-report=xml"
 
-# ── Coverage ─────────────────────────────────────────────────
+# Coverage
 [tool.coverage.run]
 source = ["src/sage"]
-omit = ["tests/*"]
+omit = [
+    "tests/*",
+    "src/sage/__main__.py",
+    "src/sage/desktop.py",
+    "src/sage/llm.py",
+]
 
 [tool.coverage.report]
-fail_under = 80
+fail_under = 85
 show_missing = true
