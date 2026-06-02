@@ -185,9 +185,11 @@ def test_generate_typst_source():
 
 
 def test_validate_typst_bin():
-    with patch("src.sage.tools.export._resolve_typst_bin", return_value="typst"):
-        with patch("shutil.which", return_value="/usr/bin/typst"):
-            assert validate_typst_bin() is True
+    with (
+        patch("src.sage.tools.export._resolve_typst_bin", return_value="typst"),
+        patch("shutil.which", return_value="/usr/bin/typst"),
+    ):
+        assert validate_typst_bin() is True
     with (
         patch("src.sage.tools.export._resolve_typst_bin", return_value="typst"),
         patch("shutil.which", return_value=None),
