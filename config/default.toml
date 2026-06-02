@@ -1,4 +1,4 @@
-# Sage — Default System Configuration
+# Sage: Default System Configuration
 
 [app]
 name         = "Sage"
@@ -38,28 +38,20 @@ thinking_mode    = true
 reasoning_budget = 512
 
 [embedding]
-model_name = "BAAI/bge-small-en-v1.5"
-cache_dir  = "artifacts/models/embedding-models"
+embed_model = "artifacts/models/embedding-models/models--qdrant--bge-small-en-v1.5-onnx-q/snapshots/52398278842ec682c6f32300af41344b1c0b0bb2"
 
 [rag]
-curriculum_collection   = "curriculum"
-user_uploads_collection = "user_uploads"
-vectordb_dir            = "artifacts/data/databases/vectordb"
+curriculum_collection    = "curriculum"
+vectordb        = "artifacts/data/databases/vectordb"
 
-# BM25 index paths
+# BM25 index
 bm25_curriculum_file    = "artifacts/data/databases/vectordb/bm25_curriculum.pkl"
-bm25_user_uploads_file  = "artifacts/data/databases/vectordb/bm25_user_uploads.pkl"
-
-# Chunking
-chunk_size       = 512
-chunk_overlap    = 80
-min_chunk_tokens = 100
 
 # Hybrid retrieval
-top_k                    = 5
+top_k                    = 3
 retrieval_multiplier     = 2
 rrf_k_constant           = 60
-max_retrieval_iterations = 3
+max_retrieval_iterations = 2
 
 [preprocessing]
 max_file_size_mb   = 200

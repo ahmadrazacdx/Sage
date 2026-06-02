@@ -7,13 +7,6 @@ derived from YAML front-matter, embeds with a local FastEmbed model
 (GPU-accelerated when available), upserts into the `curriculum` ChromaDB
 collection, and atomically rebuilds the BM25 index for hybrid retrieval.
 
-Trigger (local):
-    uv run python scripts/ingest.py [OPTIONS]
-
-Trigger (Colab):
-    Imported and called by the companion Colab notebook; set
-    SAGE_COLAB_MODE=1 or pass colab_mode=True to run_pipeline().
-
 Options:
     --processed-dir PATH   Override processed/ location
     --force                Re-ingest all files, ignoring mtime cache
@@ -202,7 +195,7 @@ def _parse_md_file(md_path: Path) -> ProcessedDoc:
     except OSError as exc:
         raise ValueError(f"Cannot read {md_path}: {exc}") from exc
 
-    content = raw.decode("utf-8", errors="replace")
+    content = raw.decode("utf-8", errors="replace").replace("\r\n", "\n")
     meta: dict[str, Any] = {}
     body = content
 
@@ -351,7 +344,7 @@ def _embed_chunks(texts: list[str], embedder: TextEmbedding) -> list[list[float]
     """Encode texts into normalised float vectors via FastEmbed."""
     import numpy as np
     return [
-        v.astype(np.float16).tolist()
+        v.astype(np.float32).tolist()
         for v in embedder.embed(texts, batch_size=_EMBED_BATCH_SIZE, parallel=_EMBED_WORKERS)
     ]
 
@@ -649,7 +642,7 @@ async def run_pipeline(
         embedder = _load_embedder(cfg_emb.model_name, embed_cache_dir)
     except OSError as exc:
         log.error("embedder_load_failed", error=str(exc))
-        return 1
+        return 1, _courses_payload
 
     # Step 5: global embed (single GPU-batched pass)
     log.info("global_embed_start", total_chunks=len(embed_chunks),
@@ -677,7 +670,7 @@ async def run_pipeline(
         collection = _get_or_create_collection(vectordb_dir, cfg_rag.curriculum_collection)
     except ImportError as exc:
         log.error("chroma_init_failed", error=str(exc))
-        return 1
+        return 1, _courses_payload
 
     # Step 7: concurrent upsert 
     write_sem = asyncio.Semaphore(_CHROMA_WRITE_CONCURRENCY)

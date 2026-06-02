@@ -458,42 +458,6 @@ CODE_FIX_EXPLANATION_PROMPT: str = textwrap.dedent("""\
     Execution result: {execution_result}
 """)
 
-# --- Knowledge Unit Extraction ---
-KU_EXTRACTION_PROMPT: str = textwrap.dedent("""\
-    Extract atomic factual claims from the passages below that are relevant
-    to the given query. These claims will be injected into downstream prompts
-    as [KU#] citations.
-
-    ## Rules
-    1. Extract only claims that are directly relevant to the query.
-       Do not pad with tangentially related facts to hit a count.
-    2. Each claim must be self-contained and verifiable in isolation.
-    3. Minimum 1 claim, maximum 5 claims per passage.
-    4. Preserve source metadata exactly: file name and page/slide number.
-    5. Assign globally unique IDs across all passages: KU1, KU2, KU3, …
-    6. Rank all extracted claims by relevance to the query (1 = most relevant).
-    7. If a passage contains no relevant claims, omit it entirely — do not
-       include empty or forced extractions.
-
-    ## Output Format
-    Return a JSON array only, no markdown fences:
-    [
-      {{
-        "id": "KU1",
-        "claim": "...",
-        "source_file": "lecture_05.pdf",
-        "source_page": 12,
-        "relevance_rank": 1
-      }}
-    ]
-
-    ## Query
-    {query}
-
-    ## Passages
-    {passages}
-""")
-
 # --- Query Expansion (Retrieval) ---
 QUERY_EXPANSION_PROMPT: str = textwrap.dedent("""\
     Rewrite the student's query to improve retrieval from a vector store
@@ -535,43 +499,4 @@ HISTORY_COMPRESSION_PROMPT: str = textwrap.dedent("""\
 
     ## Conversation
     {conversation}
-""")
-
-# --- Long Input Handling ---
-LONG_INPUT_CODE_PROMPT: str = textwrap.dedent("""\
-    The following code is too long to process in full. Extract a minimal
-    reproducible slice that preserves the context needed to diagnose the error.
-
-    ## Rules
-    1. Include ONLY:
-       - The function or class directly containing or calling the error.
-       - All imports referenced by the extracted code.
-       - Global variables or constants the extracted code reads or writes.
-       - The exact line(s) mentioned in the error traceback.
-    2. Replace all omitted code with a single comment: # ... (omitted)
-    3. Preserve original line numbers by inserting blank lines where code
-       was removed — this keeps traceback line references accurate.
-    4. Do not fix, modify, or reformat the extracted code in any way.
-    5. Return only the extracted code slice, no explanation.
-
-    ## Code
-    {code}
-""")
-
-LONG_INPUT_QUERY_PROMPT: str = textwrap.dedent("""\
-    The following student query is too long to process directly. Condense
-    it to its essential question(s) for the tutoring system.
-
-    ## Rules
-    1. Identify the core question(s) — there may be more than one.
-    2. Preserve all technical specificity: variable names, algorithm names,
-       error messages, and numeric values must not be generalised away.
-    3. Remove: pleasantries, repeated restatements, and contextual backstory
-       that does not change the technical question.
-    4. Output must be ≤200 words.
-    5. If the query contains multiple distinct questions, number them: 1. 2. 3.
-    6. Return only the condensed query, no preamble.
-
-    ## Query
-    {query}
 """)
