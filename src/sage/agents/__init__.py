@@ -25,28 +25,29 @@ from __future__ import annotations
 
 import structlog
 
+from sage.agents.code_fix import Diagnosis, code_fix_node
+from sage.agents.diagram import diagram_node
+
 # Graph Factory
 from sage.agents.graph import build_graph
-
-# Shared State Schema
-from sage.agents.state import AgentState
+from sage.agents.planner import planner_node
+from sage.agents.quiz import quiz_evaluate_node, quiz_node
+from sage.agents.reasoning import reasoning_node
+from sage.agents.research import research_node
+from sage.agents.response import response_node
+from sage.agents.retrieval import retrieval_node
 
 # Node Functions
 from sage.agents.router import (
-    router_node,
+    MODE_TO_INTENT,
+    VALID_INTENTS,
     route_by_intent,
     route_post_retrieval,
-    VALID_INTENTS,
-    MODE_TO_INTENT,
+    router_node,
 )
-from sage.agents.retrieval import retrieval_node
-from sage.agents.reasoning import reasoning_node
-from sage.agents.response import response_node
-from sage.agents.quiz import quiz_node, quiz_evaluate_node
-from sage.agents.diagram import diagram_node
-from sage.agents.planner import planner_node
-from sage.agents.research import research_node
-from sage.agents.code_fix import code_fix_node, Diagnosis
+
+# Shared State Schema
+from sage.agents.state import AgentState
 
 log = structlog.get_logger(__name__)
 
@@ -66,30 +67,34 @@ NODE_NAMES: list[str] = [
 ]
 
 # Nodes that receive the LLM instance via functools.partial at graph build time.
-_LLM_BOUND_NODES: frozenset[str] = frozenset({
-    "router",
-    "retrieval",
-    "reasoning",
-    "quiz",
-    "diagram",
-    "planner",
-    "research",
-    "code_fix",
-})
+_LLM_BOUND_NODES: frozenset[str] = frozenset(
+    {
+        "router",
+        "retrieval",
+        "reasoning",
+        "quiz",
+        "diagram",
+        "planner",
+        "research",
+        "code_fix",
+    }
+)
 
 # Nodes that exit directly to END without passing through response_generator.
-_DIRECT_EXIT_NODES: frozenset[str] = frozenset({
-    "quiz",
-    "diagram",
-    "planner",
-    "research",
-    "code_fix",
-})
+_DIRECT_EXIT_NODES: frozenset[str] = frozenset(
+    {
+        "quiz",
+        "diagram",
+        "planner",
+        "research",
+        "code_fix",
+    }
+)
 
 # Aggregate Counts
-TOTAL_NODE_COUNT: int   = len(NODE_NAMES)
-LLM_NODE_COUNT: int     = len(_LLM_BOUND_NODES)
-DIRECT_EXIT_COUNT: int  = len(_DIRECT_EXIT_NODES)
+TOTAL_NODE_COUNT: int = len(NODE_NAMES)
+LLM_NODE_COUNT: int = len(_LLM_BOUND_NODES)
+DIRECT_EXIT_COUNT: int = len(_DIRECT_EXIT_NODES)
 
 # Public Re-exports
 __all__: list[str] = [
@@ -104,7 +109,7 @@ __all__: list[str] = [
     "response_node",
     # Node functions (specialised agents)
     "quiz_node",
-    "quiz_evaluate_node",   # tool
+    "quiz_evaluate_node",  # tool
     "diagram_node",
     "planner_node",
     "research_node",

@@ -33,17 +33,19 @@ async def general_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     cfg = get_settings().agent
     query: str = state.get("query", "")
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("human", "{query}"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", SYSTEM_PROMPT),
+            ("human", "{query}"),
+        ]
+    )
 
     try:
         result = await asyncio.wait_for(
             (prompt | llm).ainvoke({"query": query}),
             timeout=cfg.llm_timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.error("general_node_timeout", timeout=cfg.llm_timeout)
         return {"response": "The request timed out. Please try again."}
     except Exception as exc:
@@ -54,9 +56,7 @@ async def general_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
         )
         return {"response": "I ran into an issue. Please try again."}
 
-    raw: str = (
-        result.content if hasattr(result, "content") else str(result)
-    ) or ""
+    raw: str = (result.content if hasattr(result, "content") else str(result)) or ""
     content = _clean_general_output(raw)
     log.info("general_node_complete", response_len=len(content))
     return {"response": content}

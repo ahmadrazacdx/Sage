@@ -19,8 +19,8 @@ This tool is only available when `state.online_mode == True`.
 
 from __future__ import annotations
 
-import os
 import asyncio
+import os
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -28,22 +28,22 @@ import structlog
 from langchain_core.tools import tool
 
 if TYPE_CHECKING:
-    from langchain_mcp_adapters.client import MultiServerMCPClient
+    pass
 
 log = structlog.get_logger(__name__)
 
 _CONTEXT7_HTTP_URL: str = os.getenv("CONTEXT7_HTTP_URL", "https://mcp.context7.com/mcp")
 _CONTEXT7_API_KEY: str = os.getenv("CONTEXT7_API_KEY", "").strip()
 
-_TOOLS_TIMEOUT_S: int  = 10
+_TOOLS_TIMEOUT_S: int = 10
 _RESOLVE_TIMEOUT_S: int = 10
-_QUERY_TIMEOUT_S: int  = 20
+_QUERY_TIMEOUT_S: int = 20
 
 _MAX_QUERY_LENGTH: int = 300
-_MAX_TOKENS: int       = 5000
+_MAX_TOKENS: int = 5000
 
 _TOOL_RESOLVE = "resolve-library-id"
-_TOOL_DOCS    = "query-docs"
+_TOOL_DOCS = "query-docs"
 
 LIB_CACHE: dict[str, str] = {
     "flask": "/pallets/flask",
@@ -56,6 +56,7 @@ LIB_CACHE: dict[str, str] = {
 
 _cached_tools: list[Any] | None = None
 _tools_lock = asyncio.Lock()
+
 
 def _response(
     *,
@@ -90,9 +91,7 @@ async def _get_tools() -> list[Any]:
         try:
             from langchain_mcp_adapters.client import MultiServerMCPClient
         except ImportError:
-            raise RuntimeError(
-                "install langchain-mcp-adapters: uv add langchain-mcp-adapters"
-            )
+            raise RuntimeError("install langchain-mcp-adapters: uv add langchain-mcp-adapters")
 
         if not _CONTEXT7_API_KEY:
             raise RuntimeError("CONTEXT7_API_KEY missing")
@@ -142,7 +141,7 @@ async def search_library_docs(library: str, query: str) -> dict[str, Any]:
     Returns:
         Relevant documentation excerpts, or an error/fallback message.
     """
-    clean_lib   = _sanitize_input(library).lower()
+    clean_lib = _sanitize_input(library).lower()
     clean_query = _sanitize_input(query)
 
     if not clean_lib:
@@ -168,7 +167,7 @@ async def search_library_docs(library: str, query: str) -> dict[str, Any]:
         source: Literal["context7", "cache", "fallback"] = "context7"
 
         if not library_id:
-            resolve_tool   = _find_tool(tools, _TOOL_RESOLVE)
+            resolve_tool = _find_tool(tools, _TOOL_RESOLVE)
             resolve_result = await asyncio.wait_for(
                 resolve_tool.ainvoke({"query": clean_query, "libraryName": clean_lib}),
                 timeout=_RESOLVE_TIMEOUT_S,
@@ -201,12 +200,12 @@ async def search_library_docs(library: str, query: str) -> dict[str, Any]:
             log.info("context7_cache_hit", library=clean_lib, id=library_id)
 
         # Fetch docs
-        docs_tool   = _find_tool(tools, _TOOL_DOCS)
+        docs_tool = _find_tool(tools, _TOOL_DOCS)
         docs_result = await asyncio.wait_for(
             docs_tool.ainvoke(
                 {
                     "libraryId": library_id,
-                    "query":     clean_query,
+                    "query": clean_query,
                 }
             ),
             timeout=_QUERY_TIMEOUT_S,
@@ -234,7 +233,7 @@ async def search_library_docs(library: str, query: str) -> dict[str, Any]:
             source=source,
         )
 
-    except (TimeoutError, asyncio.TimeoutError):
+    except TimeoutError:
         log.warning("library_docs_timeout", library=clean_lib)
         return _response(
             success=False,

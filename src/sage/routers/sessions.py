@@ -15,23 +15,24 @@ from pydantic import BaseModel
 
 router = APIRouter(tags=["sessions"])
 
+
 class Session(BaseModel):
     thread_id: str
     title: str
     last_message_preview: str
     updated_at: str
 
+
 class Message(BaseModel):
     role: str
     content: str
     artifact: dict[str, str] | None = None
 
+
 @router.get("/sessions", response_model=list[Session])
 async def list_sessions(request: Request) -> list[Session]:
     """Return at most 50 conversations, newest first."""
-    meta: dict[str, dict[str, Any]] = getattr(
-        request.app.state, "thread_meta", {}
-    )
+    meta: dict[str, dict[str, Any]] = getattr(request.app.state, "thread_meta", {})
     items = sorted(meta.values(), key=lambda s: s["updated_at"], reverse=True)
     return [Session(**s) for s in items[:50]]
 
@@ -42,9 +43,7 @@ async def get_session_messages(
     request: Request,
 ) -> list[Message]:
     """Load the full message history for a past conversation."""
-    messages: dict[str, list[dict[str, Any]]] = getattr(
-        request.app.state, "thread_messages", {}
-    )
+    messages: dict[str, list[dict[str, Any]]] = getattr(request.app.state, "thread_messages", {})
     thread = messages.get(thread_id)
     if thread is None:
         raise HTTPException(status_code=404, detail="Session not found.")

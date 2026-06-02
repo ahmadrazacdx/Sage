@@ -50,10 +50,10 @@ _VRAM_PARTIAL_LAYERS: int = 24
 _GPU_ALL_LAYERS: int = -1  # llama.cpp sentinel: offload every layer to GPU
 
 # ---- context-size thresholds (CPU, based on available RAM) ----
-_AVAIL_5GB_MB: int = 5_000   # comfortable: ctx=32K
-_AVAIL_4GB_MB: int = 4_000   # adequate: ctx=16K
-_AVAIL_3_5GB_MB: int = 3_500 # tight: ctx=8K
-_AVAIL_3GB_MB: int = 3_000   # minimum: ctx=4K
+_AVAIL_5GB_MB: int = 5_000  # comfortable: ctx=32K
+_AVAIL_4GB_MB: int = 4_000  # adequate: ctx=16K
+_AVAIL_3_5GB_MB: int = 3_500  # tight: ctx=8K
+_AVAIL_3GB_MB: int = 3_000  # minimum: ctx=4K
 # Below 3 GB available: ctx=3K, mmap paging is expected
 
 _CTX_64K: int = 65_536
@@ -94,9 +94,10 @@ def detect_gpu() -> dict[str, Any]:
     if nvidia_smi is not None:
         try:
             result = subprocess.run(
-                [nvidia_smi, "--query-gpu=name,memory.total",
-                 "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=5,
+                [nvidia_smi, "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
                 first_line = result.stdout.strip().splitlines()[0]
@@ -104,18 +105,20 @@ def detect_gpu() -> dict[str, Any]:
                 if len(parts) == 2:
                     gpu_name = parts[0].strip()
                     vram_mb = int(float(parts[1].strip()))
-                    log.info("gpu_detected", backend="cuda",
-                             gpu_name=gpu_name, vram_mb=vram_mb)
+                    log.info("gpu_detected", backend="cuda", gpu_name=gpu_name, vram_mb=vram_mb)
                     return {"backend": "cuda", "vram_mb": vram_mb, "gpu_name": gpu_name}
             else:
-                log.warning("nvidia_smi_no_data", returncode=result.returncode,
-                            stderr=result.stderr.strip()[:300])
+                log.warning(
+                    "nvidia_smi_no_data",
+                    returncode=result.returncode,
+                    stderr=result.stderr.strip()[:300],
+                )
         except (subprocess.TimeoutExpired, ValueError, OSError) as exc:
             log.warning("gpu_detection_cuda_failed", error=str(exc))
     else:
-        log.info("nvidia_smi_not_found",
-                 hint="No NVIDIA GPU or drivers not installed; running CPU-only.")
-
+        log.info(
+            "nvidia_smi_not_found", hint="No NVIDIA GPU or drivers not installed; running CPU-only."
+        )
 
     # CPU fallback
     log.info("gpu_detection_result", backend="cpu")
@@ -124,7 +127,10 @@ def detect_gpu() -> dict[str, Any]:
 
 # --- Binary Selection ---
 _BASE_COMPANION_DLLS: tuple[str, ...] = (
-    "llama.dll", "ggml.dll", "ggml-base.dll", "libomp140.x86_64.dll"
+    "llama.dll",
+    "ggml.dll",
+    "ggml-base.dll",
+    "libomp140.x86_64.dll",
 )
 _CUDA_COMPANION_DLLS: tuple[str, ...] = ("ggml-cuda.dll",)
 
@@ -143,7 +149,9 @@ def _binary_installation_ok(binary: Path, backend: str = "cpu") -> bool:
     for dll in dlls_to_check:
         if not (bin_dir / dll).exists():
             log.warning(
-                "binary_missing_dll", binary=str(binary), missing_dll=dll,
+                "binary_missing_dll",
+                binary=str(binary),
+                missing_dll=dll,
                 backend=backend,
                 hint=(
                     f"Incomplete {backend.upper()} installation in {bin_dir}. "
@@ -173,7 +181,9 @@ def _resolve_binary(gpu_info: dict[str, Any], cfg: LLMSettings) -> tuple[Path, s
             log.info("binary_selected", backend="cuda", binary=str(cuda_bin))
             return cuda_bin, "cuda"
         log.warning(
-            "cuda_binary_incomplete", path=str(cuda_bin), fallback="cpu",
+            "cuda_binary_incomplete",
+            path=str(cuda_bin),
+            fallback="cpu",
             hint=(
                 "The CUDA llama-server installation is incomplete or uses the wrong binary. "
                 "Required layout inside artifacts/servers/cuda/:\n"
@@ -215,9 +225,7 @@ def _resolve_gpu_layers(effective_backend: str, vram_mb: int, cfg: LLMSettings) 
     return 0
 
 
-def _resolve_context_size(
-    effective_backend: str, vram_mb: int, cfg: LLMSettings
-) -> int:
+def _resolve_context_size(effective_backend: str, vram_mb: int, cfg: LLMSettings) -> int:
     """Return the value for `--ctx-size` based on hardware and config."""
     if cfg.context_window != "auto":
         return int(cfg.context_window)
@@ -234,11 +242,15 @@ def _resolve_context_size(
         # Absolute minimum floors to ensure OS and apps overhead is covered.
         t_32k = max(_AVAIL_5GB_MB - size_diff, 4_500)
         t_16k = max(_AVAIL_4GB_MB - size_diff, 3_500)
-        t_8k  = max(_AVAIL_3_5GB_MB - size_diff, 3_000)
-        t_4k  = max(_AVAIL_3GB_MB - size_diff, 2_000)
+        t_8k = max(_AVAIL_3_5GB_MB - size_diff, 3_000)
+        t_4k = max(_AVAIL_3GB_MB - size_diff, 2_000)
 
-        log.info("context_size_resolution", available_ram_mb=available_mb,
-                 model_size_mb=model_size_mb, backend="cpu")
+        log.info(
+            "context_size_resolution",
+            available_ram_mb=available_mb,
+            model_size_mb=model_size_mb,
+            backend="cpu",
+        )
 
         if available_mb >= t_32k:
             return _CTX_32K
@@ -280,9 +292,14 @@ def _resolve_thread_count() -> tuple[int, int]:
 
     batch_threads = physical
 
-    log.info("thread_resolution", physical_cores=physical, logical_cores=logical,
-             is_likely_hybrid=is_likely_hybrid, generation_threads=gen_threads,
-             batch_threads=batch_threads)
+    log.info(
+        "thread_resolution",
+        physical_cores=physical,
+        logical_cores=logical,
+        is_likely_hybrid=is_likely_hybrid,
+        generation_threads=gen_threads,
+        batch_threads=batch_threads,
+    )
     return gen_threads, batch_threads
 
 
@@ -416,8 +433,12 @@ def _wait_for_server(
         now = time.monotonic()
         if now - last_progress_log >= 10.0:
             elapsed = now - (deadline - timeout_s)
-            log.info("llama_server_loading", elapsed_s=round(elapsed),
-                     timeout_s=round(timeout_s), port=port)
+            log.info(
+                "llama_server_loading",
+                elapsed_s=round(elapsed),
+                timeout_s=round(timeout_s),
+                port=port,
+            )
             last_progress_log = now
 
         time.sleep(_HEALTH_POLL_INTERVAL_S)
@@ -435,8 +456,10 @@ def _warmup_server(port: int) -> None:
     url = f"http://{_LLAMA_SERVER_HOST}:{port}/v1/completions"
     payload = json.dumps({"prompt": ".", "max_tokens": 1}).encode()
     req = urllib.request.Request(  # noqa: S310
-        url, data=payload,
-        headers={"Content-Type": "application/json"}, method="POST",
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
@@ -519,17 +542,30 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     port = _find_free_port()
 
     cmd, parallel_slots = _build_cmd(
-        binary, cfg, port, gpu_layers, ctx_size,
-        gen_threads, batch_threads, effective_backend,
+        binary,
+        cfg,
+        port,
+        gpu_layers,
+        ctx_size,
+        gen_threads,
+        batch_threads,
+        effective_backend,
     )
     cfg.active_parallel_slots = parallel_slots
 
     log.info(
-        "llama_server_starting", backend=effective_backend,
-        gpu_name=gpu_info["gpu_name"], vram_mb=vram_mb, gpu_layers=gpu_layers,
-        ctx_size=ctx_size, parallel_slots=parallel_slots,
-        gen_threads=gen_threads, batch_threads=batch_threads,
-        port=port, binary=binary.name, model=cfg.active_model_path.name,
+        "llama_server_starting",
+        backend=effective_backend,
+        gpu_name=gpu_info["gpu_name"],
+        vram_mb=vram_mb,
+        gpu_layers=gpu_layers,
+        ctx_size=ctx_size,
+        parallel_slots=parallel_slots,
+        gen_threads=gen_threads,
+        batch_threads=batch_threads,
+        port=port,
+        binary=binary.name,
+        model=cfg.active_model_path.name,
         available_ram_mb=psutil.virtual_memory().available // (1024 * 1024),
     )
 
@@ -555,8 +591,13 @@ def start_llm_server() -> tuple[subprocess.Popen[bytes], int, dict[str, Any]]:
     _wait_for_server(port, proc, stderr_lines, timeout_s=cfg.startup_timeout)
     _warmup_server(port)
 
-    log.info("llama_server_ready", backend=effective_backend,
-             ctx_size=ctx_size, gpu_layers=gpu_layers, port=port)
+    log.info(
+        "llama_server_ready",
+        backend=effective_backend,
+        ctx_size=ctx_size,
+        gpu_layers=gpu_layers,
+        port=port,
+    )
     return proc, port, gpu_info
 
 
@@ -600,43 +641,71 @@ def _build_cmd(
         server_ctx = ctx_size * cpu_parallel
         cmd = [
             str(binary),
-            "--model", str(cfg.active_model_path),
-            "--host", _LLAMA_SERVER_HOST,
-            "--port", str(port),
-            "--threads", "7",
-            "--threads-batch", "12",
-            "--batch-size", "1024",
-            "--ubatch-size", "228",
-            "--ctx-size", str(server_ctx),
-            "--n-gpu-layers", "0",
-            "--parallel", str(cpu_parallel),
-            "--cache-reuse", "32",
+            "--model",
+            str(cfg.active_model_path),
+            "--host",
+            _LLAMA_SERVER_HOST,
+            "--port",
+            str(port),
+            "--threads",
+            "7",
+            "--threads-batch",
+            "12",
+            "--batch-size",
+            "1024",
+            "--ubatch-size",
+            "228",
+            "--ctx-size",
+            str(server_ctx),
+            "--n-gpu-layers",
+            "0",
+            "--parallel",
+            str(cpu_parallel),
+            "--cache-reuse",
+            "32",
             "--cont-batching",
-            "--cache-type-k", cfg.cache_type_k,
-            "--cache-type-v", cfg.cache_type_v,
+            "--cache-type-k",
+            cfg.cache_type_k,
+            "--cache-type-v",
+            cfg.cache_type_v,
             "--jinja",
-            "--reasoning-budget", str(cfg.reasoning_budget),
-            "--reasoning-format", "none",
+            "--reasoning-budget",
+            str(cfg.reasoning_budget),
+            "--reasoning-format",
+            "none",
         ]
         return cmd, cpu_parallel
     else:
         cmd = [
             str(binary),
-            "--model", str(cfg.active_model_path),
-            "--host", _LLAMA_SERVER_HOST,
-            "--port", str(port),
-            "--ctx-size", str(ctx_size),
-            "--n-gpu-layers", str(gpu_layers),
-            "--threads", str(gen_threads),
-            "--threads-batch", str(batch_threads),
-            "--batch-size", "512",
-            "--ubatch-size", "512",
-            "--cache-type-k", cfg.cache_type_k,
-            "--cache-type-v", cfg.cache_type_v,
+            "--model",
+            str(cfg.active_model_path),
+            "--host",
+            _LLAMA_SERVER_HOST,
+            "--port",
+            str(port),
+            "--ctx-size",
+            str(ctx_size),
+            "--n-gpu-layers",
+            str(gpu_layers),
+            "--threads",
+            str(gen_threads),
+            "--threads-batch",
+            str(batch_threads),
+            "--batch-size",
+            "512",
+            "--ubatch-size",
+            "512",
+            "--cache-type-k",
+            cfg.cache_type_k,
+            "--cache-type-v",
+            cfg.cache_type_v,
             "--cont-batching",
             "--jinja",
-            "--reasoning-budget", str(cfg.reasoning_budget),
-            "--reasoning-format", "none",
+            "--reasoning-budget",
+            str(cfg.reasoning_budget),
+            "--reasoning-format",
+            "none",
         ]
         cmd.extend(["--flash-attn", "auto"])
         return cmd, 1
@@ -672,8 +741,7 @@ def create_llm(port: int) -> ChatOpenAI:
     max_tok = cfg.max_tokens
     if cfg.thinking_mode and max_tok < 4096:
         max_tok = 4096
-        log.debug("thinking_mode_token_budget_raised",
-                  configured=cfg.max_tokens, effective=max_tok)
+        log.debug("thinking_mode_token_budget_raised", configured=cfg.max_tokens, effective=max_tok)
 
     llm = ChatOpenAI(
         base_url=f"http://{_LLAMA_SERVER_HOST}:{port}/v1",
@@ -691,13 +759,14 @@ def create_llm(port: int) -> ChatOpenAI:
         }
     )
 
+
 def _with_thinking(llm: ChatOpenAI, budget: int) -> ChatOpenAI:
     """Return a new LLM binding with thinking enabled.
- 
+
     Overrides the `enable_thinking: False` default set in `create_llm()`.
     `budget` caps how many tokens the model spends inside zimmerman; the
     server's `--reasoning-budget` sets the hard ceiling above this value.
- 
+
     Only call this in agent nodes that explicitly need native CoT.
     """
     return llm.bind(

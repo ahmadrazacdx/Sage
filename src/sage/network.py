@@ -44,7 +44,7 @@ async def _tcp_probe(host: str, port: int, timeout: float) -> bool:
         writer.close()
         await writer.wait_closed()
         return True
-    except (asyncio.TimeoutError, OSError):
+    except (TimeoutError, OSError):
         return False
 
 

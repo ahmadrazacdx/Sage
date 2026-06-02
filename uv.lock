@@ -2063,23 +2063,6 @@ wheels = [
 ]
 
 [[package]]
-name = "onnxruntime-gpu"
-version = "1.25.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "flatbuffers" },
-    { name = "numpy" },
-    { name = "packaging" },
-    { name = "protobuf" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/bb/d0aeb0910beee46d34568af9ba07d40bf9c5f94f188bf43c0ff47388f6de/onnxruntime_gpu-1.25.1-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:fcdd93f7a74659e08137b5d9c705390e57b37ac86e6956ec0d7ccd81001afe0c", size = 271246304, upload-time = "2026-04-27T22:06:00.753Z" },
-    { url = "https://files.pythonhosted.org/packages/41/a8/1e93491d72ea04318445b0053c00ab7aedecb2327f79a560868e97423ea4/onnxruntime_gpu-1.25.1-cp311-cp311-win_amd64.whl", hash = "sha256:5c2d00d7b62c098e5d0c720ae9e81dcb3143a4285516a43e39c4997fa9fcc1f3", size = 221700978, upload-time = "2026-04-27T21:59:31.581Z" },
-    { url = "https://files.pythonhosted.org/packages/54/d9/0dc74ca5d208848e931abacde743d61c0c33ecc916ffac2b54d604b4cfe5/onnxruntime_gpu-1.25.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:264b65ed81c1a32c2e410423ef3e4ba3ebb603c099d5a374c8780fbeb3496239", size = 271272487, upload-time = "2026-04-27T22:06:11.243Z" },
-    { url = "https://files.pythonhosted.org/packages/0e/10/2f72ca2a2c606e3245dca27e843f74493e544bf976bf5e97c41b0259d18b/onnxruntime_gpu-1.25.1-cp312-cp312-win_amd64.whl", hash = "sha256:d73660da130e03d6f5bfba2522af01491e26902643589fe466a10f6936dfc71a", size = 221708572, upload-time = "2026-04-27T21:59:41.786Z" },
-]
-
-[[package]]
 name = "openai"
 version = "2.28.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3416,7 +3399,6 @@ dependencies = [
     { name = "networkx" },
     { name = "numpy" },
     { name = "onnxruntime-directml" },
-    { name = "onnxruntime-gpu" },
     { name = "pandas" },
     { name = "pdf2image" },
     { name = "pdfplumber" },
@@ -3442,7 +3424,7 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "ipykernel" },
     { name = "mypy" },
@@ -3464,51 +3446,38 @@ online = [
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite" },
-    { name = "arxiv", marker = "extra == 'online'", specifier = ">=2.1" },
-    { name = "beautifulsoup4", marker = "extra == 'online'", specifier = ">=4.12" },
     { name = "chardet", specifier = ">=5.2.0,<6" },
     { name = "chromadb", specifier = ">=0.5" },
     { name = "ddgs", specifier = ">=9.11.4" },
     { name = "duckduckgo-search", specifier = ">=8.1.1" },
-    { name = "duckduckgo-search", marker = "extra == 'online'", specifier = ">=7.0" },
     { name = "fastapi", specifier = ">=0.135.1" },
     { name = "fastembed", specifier = ">=0.4.2" },
     { name = "ftfy", specifier = ">=6.3.1" },
-    { name = "ipykernel", marker = "extra == 'dev'" },
     { name = "langchain", specifier = ">=1.0" },
     { name = "langchain-community", specifier = ">=0.3" },
-    { name = "langchain-mcp-adapters", marker = "extra == 'online'", specifier = ">=0.2" },
     { name = "langchain-openai", specifier = ">=0.3" },
     { name = "langgraph", specifier = ">=1.0" },
     { name = "langgraph-checkpoint-sqlite", specifier = ">=3.0" },
     { name = "langmem", specifier = ">=0.0.20" },
     { name = "matplotlib", specifier = ">=3.10.0" },
-    { name = "mypy", marker = "extra == 'dev'" },
     { name = "networkx", specifier = ">=3.5" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "onnxruntime-directml", specifier = ">=1.24.4" },
-    { name = "onnxruntime-gpu" },
     { name = "pandas", specifier = ">=2.2.0" },
     { name = "pdf2image", specifier = ">=1.17.0" },
     { name = "pdfplumber", specifier = ">=0.11.4" },
     { name = "pillow" },
-    { name = "pip", marker = "extra == 'dev'" },
-    { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "psutil" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings" },
     { name = "pymupdf", specifier = ">=1.25.0" },
     { name = "pystray" },
     { name = "pytesseract", specifier = ">=0.3.13" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'" },
-    { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "python-docx", specifier = ">=1.1.2" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "python-pptx", specifier = ">=1.0.2" },
     { name = "pywebview", specifier = ">=6.1" },
     { name = "rank-bm25" },
-    { name = "ruff", marker = "extra == 'dev'" },
     { name = "scikit-learn", specifier = ">=1.7.0" },
     { name = "scipy", specifier = ">=1.15.0" },
     { name = "seaborn", specifier = ">=0.13.0" },
@@ -3517,9 +3486,26 @@ requires-dist = [
     { name = "tabulate", specifier = ">=0.10.0" },
     { name = "tqdm", specifier = ">=4.67.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.41.0" },
-    { name = "wikipedia", marker = "extra == 'online'", specifier = ">=1.4" },
 ]
-provides-extras = ["dev", "online"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "ipykernel" },
+    { name = "mypy" },
+    { name = "pip" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+online = [
+    { name = "arxiv", specifier = ">=2.1" },
+    { name = "beautifulsoup4", specifier = ">=4.12" },
+    { name = "duckduckgo-search", specifier = ">=7.0" },
+    { name = "langchain-mcp-adapters", specifier = ">=0.2" },
+    { name = "wikipedia", specifier = ">=1.4" },
+]
 
 [[package]]
 name = "scikit-learn"

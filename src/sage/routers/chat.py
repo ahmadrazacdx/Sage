@@ -24,7 +24,7 @@ import asyncio
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,9 +41,16 @@ log = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["chat"])
 
-_BATCH_INTENTS: frozenset[str] = frozenset({
-    "explain", "diagram", "quiz", "roadmap", "research", "fix",
-})
+_BATCH_INTENTS: frozenset[str] = frozenset(
+    {
+        "explain",
+        "diagram",
+        "quiz",
+        "roadmap",
+        "research",
+        "fix",
+    }
+)
 _NON_STREAMING_INTENTS: frozenset[str] = _BATCH_INTENTS
 _TYPEWRITER_INTENTS: frozenset[str] = frozenset({"explain"})
 
@@ -54,30 +61,30 @@ _TYPEWRITER_MIN_TOTAL_DELAY_S: float = 0.25
 _TYPEWRITER_MAX_TOTAL_DELAY_S: float = 1.20
 
 _NODE_LABELS: dict[str, str] = {
-    "router":            "🧭 Routing request…",
-    "retrieval":         "📚 Retrieving course materials…",
-    "reasoning":         "🧠 Reasoning through content…",
-    "response_generator":"✍️ Formatting response…",
-    "quiz":              "🧩 Generating quiz…",
-    "diagram":           "📊 Building diagram…",
-    "planner":           "📅 Building study plan…",
-    "research":          "🔬 Researching topic…",
-    "code_fix":          "🔧 Analysing code…",
-    "general":           "💬 Generating answer…",
+    "router": "🧭 Routing request…",
+    "retrieval": "📚 Retrieving course materials…",
+    "reasoning": "🧠 Reasoning through content…",
+    "response_generator": "✍️ Formatting response…",
+    "quiz": "🧩 Generating quiz…",
+    "diagram": "📊 Building diagram…",
+    "planner": "📅 Building study plan…",
+    "research": "🔬 Researching topic…",
+    "code_fix": "🔧 Analysing code…",
+    "general": "💬 Generating answer…",
 }
 
 # Tool labels
 _TOOL_LABELS: dict[str, str] = {
-    "validate_mermaid":   "🔍 Validating diagram syntax…",
+    "validate_mermaid": "🔍 Validating diagram syntax…",
     "render_mermaid_svg": "🖼️ Rendering diagram…",
-    "search_arxiv":       "📄 Searching arXiv…",
-    "search_web":         "🌐 Searching the web…",
-    "search_wikipedia":   "📖 Searching Wikipedia…",
-    "calculator":         "🔢 Running calculation…",
-    "execute_python":     "⚙️ Executing code…",
-    "export_pdf":         "📋 Generating PDF report…",
-    "export_markdown":    "📝 Saving markdown…",
-    "corpus_search":      "📚 Searching course materials…",
+    "search_arxiv": "📄 Searching arXiv…",
+    "search_web": "🌐 Searching the web…",
+    "search_wikipedia": "📖 Searching Wikipedia…",
+    "calculator": "🔢 Running calculation…",
+    "execute_python": "⚙️ Executing code…",
+    "export_pdf": "📋 Generating PDF report…",
+    "export_markdown": "📝 Saving markdown…",
+    "corpus_search": "📚 Searching course materials…",
 }
 
 _SKIP_NODES: frozenset[str] = frozenset({"router"})
@@ -96,6 +103,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     thread_id: str
     message_id: str
+
 
 def _short_id() -> str:
     return uuid.uuid4().hex[:8]
@@ -196,9 +204,7 @@ def _split_thinking_response(text: str) -> tuple[str, str]:
     if not text:
         return "", ""
 
-    traces = [
-        block.strip() for block in _RE_THINK_BLOCK.findall(text) if block and block.strip()
-    ]
+    traces = [block.strip() for block in _RE_THINK_BLOCK.findall(text) if block and block.strip()]
 
     visible = _RE_THINK_BLOCK.sub("", text)
     visible = visible.replace("<think>", "").replace("</think>", "").strip()
@@ -246,7 +252,7 @@ def _consume_thinking_chunk(
 
             if close_idx > 0:
                 thinking_parts.append(remaining[:close_idx])
-            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG):]
+            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG) :]
             in_think = False
             seen_think_marker = True
             continue
@@ -258,7 +264,7 @@ def _consume_thinking_chunk(
         if open_idx == -1 and close_idx != -1 and not seen_think_marker:
             if close_idx > 0:
                 thinking_parts.append(remaining[:close_idx])
-            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG):]
+            remaining = remaining[close_idx + len(_THINK_CLOSE_TAG) :]
             seen_think_marker = True
             continue
 
@@ -270,7 +276,7 @@ def _consume_thinking_chunk(
 
         if open_idx > 0:
             answer_parts.append(remaining[:open_idx])
-        remaining = remaining[open_idx + len(_THINK_OPEN_TAG):]
+        remaining = remaining[open_idx + len(_THINK_OPEN_TAG) :]
         in_think = True
         seen_think_marker = True
 
@@ -371,7 +377,7 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
         raise HTTPException(
             status_code=409,
             detail="A pending stream already exists for this thread. "
-                   "Connect to /api/stream/{thread_id} to consume it first.",
+            "Connect to /api/stream/{thread_id} to consume it first.",
         )
     if active.get(thread_id):
         raise HTTPException(
@@ -380,9 +386,7 @@ async def submit_chat(body: ChatRequest, request: Request) -> ChatResponse:
         )
 
     # Build LangGraph input state
-    history: list[dict[str, Any]] = request.app.state.thread_messages.get(
-        thread_id, []
-    )
+    history: list[dict[str, Any]] = request.app.state.thread_messages.get(thread_id, [])
     lc_messages = _build_lc_history(history)
     lc_messages.append(HumanMessage(content=body.message))
 
@@ -423,9 +427,9 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
 
     now = asyncio.get_event_loop().time()
     stale = [
-        tid for tid, e in pending.items()
-        if now - e.get("created_at", now) > _STALE_PENDING_TTL
-        and tid != thread_id
+        tid
+        for tid, e in pending.items()
+        if now - e.get("created_at", now) > _STALE_PENDING_TTL and tid != thread_id
     ]
     for tid in stale:
         pending.pop(tid, None)
@@ -463,7 +467,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                         event_iter.__anext__(),
                         timeout=_SSE_HEARTBEAT_INTERVAL_S,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield _sse({"type": "heartbeat"})
                     continue
                 except StopAsyncIteration:
@@ -484,12 +488,14 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                     if raw_tool_name:
                         canonical = _canonical_tool_name(raw_tool_name)
                         label = _tool_label(canonical, raw_tool_name)
-                        yield _sse({
-                            "type": "tool_call",
-                            "name": canonical,
-                            "raw_name": raw_tool_name,
-                            "label": label,
-                        })
+                        yield _sse(
+                            {
+                                "type": "tool_call",
+                                "name": canonical,
+                                "raw_name": raw_tool_name,
+                                "label": label,
+                            }
+                        )
                 elif kind == "on_chat_model_stream" and stream_tokens:
                     chunk = event.get("data", {}).get("chunk")
                     if chunk is None:
@@ -613,15 +619,13 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                     assistant_message["artifact"] = latest_artifact
                 thread_msgs.append(assistant_message)
 
-            thread_meta: dict[str, dict[str, Any]] = getattr(
-                request.app.state, "thread_meta", {}
-            )
+            thread_meta: dict[str, dict[str, Any]] = getattr(request.app.state, "thread_meta", {})
             existing = thread_meta.get(thread_id, {})
             thread_meta[thread_id] = {
                 "thread_id": thread_id,
                 "title": existing.get("title") or _title_from_message(user_message),
                 "last_message_preview": (final_content or "")[:100],
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
             }
 
             yield _sse({"type": "done"})

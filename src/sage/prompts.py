@@ -161,13 +161,10 @@ _PALETTE: str = """\
     classDef actor    fill:#ede9fe,stroke:#5b21b6,stroke-width:2px,color:#1c1917
     classDef entity   fill:#e0f2fe,stroke:#075985,stroke-width:2px,color:#0c1a2e
     classDef default  fill:#f1f5f9,stroke:#334155,stroke-width:1.5px,color:#1e293b"""
- 
+
 DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
     You are a technical diagram architect preparing input for a Mermaid renderer.
-    Produce a structured intermediate description from the student request and knowledge units.
- 
-    ## Knowledge Units
-    {knowledge_units}
+    Produce a structured intermediate description from the student request.
  
     ## Instructions
     - diagram_type: choose the single best fit — flowchart | sequence | class | state | ER | mindmap
@@ -191,7 +188,7 @@ DIAGRAM_DESCRIPTION_PROMPT: str = textwrap.dedent("""\
     ## Student Request
     {query}
 """)
- 
+
 DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent(f"""\
     Output publication-quality Mermaid code (NeurIPS/ICML standard) for mmdr (Rust CLI renderer).
  
@@ -244,7 +241,7 @@ DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent(f"""\
     DESCRIPTION:
     {{description}}
 """)
- 
+
 DIAGRAM_FIX_PROMPT: str = textwrap.dedent("""\
     Fix ONLY the listed syntax errors in the Mermaid code below so it renders with mmdr.
  
@@ -296,7 +293,7 @@ ROADMAP_ANALYSIS_PROMPT: str = textwrap.dedent("""\
     ## Student Request
     {query}
 """)
- 
+
 ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
     Build a day-by-day study schedule from the analysis and knowledge units below.
  
@@ -445,67 +442,6 @@ CODE_FIX_EXPLANATION_PROMPT: str = textwrap.dedent("""\
     Knowledge Units: {knowledge_units}
 """)
 
-# --- Knowledge Unit Extraction ---
-KU_EXTRACTION_PROMPT: str = textwrap.dedent("""\
-    Extract atomic factual claims from the passages below that are relevant
-    to the given query. These claims will be injected into downstream prompts
-    as [KU#] citations.
-
-    ## Rules
-    1. Extract only claims that are directly relevant to the query.
-       Do not pad with tangentially related facts to hit a count.
-    2. Each claim must be self-contained and verifiable in isolation.
-    3. Minimum 1 claim, maximum 5 claims per passage.
-    4. Preserve source metadata exactly: file name and page/slide number.
-    5. Assign globally unique IDs across all passages: KU1, KU2, KU3, …
-    6. Rank all extracted claims by relevance to the query (1 = most relevant).
-    7. If a passage contains no relevant claims, omit it entirely — do not
-       include empty or forced extractions.
-
-    ## Output Format
-    Return a JSON array only, no markdown fences:
-    [
-      {{
-        "id": "KU1",
-        "claim": "...",
-        "source_file": "lecture_05.pdf",
-        "source_page": 12,
-        "relevance_rank": 1
-      }}
-    ]
-
-    ## Query
-    {query}
-
-    ## Passages
-    {passages}
-""")
-
-# --- Query Expansion (Retrieval) ---
-QUERY_EXPANSION_PROMPT: str = textwrap.dedent("""\
-    Rewrite the student's query to improve retrieval from a vector store
-    containing university lecture slides and textbook excerpts.
-
-    ## Rules
-    1. Preserve the original intent exactly — do not change what is being asked.
-    2. Add 3–5 domain-specific technical terms, synonyms, or related concepts
-       likely to appear verbatim in course material.
-    3. Prefer terminology used in standard CS textbooks over informal phrasing.
-    4. Do not add terms that would retrieve off-topic material.
-    5. Return only the expanded query string — no explanation, no labels,
-       no punctuation other than spaces.
-
-    ## Few-Shot Examples
-    Original: "how does quicksort work"
-    Expanded: "quicksort algorithm divide conquer partition pivot in-place sorting comparison-based"
-
-    Original: "what is a foreign key"
-    Expanded: "foreign key referential integrity relational database constraint SQL table relationship"
-
-    ## Original Query
-    {query}
-""")
-
 # --- History Compression ---
 HISTORY_COMPRESSION_PROMPT: str = textwrap.dedent("""\
     Compress the following conversation history into a concise context block
@@ -522,43 +458,4 @@ HISTORY_COMPRESSION_PROMPT: str = textwrap.dedent("""\
 
     ## Conversation
     {conversation}
-""")
-
-# --- Long Input Handling ---
-LONG_INPUT_CODE_PROMPT: str = textwrap.dedent("""\
-    The following code is too long to process in full. Extract a minimal
-    reproducible slice that preserves the context needed to diagnose the error.
-
-    ## Rules
-    1. Include ONLY:
-       - The function or class directly containing or calling the error.
-       - All imports referenced by the extracted code.
-       - Global variables or constants the extracted code reads or writes.
-       - The exact line(s) mentioned in the error traceback.
-    2. Replace all omitted code with a single comment: # ... (omitted)
-    3. Preserve original line numbers by inserting blank lines where code
-       was removed — this keeps traceback line references accurate.
-    4. Do not fix, modify, or reformat the extracted code in any way.
-    5. Return only the extracted code slice, no explanation.
-
-    ## Code
-    {code}
-""")
-
-LONG_INPUT_QUERY_PROMPT: str = textwrap.dedent("""\
-    The following student query is too long to process directly. Condense
-    it to its essential question(s) for the tutoring system.
-
-    ## Rules
-    1. Identify the core question(s) — there may be more than one.
-    2. Preserve all technical specificity: variable names, algorithm names,
-       error messages, and numeric values must not be generalised away.
-    3. Remove: pleasantries, repeated restatements, and contextual backstory
-       that does not change the technical question.
-    4. Output must be ≤200 words.
-    5. If the query contains multiple distinct questions, number them: 1. 2. 3.
-    6. Return only the condensed query, no preamble.
-
-    ## Query
-    {query}
 """)

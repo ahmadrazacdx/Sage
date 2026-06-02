@@ -16,11 +16,22 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
-      - run: uv sync --all-extras
+      - run: uv sync --all-groups
 
       # Uncomment when tests are written
       # - name: Run tests
       #   run: uv run pytest --cov
+
+      - name: Download Vector DB from Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          mkdir -p artifacts/data/databases/vectordb
+          curl -L -H "Authorization: Bearer $HF_TOKEN" \
+            -o vectordb.zip \
+            "https://huggingface.co/datasets/ahmadrazacdx/sage-vectordb/resolve/main/vectordb.zip"
+          unzip -o vectordb.zip -d artifacts/data/databases/vectordb
+          rm vectordb.zip
 
       - name: Build
         run: uv build

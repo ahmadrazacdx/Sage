@@ -65,9 +65,7 @@ def main() -> None:
         except KeyboardInterrupt:
             pass
     else:
-        thread = threading.Thread(
-            target=server.run, daemon=True, name="uvicorn"
-        )
+        thread = threading.Thread(target=server.run, daemon=True, name="uvicorn")
         thread.start()
 
         url = f"http://localhost:{cfg.ui.port}"

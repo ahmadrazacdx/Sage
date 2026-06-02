@@ -9,7 +9,7 @@ Provides one LangChain tool:
 Code is written to a temp file and executed as a child process
 using `sys.executable`, the same Python interpreter bundled with
 Sage. All figure files are written inside a unique subdirectory of
-`tools.sandbox.figures_dir` and deleted after the SVG data is 
+`tools.sandbox.figures_dir` and deleted after the SVG data is
 read back into the response dict.
 
 Usage:
@@ -28,7 +28,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import structlog
 from langchain_core.tools import tool
@@ -39,20 +39,24 @@ from sage.config import get_settings
 log = structlog.get_logger(__name__)
 
 # --- Constants ---
-_SECRET_ENV_KEYS: frozenset[str] = frozenset({
-    "OPENAI_API_KEY",
-    "ANTHROPIC_API_KEY",
-    "LANGCHAIN_API_KEY",
-    "HUGGINGFACE_TOKEN",
-    "SAGE_SECRET",
-})
+_SECRET_ENV_KEYS: frozenset[str] = frozenset(
+    {
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "LANGCHAIN_API_KEY",
+        "HUGGINGFACE_TOKEN",
+        "SAGE_SECRET",
+    }
+)
 
-_MPL_MODULE_ROOTS: frozenset[str] = frozenset({
-    "matplotlib",
-    "pylab",
-    "seaborn",
-    "pandas",
-})
+_MPL_MODULE_ROOTS: frozenset[str] = frozenset(
+    {
+        "matplotlib",
+        "pylab",
+        "seaborn",
+        "pandas",
+    }
+)
 
 # Injected before every code block.
 _PREAMBLE_TEMPLATE: str = """\
@@ -99,31 +103,34 @@ if _SAGE_MPL_OK:
         _plt.close(_sage_fn)
 """
 
+
 def _response(
     success: bool,
     operation: str,
     *,
     stdout: str = "",
     stderr: str = "",
-    figures: List[Dict[str, Any]] | None = None,
+    figures: list[dict[str, Any]] | None = None,
     error: str | None = None,
-    meta: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+    meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
-        "success":   success,
+        "success": success,
         "operation": operation,
-        "stdout":    stdout,
-        "stderr":    stderr,
-        "figures":   figures or [],
-        "error":     error,
-        "meta":      meta or {},
+        "stdout": stdout,
+        "stderr": stderr,
+        "figures": figures or [],
+        "error": error,
+        "meta": meta or {},
     }
 
 
 # --- Input schema ---
 class ExecutePythonInput(BaseModel):
     """Input schema for `execute_python`."""
+
     code: str
+
 
 def _resolve_figures_dir() -> Path:
     """Return the absolute base figures directory from config.
@@ -148,17 +155,18 @@ def _resolve_figures_dir() -> Path:
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
 
+
 def _uses_matplotlib(user_code: str) -> bool:
     """Return True if user_code imports any matplotlib-adjacent module.
- 
-    Uses AST parsing for exact detection. Falls back to `True` on `SyntaxError` 
-    so that the preamble is always injected for unparseable code.  The subprocess 
+
+    Uses AST parsing for exact detection. Falls back to `True` on `SyntaxError`
+    so that the preamble is always injected for unparseable code.  The subprocess
     will surface the real syntax error to the user; skipping the preamble on broken
     code would only create a confusing secondary `NameError`.
- 
+
     Args:
         user_code: Raw student Python source.
- 
+
     Returns:
         `True` if the preamble and epilogue should be injected.
     """
@@ -166,20 +174,18 @@ def _uses_matplotlib(user_code: str) -> bool:
         tree = ast.parse(user_code)
     except SyntaxError:
         return True
- 
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            if any(
-                alias.name.split(".")[0] in _MPL_MODULE_ROOTS
-                for alias in node.names
-            ):
+            if any(alias.name.split(".")[0] in _MPL_MODULE_ROOTS for alias in node.names):
                 return True
         elif isinstance(node, ast.ImportFrom):
             root = (node.module or "").split(".")[0]
             if root in _MPL_MODULE_ROOTS:
                 return True
- 
+
     return False
+
 
 def _build_execution_code(user_code: str, figure_dir: str) -> str:
     """Wrap student code with the matplotlib preamble and figure epilogue.
@@ -201,12 +207,12 @@ def _build_execution_code(user_code: str, figure_dir: str) -> str:
     """
     if not _uses_matplotlib(user_code):
         return user_code
- 
+
     preamble = _PREAMBLE_TEMPLATE.format(fig_dir=repr(figure_dir))
     return preamble + user_code + _EPILOGUE
 
 
-def _collect_figures(figure_dir: str) -> List[Dict[str, Any]]:
+def _collect_figures(figure_dir: str) -> list[dict[str, Any]]:
     """Read SVG files written by the child process.
 
     Reads all `fig_*.svg` files from `figure_dir`, validates each one,
@@ -223,19 +229,21 @@ def _collect_figures(figure_dir: str) -> List[Dict[str, Any]]:
         markup string), `filename` (str).  Empty list if no figures
         were produced or all were invalid.
     """
-    figures: List[Dict[str, Any]] = []
+    figures: list[dict[str, Any]] = []
 
     for svg_file in sorted(Path(figure_dir).glob("fig_*.svg")):
         try:
             svg_data = svg_file.read_text(encoding="utf-8")
             if len(svg_data.strip()) < 50 or "<svg" not in svg_data:
                 continue
-            figures.append({
-                "index":    int(svg_file.stem.split("_")[1]),
-                "format":   "svg",
-                "data":     svg_data,
-                "filename": svg_file.name,
-            })
+            figures.append(
+                {
+                    "index": int(svg_file.stem.split("_")[1]),
+                    "format": "svg",
+                    "data": svg_data,
+                    "filename": svg_file.name,
+                }
+            )
         except (OSError, ValueError):
             pass
 
@@ -246,7 +254,7 @@ def _collect_figures(figure_dir: str) -> List[Dict[str, Any]]:
 async def _run_in_subprocess(
     code: str,
     timeout: float,
-) -> tuple[str, str, str, List[Dict[str, Any]]]:
+) -> tuple[str, str, str, list[dict[str, Any]]]:
     """Write code to a temp file, execute it, and collect output.
 
     Creates a unique subdirectory inside the configured figures base
@@ -293,10 +301,8 @@ async def _run_in_subprocess(
         )
 
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
-            )
-        except asyncio.TimeoutError:
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except TimeoutError:
             try:
                 proc.kill()
             except ProcessLookupError:
@@ -322,7 +328,7 @@ async def _run_in_subprocess(
 
 
 @tool(args_schema=ExecutePythonInput)
-async def execute_python(code: str) -> Dict[str, Any]:
+async def execute_python(code: str) -> dict[str, Any]:
     """Execute Python code in an isolated child process.
 
     Runs using the same Python interpreter and packages bundled with
@@ -370,11 +376,11 @@ async def execute_python(code: str) -> Dict[str, Any]:
     timeout = cfg.timeout
 
     start = time.perf_counter()
-    meta: Dict[str, Any] = {
-        "code_length":  len(code) if code else 0,
+    meta: dict[str, Any] = {
+        "code_length": len(code) if code else 0,
         "exec_time_ms": 0,
         "figure_count": 0,
-        "backend":      "subprocess",
+        "backend": "subprocess",
     }
 
     if not code or not code.strip():
@@ -385,7 +391,8 @@ async def execute_python(code: str) -> Dict[str, Any]:
         log.warning("sandbox_code_too_long", length=len(code), max_length=max_len)
         meta["exec_time_ms"] = int((time.perf_counter() - start) * 1000)
         return _response(
-            False, operation,
+            False,
+            operation,
             error=f"Code exceeds maximum length ({len(code):,}/{max_len:,} chars)",
             meta=meta,
         )
@@ -398,7 +405,8 @@ async def execute_python(code: str) -> Dict[str, Any]:
         if status == "timeout":
             log.warning("sandbox_timeout", timeout=timeout)
             return _response(
-                False, operation,
+                False,
+                operation,
                 stdout=stdout,
                 stderr=stderr,
                 figures=figures,
@@ -416,7 +424,8 @@ async def execute_python(code: str) -> Dict[str, Any]:
 
         if status == "error":
             return _response(
-                False, operation,
+                False,
+                operation,
                 stdout=stdout,
                 stderr=stderr,
                 figures=figures,
@@ -425,7 +434,8 @@ async def execute_python(code: str) -> Dict[str, Any]:
             )
 
         return _response(
-            True, operation,
+            True,
+            operation,
             stdout=stdout,
             stderr=stderr,
             figures=figures,
@@ -436,7 +446,8 @@ async def execute_python(code: str) -> Dict[str, Any]:
         meta["exec_time_ms"] = int((time.perf_counter() - start) * 1000)
         log.error("sandbox_execution_failed", exc=str(exc)[:300])
         return _response(
-            False, operation,
+            False,
+            operation,
             error=f"{type(exc).__name__}: {str(exc)[:300]}",
             meta=meta,
         )

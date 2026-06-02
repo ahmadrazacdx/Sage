@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -91,6 +91,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 # Factory
 
+
 def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
     """Build and return the fully-configured FastAPI application.
 
@@ -164,16 +165,18 @@ def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
                 continue
 
             stat = file_path.stat()
-            created_at = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+            created_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
             local_created = created_at.astimezone()
-            artifacts.append({
-                "kind": kind,
-                "filename": file_path.name,
-                "size_bytes": stat.st_size,
-                "created_at": created_at.isoformat(),
-                "date_label": local_created.strftime("%A, %B %d, %Y"),
-                "url": f"/api/artifacts/{file_path.name}",
-            })
+            artifacts.append(
+                {
+                    "kind": kind,
+                    "filename": file_path.name,
+                    "size_bytes": stat.st_size,
+                    "created_at": created_at.isoformat(),
+                    "date_label": local_created.strftime("%A, %B %d, %Y"),
+                    "url": f"/api/artifacts/{file_path.name}",
+                }
+            )
 
         return artifacts
 
@@ -187,8 +190,12 @@ def create_app(*, llm_port: int, gpu_info: dict[str, Any]) -> FastAPI:
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Artifact not found")
         suffix = file_path.suffix.lower()
-        media_map = {".pdf": "application/pdf", ".svg": "image/svg+xml",
-                     ".md": "text/markdown", ".txt": "text/plain"}
+        media_map = {
+            ".pdf": "application/pdf",
+            ".svg": "image/svg+xml",
+            ".md": "text/markdown",
+            ".txt": "text/plain",
+        }
         media_type = media_map.get(suffix, "application/octet-stream")
         return FileResponse(
             path=str(file_path),

@@ -12,15 +12,14 @@ Provides:
 
 from __future__ import annotations
 
-import functools
 import json
 import re
 import time
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
-from pydantic import BaseModel, ValidationError
 import structlog
+from pydantic import BaseModel, ValidationError
 
 log = structlog.get_logger()
 
@@ -155,14 +154,14 @@ _THINK_BLOCK_RE = re.compile(r"<t?think>[\s\S]*?</t?think>", re.IGNORECASE)
 _THINK_TAG_RE = re.compile(r"</?t?think>", re.IGNORECASE)
 _StructuredModelT = TypeVar("_StructuredModelT", bound=BaseModel)
 
+
 def is_think_grammar_error(exc: Exception) -> bool:
     """Return True when llama.cpp grammar mode fails on `<think>` tokens."""
     msg = str(exc).lower()
     return (
-        "failed to initialize samplers" in msg
-        and "empty grammar stack" in msg
-        and "<think>" in msg
+        "failed to initialize samplers" in msg and "empty grammar stack" in msg and "<think>" in msg
     )
+
 
 def strip_think_markers(text: str) -> str:
     """Remove `<think>...</think>` blocks and stray tag fragments."""
@@ -330,8 +329,7 @@ def parse_structured_output(raw: Any, schema: type[_StructuredModelT]) -> _Struc
 
     preview = strip_think_markers(_content_to_text(getattr(raw, "content", raw)))[:220]
     raise ValueError(
-        f"Unable to parse structured output for {schema.__name__}. "
-        f"Preview: {preview!r}"
+        f"Unable to parse structured output for {schema.__name__}. Preview: {preview!r}"
     ) from last_exc
 
 

@@ -82,6 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_corpus_files_collection
     ON corpus_files (collection);
 """
 
+
 def _resolve_db_path() -> Path:
     """Return the absolute database path, creating parent dirs if absent."""
     db_path = get_settings().database.path
@@ -145,4 +146,3 @@ async def init_db() -> None:
         path=str(_resolve_db_path()),
         schema_version=_SCHEMA_VERSION,
     )
-

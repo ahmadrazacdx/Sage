@@ -25,27 +25,27 @@ jobs:
       - name: Mypy
         run: uv run mypy src/
 
-  # test:
-  #   needs: lint
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       os: [ubuntu-latest, windows-latest]
-  #       python-version: ["3.11", "3.12"]
-  #   runs-on: ${{ matrix.os }}
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: astral-sh/setup-uv@v5
-  #     - run: uv python install ${{ matrix.python-version }}
-  #     - run: uv sync --all-extras
-  #     - name: Run tests
-  #       run: uv run pytest --cov --cov-report=xml --cov-report=term-missing
-  #     - name: Upload coverage
-  #       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: coverage-report
-  #         path: coverage.xml
+  test:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install ${{ matrix.python-version }}
+      - run: uv sync --all-extras
+      - name: Run tests
+        run: uv run pytest --cov --cov-report=xml --cov-report=term-missing
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
 
   build:
     needs: lint

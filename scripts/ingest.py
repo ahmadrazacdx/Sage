@@ -37,13 +37,14 @@ from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 import yaml
 from fastembed import TextEmbedding
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from rank_bm25 import BM25Okapi
+
 _COLAB_MODE: bool = (
     os.environ.get("SAGE_COLAB_MODE", "0") == "1"
     or "google.colab" in sys.modules
@@ -62,6 +63,7 @@ log = structlog.get_logger(__name__)
 def _configure_logging_fallback(level: str = "info") -> None:
     """Minimal structlog config used in Colab (no sage.utils dependency)."""
     import logging
+
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
@@ -73,6 +75,7 @@ def _configure_logging_fallback(level: str = "info") -> None:
         ),
     )
 
+
 @dataclass
 class _EmbeddingCfg:
     model_name: str = "BAAI/bge-small-en-v1.5"
@@ -81,7 +84,7 @@ class _EmbeddingCfg:
 
 @dataclass
 class _RagCfg:
-    vectordb_dir: Path = field(default_factory=lambda: Path("outputs/vectordb"))
+    vectordb: Path = field(default_factory=lambda: Path("outputs/vectordb"))
     curriculum_collection: str = "curriculum"
     bm25_curriculum_file: Path = field(default_factory=lambda: Path("outputs/bm25_curriculum.pkl"))
     chunk_size: int = 1200
@@ -105,6 +108,7 @@ def _get_settings():
     if _COLAB_MODE:
         return _FallbackSettings()
     from sage.config import get_settings  # type: ignore[import]
+
     return get_settings()
 
 
@@ -113,6 +117,7 @@ def _configure_logging(level: str) -> None:
         _configure_logging_fallback(level)
         return
     from sage.utils import configure_logging  # type: ignore[import]
+
     configure_logging(level)
 
 
@@ -133,12 +138,15 @@ _PATH_HASH_CHARS: int = 8
 _MTIME_CACHE_FILENAME: str = "ingest_cache.json"
 _PARSE_WORKERS: int = min(32, (os.cpu_count() or 4) * 2)
 
+
 def _detect_gpu() -> bool:
     try:
         import onnxruntime as ort  # type: ignore[import]
+
         return "CUDAExecutionProvider" in ort.get_available_providers()
     except Exception:
         return False
+
 
 _HAS_GPU: bool = _detect_gpu()
 _EMBED_BATCH_SIZE: int = 512 if _HAS_GPU else 128
@@ -161,7 +169,7 @@ class IngestResult:
     course_code: str
     chunk_count: int
     elapsed_ms: int
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -175,13 +183,16 @@ class IngestPlan:
     metadatas: list[dict[str, Any]]
     embed_offset: int
 
+
 def _load_mtime_cache(cache_path: Path) -> dict[str, float]:
     if not cache_path.exists():
         return {}
     try:
         return json.loads(cache_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        log.warning("mtime_cache_load_failed", path=str(cache_path), error=str(exc)[:_EXC_MSG_TRUNC])
+        log.warning(
+            "mtime_cache_load_failed", path=str(cache_path), error=str(exc)[:_EXC_MSG_TRUNC]
+        )
         return {}
 
 
@@ -193,7 +204,10 @@ def _save_mtime_cache(cache: dict[str, float], cache_path: Path) -> None:
         tmp.replace(cache_path)
     except OSError as exc:
         tmp.unlink(missing_ok=True)
-        log.warning("mtime_cache_save_failed", path=str(cache_path), error=str(exc)[:_EXC_MSG_TRUNC])
+        log.warning(
+            "mtime_cache_save_failed", path=str(cache_path), error=str(exc)[:_EXC_MSG_TRUNC]
+        )
+
 
 def _parse_md_file(md_path: Path) -> ProcessedDoc:
     try:
@@ -202,7 +216,7 @@ def _parse_md_file(md_path: Path) -> ProcessedDoc:
     except OSError as exc:
         raise ValueError(f"Cannot read {md_path}: {exc}") from exc
 
-    content = raw.decode("utf-8", errors="replace")
+    content = raw.decode("utf-8", errors="replace").replace("\r\n", "\n")
     meta: dict[str, Any] = {}
     body = content
 
@@ -211,12 +225,14 @@ def _parse_md_file(md_path: Path) -> ProcessedDoc:
         try:
             meta = yaml.safe_load(fm_match.group(1)) or {}
         except yaml.YAMLError as exc:
-            log.warning("front_matter_parse_failed", path=str(md_path), error=str(exc)[:_EXC_MSG_TRUNC])
-        body = content[fm_match.end():].strip()
+            log.warning(
+                "front_matter_parse_failed", path=str(md_path), error=str(exc)[:_EXC_MSG_TRUNC]
+            )
+        body = content[fm_match.end() :].strip()
 
     ref_match = _REF_HEADING_RE.search(body)
     if ref_match:
-        references = body[ref_match.start():].strip()
+        references = body[ref_match.start() :].strip()
         body = body[: ref_match.start()].strip()
     else:
         references = ""
@@ -224,7 +240,7 @@ def _parse_md_file(md_path: Path) -> ProcessedDoc:
     return ProcessedDoc(md_path=md_path, meta=meta, body=body, references=references, mtime=mtime)
 
 
-def _safe_parse_md_file(md_path: Path) -> Optional[ProcessedDoc]:
+def _safe_parse_md_file(md_path: Path) -> ProcessedDoc | None:
     try:
         return _parse_md_file(md_path)
     except ValueError as exc:
@@ -232,14 +248,17 @@ def _safe_parse_md_file(md_path: Path) -> Optional[ProcessedDoc]:
         return None
 
 
-def _walk_processed_dir(processed_root: Path, course_filter: Optional[str]) -> list[ProcessedDoc]:
+def _walk_processed_dir(processed_root: Path, course_filter: str | None) -> list[ProcessedDoc]:
     if not processed_root.is_dir():
-        log.error("processed_dir_missing", path=str(processed_root), hint="Run preprocess.py first.")
+        log.error(
+            "processed_dir_missing", path=str(processed_root), hint="Run preprocess.py first."
+        )
         return []
 
     skip_prefixes = (".", "_")
     md_paths = [
-        p for p in sorted(processed_root.rglob("*.md"))
+        p
+        for p in sorted(processed_root.rglob("*.md"))
         if not any(p.name.startswith(pfx) for pfx in skip_prefixes)
     ]
 
@@ -255,24 +274,32 @@ def _walk_processed_dir(processed_root: Path, course_filter: Optional[str]) -> l
     if course_filter:
         docs = [d for d in docs if _course_code_from_meta(d.meta).upper() == course_filter.upper()]
 
-    log.info("processed_dir_scanned", root=str(processed_root), found=len(docs), course_filter=course_filter)
+    log.info(
+        "processed_dir_scanned",
+        root=str(processed_root),
+        found=len(docs),
+        course_filter=course_filter,
+    )
     return docs
 
+
 def _course_code_from_meta(meta: dict[str, Any]) -> str:
-    return str(
-        meta.get("course_code")
-        or meta.get("course")
-        or meta.get("course_id")
+    return (
+        str(
+            meta.get("course_code") or meta.get("course") or meta.get("course_id") or "UNKNOWN"
+        ).strip()
         or "UNKNOWN"
-    ).strip() or "UNKNOWN"
+    )
 
 
 def _courses_payload_from_docs(docs: list[ProcessedDoc]) -> dict[str, list[str]]:
-    courses = sorted({
-        _course_code_from_meta(doc.meta)
-        for doc in docs
-        if _course_code_from_meta(doc.meta) != "UNKNOWN"
-    })
+    courses = sorted(
+        {
+            _course_code_from_meta(doc.meta)
+            for doc in docs
+            if _course_code_from_meta(doc.meta) != "UNKNOWN"
+        }
+    )
     return {"courses": courses}
 
 
@@ -283,15 +310,18 @@ def _write_courses_json(courses_payload: dict[str, list[str]], output_dir: Path)
         courses_out.write_text(json.dumps(courses_payload, indent=2), encoding="utf-8")
         log.info("courses_json_written", path=str(courses_out), courses=courses_payload["courses"])
     except OSError as exc:
-        log.warning("courses_json_write_failed", path=str(courses_out), error=str(exc)[:_EXC_MSG_TRUNC])
+        log.warning(
+            "courses_json_write_failed", path=str(courses_out), error=str(exc)[:_EXC_MSG_TRUNC]
+        )
+
 
 def _build_context_header(meta: dict[str, Any], md_path: Path) -> str:
     parts: list[str] = []
-    course_code  = str(meta.get("course_code",  "")).strip()
+    course_code = str(meta.get("course_code", "")).strip()
     course_title = str(meta.get("course_title", "")).strip()
-    doc_title    = str(meta.get("doc_title", md_path.stem)).strip()
-    semester     = meta.get("semester", "")
-    program      = str(meta.get("program_code", "")).strip()
+    doc_title = str(meta.get("doc_title", md_path.stem)).strip()
+    semester = meta.get("semester", "")
+    program = str(meta.get("program_code", "")).strip()
 
     if course_code and course_title:
         parts.append(f"{course_code} - {course_title}")
@@ -329,12 +359,11 @@ def _chunk_document(
     log.debug("document_chunked", kept=len(enriched))
     return enriched
 
+
 def _load_embedder(model_name: str, cache_dir: Path) -> TextEmbedding:
     cache_dir.mkdir(parents=True, exist_ok=True)
     providers = (
-        ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        if _HAS_GPU
-        else ["CPUExecutionProvider"]
+        ["CUDAExecutionProvider", "CPUExecutionProvider"] if _HAS_GPU else ["CPUExecutionProvider"]
     )
     embedder = TextEmbedding(
         model_name=model_name,
@@ -342,16 +371,22 @@ def _load_embedder(model_name: str, cache_dir: Path) -> TextEmbedding:
         providers=providers,
         threads=os.cpu_count() or 4,
     )
-    log.info("embedder_loaded", model=model_name, gpu=_HAS_GPU, providers=providers,
-             batch_size=_EMBED_BATCH_SIZE)
+    log.info(
+        "embedder_loaded",
+        model=model_name,
+        gpu=_HAS_GPU,
+        providers=providers,
+        batch_size=_EMBED_BATCH_SIZE,
+    )
     return embedder
 
 
 def _embed_chunks(texts: list[str], embedder: TextEmbedding) -> list[list[float]]:
     """Encode texts into normalised float vectors via FastEmbed."""
     import numpy as np
+
     return [
-        v.astype(np.float16).tolist()
+        v.astype(np.float32).tolist()
         for v in embedder.embed(texts, batch_size=_EMBED_BATCH_SIZE, parallel=_EMBED_WORKERS)
     ]
 
@@ -368,15 +403,18 @@ def _get_or_create_collection(vectordb_dir: Path, collection_name: str) -> Any:
         name=collection_name,
         metadata={"hnsw:space": "cosine"},
     )
-    log.info("chroma_collection_ready", collection=collection_name, existing_chunks=collection.count())
+    log.info(
+        "chroma_collection_ready", collection=collection_name, existing_chunks=collection.count()
+    )
     return collection
 
 
 def _build_chunk_ids(source_path: str, course_code: str, doc_title: str, count: int) -> list[str]:
     import hashlib
+
     safe_course = _SAFE_ID_RE.sub("_", course_code)[:_COURSE_MAX_CHARS]
-    safe_title  = _SAFE_ID_RE.sub("_", doc_title)[:_TITLE_MAX_CHARS]
-    path_hash   = hashlib.sha256(source_path.encode()).hexdigest()[:_PATH_HASH_CHARS]
+    safe_title = _SAFE_ID_RE.sub("_", doc_title)[:_TITLE_MAX_CHARS]
+    path_hash = hashlib.sha256(source_path.encode()).hexdigest()[:_PATH_HASH_CHARS]
     prefix = f"{safe_course}__{safe_title}__{path_hash}"
     return [f"{prefix}__chunk_{i:04d}" for i in range(count)]
 
@@ -384,12 +422,12 @@ def _build_chunk_ids(source_path: str, course_code: str, doc_title: str, count: 
 def _build_chunk_metadatas(doc: ProcessedDoc, count: int) -> list[dict[str, Any]]:
     meta = doc.meta
     base: dict[str, Any] = {
-        "source_path":   str(meta.get("source_path",   str(doc.md_path))),
-        "program_code":  str(meta.get("program_code",  "")),
-        "semester":      int(meta.get("semester",       0)),
-        "course_code":   _course_code_from_meta(meta),
-        "course_title":  str(meta.get("course_title",  "")),
-        "doc_title":     str(meta.get("doc_title",     doc.md_path.stem)),
+        "source_path": str(meta.get("source_path", str(doc.md_path))),
+        "program_code": str(meta.get("program_code", "")),
+        "semester": int(meta.get("semester", 0)),
+        "course_code": _course_code_from_meta(meta),
+        "course_title": str(meta.get("course_title", "")),
+        "doc_title": str(meta.get("doc_title", doc.md_path.stem)),
         "source_format": str(meta.get("source_format", "")),
         "last_modified": str(meta.get("last_modified", "")),
     }
@@ -442,11 +480,17 @@ def _build_bm25_from_chunks(
         tmp.unlink(missing_ok=True)
         raise
 
-    log.info("bm25_rebuild_complete", total_chunks=len(chunks),
-             elapsed_ms=int((time.perf_counter() - t0) * 1000))
+    log.info(
+        "bm25_rebuild_complete",
+        total_chunks=len(chunks),
+        elapsed_ms=int((time.perf_counter() - t0) * 1000),
+    )
     return len(chunks)
 
-def _read_collection_for_bm25(collection: Any, batch_size: int = 5000) -> tuple[list[str], list[str], list[dict[str, Any]]]:
+
+def _read_collection_for_bm25(
+    collection: Any, batch_size: int = 5000
+) -> tuple[list[str], list[str], list[dict[str, Any]]]:
     chunks: list[str] = []
     chunk_ids: list[str] = []
     metadatas: list[dict[str, Any]] = []
@@ -461,7 +505,7 @@ def _read_collection_for_bm25(collection: Any, batch_size: int = 5000) -> tuple[
         ids = batch.get("ids") or []
         docs = batch.get("documents") or []
         metas = batch.get("metadatas") or []
-        for chunk_id, doc, meta in zip(ids, docs, metas):
+        for chunk_id, doc, meta in zip(ids, docs, metas, strict=False):
             if not doc:
                 continue
             chunk_ids.append(str(chunk_id))
@@ -470,6 +514,7 @@ def _read_collection_for_bm25(collection: Any, batch_size: int = 5000) -> tuple[
 
     log.info("chroma_collection_read_for_bm25", total_chunks=len(chunks))
     return chunks, chunk_ids, metadatas
+
 
 async def _ingest_one_no_embed(
     plan: IngestPlan,
@@ -485,33 +530,50 @@ async def _ingest_one_no_embed(
     try:
         async with write_sem:
             await asyncio.to_thread(
-                _upsert_to_chroma, collection,
-                plan.chunk_ids, plan.chunks, chunk_embeddings, plan.metadatas,
+                _upsert_to_chroma,
+                collection,
+                plan.chunk_ids,
+                plan.chunks,
+                chunk_embeddings,
+                plan.metadatas,
             )
     except Exception as exc:
-        log.error("chroma_upsert_failed", source_path=plan.source_path, error=str(exc)[:_EXC_LOG_TRUNC])
+        log.error(
+            "chroma_upsert_failed", source_path=plan.source_path, error=str(exc)[:_EXC_LOG_TRUNC]
+        )
         return IngestResult(
-            status="error", source_path=plan.source_path, course_code=plan.course_code,
-            chunk_count=0, elapsed_ms=int((time.perf_counter() - t0) * 1000),
+            status="error",
+            source_path=plan.source_path,
+            course_code=plan.course_code,
+            chunk_count=0,
+            elapsed_ms=int((time.perf_counter() - t0) * 1000),
             error=f"ChromaDB upsert failed: {str(exc)[:_EXC_MSG_TRUNC]}",
         )
 
     mtime_cache[plan.source_path] = plan.doc.mtime
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
-    log.info("document_ingested", source_path=plan.source_path,
-             chunks=len(plan.chunks), elapsed_ms=elapsed_ms)
-    return IngestResult(
-        status="ok", source_path=plan.source_path, course_code=plan.course_code,
-        chunk_count=len(plan.chunks), elapsed_ms=elapsed_ms,
+    log.info(
+        "document_ingested",
+        source_path=plan.source_path,
+        chunks=len(plan.chunks),
+        elapsed_ms=elapsed_ms,
     )
+    return IngestResult(
+        status="ok",
+        source_path=plan.source_path,
+        course_code=plan.course_code,
+        chunk_count=len(plan.chunks),
+        elapsed_ms=elapsed_ms,
+    )
+
 
 async def run_pipeline(
     processed_root: Path,
     dry_run: bool,
     force: bool,
-    course_filter: Optional[str],
+    course_filter: str | None,
     colab_mode: bool = False,
-    output_dir: Optional[Path] = None,
+    output_dir: Path | None = None,
 ) -> tuple[int, dict]:
     """Orchestrate the full ingestion run.
 
@@ -539,7 +601,7 @@ async def run_pipeline(
     # Colab caller can redirect outputs without touching config files
     if output_dir is not None:
         output_dir = Path(output_dir)
-        cfg_rag.vectordb_dir         = output_dir / "vectordb"
+        cfg_rag.vectordb = output_dir / "vectordb"
         cfg_rag.bm25_curriculum_file = output_dir / "bm25_curriculum.pkl"
 
     # Step 1: discover
@@ -549,11 +611,12 @@ async def run_pipeline(
         log.info("no_processed_documents_found", root=str(processed_root))
         return 0, _courses_payload
 
-    log.info("ingest_pipeline_starting", total_docs=len(docs),
-             dry_run=dry_run, force=force, gpu=_HAS_GPU)
+    log.info(
+        "ingest_pipeline_starting", total_docs=len(docs), dry_run=dry_run, force=force, gpu=_HAS_GPU
+    )
 
     # Step 2: mtime cache
-    vectordb_dir = Path(cfg_rag.vectordb_dir)
+    vectordb_dir = Path(cfg_rag.vectordb)
     if not vectordb_dir.is_absolute() and not _COLAB_MODE:
         vectordb_dir = _PROJECT_ROOT / vectordb_dir
 
@@ -572,48 +635,77 @@ async def run_pipeline(
         t0 = time.perf_counter()
         source_path = str(doc.meta.get("source_path", str(doc.md_path)))
         course_code = _course_code_from_meta(doc.meta)
-        doc_title   = str(doc.meta.get("doc_title",   doc.md_path.stem))
+        doc_title = str(doc.meta.get("doc_title", doc.md_path.stem))
         cached_mtime = mtime_cache.get(source_path)
         if not force and cached_mtime is not None and cached_mtime == doc.mtime:
-            results.append(IngestResult(
-                status="skipped", source_path=source_path, course_code=course_code,
-                chunk_count=0, elapsed_ms=int((time.perf_counter() - t0) * 1000),
-            ))
+            results.append(
+                IngestResult(
+                    status="skipped",
+                    source_path=source_path,
+                    course_code=course_code,
+                    chunk_count=0,
+                    elapsed_ms=int((time.perf_counter() - t0) * 1000),
+                )
+            )
             log.debug("ingest_skipped_unchanged", source_path=source_path)
             continue
 
         if not doc.body.strip():
             log.warning("ingest_empty_body", source_path=source_path)
-            results.append(IngestResult(
-                status="empty", source_path=source_path, course_code=course_code,
-                chunk_count=0, elapsed_ms=int((time.perf_counter() - t0) * 1000),
-                error="Empty body after preprocessing",
-            ))
+            results.append(
+                IngestResult(
+                    status="empty",
+                    source_path=source_path,
+                    course_code=course_code,
+                    chunk_count=0,
+                    elapsed_ms=int((time.perf_counter() - t0) * 1000),
+                    error="Empty body after preprocessing",
+                )
+            )
             continue
 
         context_header = _build_context_header(doc.meta, doc.md_path)
-        chunks = _chunk_document(doc.body, cfg_rag.chunk_size, cfg_rag.chunk_overlap,
-                                  cfg_rag.min_chunk_tokens, context_header)
+        chunks = _chunk_document(
+            doc.body,
+            cfg_rag.chunk_size,
+            cfg_rag.chunk_overlap,
+            cfg_rag.min_chunk_tokens,
+            context_header,
+        )
 
         if not chunks:
             log.warning("ingest_no_viable_chunks", source_path=source_path)
-            results.append(IngestResult(
-                status="empty", source_path=source_path, course_code=course_code,
-                chunk_count=0, elapsed_ms=int((time.perf_counter() - t0) * 1000),
-                error="No chunks after size gate",
-            ))
+            results.append(
+                IngestResult(
+                    status="empty",
+                    source_path=source_path,
+                    course_code=course_code,
+                    chunk_count=0,
+                    elapsed_ms=int((time.perf_counter() - t0) * 1000),
+                    error="No chunks after size gate",
+                )
+            )
             continue
 
         chunk_ids = _build_chunk_ids(source_path, course_code, doc_title, len(chunks))
         metadatas = _build_chunk_metadatas(doc, len(chunks))
 
         if dry_run:
-            log.info("dry_run_would_ingest", source_path=source_path, chunks=len(chunks),
-                     context_header=context_header.strip())
-            results.append(IngestResult(
-                status="dry_run", source_path=source_path, course_code=course_code,
-                chunk_count=len(chunks), elapsed_ms=int((time.perf_counter() - t0) * 1000),
-            ))
+            log.info(
+                "dry_run_would_ingest",
+                source_path=source_path,
+                chunks=len(chunks),
+                context_header=context_header.strip(),
+            )
+            results.append(
+                IngestResult(
+                    status="dry_run",
+                    source_path=source_path,
+                    course_code=course_code,
+                    chunk_count=len(chunks),
+                    elapsed_ms=int((time.perf_counter() - t0) * 1000),
+                )
+            )
             continue
 
         bm25_chunks.extend(chunks)
@@ -622,10 +714,18 @@ async def run_pipeline(
 
         embed_offset = len(embed_chunks)
         embed_chunks.extend(chunks)
-        plans.append(IngestPlan(
-            doc=doc, source_path=source_path, course_code=course_code, doc_title=doc_title,
-            chunks=chunks, chunk_ids=chunk_ids, metadatas=metadatas, embed_offset=embed_offset,
-        ))
+        plans.append(
+            IngestPlan(
+                doc=doc,
+                source_path=source_path,
+                course_code=course_code,
+                doc_title=doc_title,
+                chunks=chunks,
+                chunk_ids=chunk_ids,
+                metadatas=metadatas,
+                embed_offset=embed_offset,
+            )
+        )
 
     if dry_run:
         log.info("bm25_rebuild_skipped", reason="dry_run")
@@ -649,53 +749,80 @@ async def run_pipeline(
         embedder = _load_embedder(cfg_emb.model_name, embed_cache_dir)
     except OSError as exc:
         log.error("embedder_load_failed", error=str(exc))
-        return 1
+        return 1, _courses_payload
 
     # Step 5: global embed (single GPU-batched pass)
-    log.info("global_embed_start", total_chunks=len(embed_chunks),
-             batch_size=_EMBED_BATCH_SIZE, gpu=_HAS_GPU)
+    log.info(
+        "global_embed_start",
+        total_chunks=len(embed_chunks),
+        batch_size=_EMBED_BATCH_SIZE,
+        gpu=_HAS_GPU,
+    )
     t_embed = time.perf_counter()
     try:
         embeddings = await asyncio.to_thread(_embed_chunks, embed_chunks, embedder)
     except Exception as exc:
         log.error("embed_failed", error=str(exc)[:_EXC_LOG_TRUNC])
         for plan in plans:
-            results.append(IngestResult(
-                status="error", source_path=plan.source_path, course_code=plan.course_code,
-                chunk_count=0, elapsed_ms=0, error=f"Embed failed: {str(exc)[:_EXC_MSG_TRUNC]}",
-            ))
+            results.append(
+                IngestResult(
+                    status="error",
+                    source_path=plan.source_path,
+                    course_code=plan.course_code,
+                    chunk_count=0,
+                    elapsed_ms=0,
+                    error=f"Embed failed: {str(exc)[:_EXC_MSG_TRUNC]}",
+                )
+            )
         _emit_terminal_summary(results, docs)
         return 1, _courses_payload
 
     elapsed_embed = time.perf_counter() - t_embed
-    log.info("global_embed_done", chunks=len(embed_chunks),
-             elapsed_ms=int(elapsed_embed * 1000),
-             chunks_per_sec=round(len(embed_chunks) / max(elapsed_embed, 1e-6)))
+    log.info(
+        "global_embed_done",
+        chunks=len(embed_chunks),
+        elapsed_ms=int(elapsed_embed * 1000),
+        chunks_per_sec=round(len(embed_chunks) / max(elapsed_embed, 1e-6)),
+    )
 
     # Step 6: ChromaDB collection
     try:
         collection = _get_or_create_collection(vectordb_dir, cfg_rag.curriculum_collection)
     except ImportError as exc:
         log.error("chroma_init_failed", error=str(exc))
-        return 1
+        return 1, _courses_payload
 
-    # Step 7: concurrent upsert 
+    # Step 7: concurrent upsert
     write_sem = asyncio.Semaphore(_CHROMA_WRITE_CONCURRENCY)
     tasks = [
-        _ingest_one_no_embed(plan=plan, embeddings=embeddings, collection=collection,
-                             mtime_cache=mtime_cache, write_sem=write_sem)
+        _ingest_one_no_embed(
+            plan=plan,
+            embeddings=embeddings,
+            collection=collection,
+            mtime_cache=mtime_cache,
+            write_sem=write_sem,
+        )
         for plan in plans
     ]
 
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
-    for plan, outcome in zip(plans, raw_results):
+    for plan, outcome in zip(plans, raw_results, strict=False):
         if isinstance(outcome, BaseException):
-            log.error("ingest_task_exception", source_path=plan.source_path,
-                      error=str(outcome)[:_EXC_LOG_TRUNC])
-            results.append(IngestResult(
-                status="error", source_path=plan.source_path, course_code=plan.course_code,
-                chunk_count=0, elapsed_ms=0, error=str(outcome)[:_EXC_MSG_TRUNC],
-            ))
+            log.error(
+                "ingest_task_exception",
+                source_path=plan.source_path,
+                error=str(outcome)[:_EXC_LOG_TRUNC],
+            )
+            results.append(
+                IngestResult(
+                    status="error",
+                    source_path=plan.source_path,
+                    course_code=plan.course_code,
+                    chunk_count=0,
+                    elapsed_ms=0,
+                    error=str(outcome)[:_EXC_MSG_TRUNC],
+                )
+            )
         else:
             results.append(outcome)
 
@@ -749,32 +876,45 @@ def _emit_terminal_summary(results: list[IngestResult], docs: list[ProcessedDoc]
         chunks_by_course[r.course_code] += r.chunk_count
 
     overview = [
-        ["Total documents",         len(docs)],
-        ["Ingested",                counts["ok"]],
-        ["Skipped (unchanged)",     counts["skipped"]],
-        ["Dry-run (would ingest)",  counts["dry_run"]],
-        ["Empty",                   counts["empty"]],
-        ["Errors",                  counts["error"]],
-        ["Total chunks produced",   total_chunks],
-        ["Wall time",               f"{total_ms / 1000:.1f}s"],
+        ["Total documents", len(docs)],
+        ["Ingested", counts["ok"]],
+        ["Skipped (unchanged)", counts["skipped"]],
+        ["Dry-run (would ingest)", counts["dry_run"]],
+        ["Empty", counts["empty"]],
+        ["Errors", counts["error"]],
+        ["Total chunks produced", total_chunks],
+        ["Wall time", f"{total_ms / 1000:.1f}s"],
     ]
 
     course_rows = [
-        [code, by_course[code]["ok"], by_course[code]["skipped"],
-         by_course[code]["empty"], by_course[code]["error"], chunks_by_course[code]]
+        [
+            code,
+            by_course[code]["ok"],
+            by_course[code]["skipped"],
+            by_course[code]["empty"],
+            by_course[code]["error"],
+            chunks_by_course[code],
+        ]
         for code in sorted(by_course)
     ]
 
     lines = [
-        "", "=" * 88, "SAGE INGEST SUMMARY", "=" * 88,
+        "",
+        "=" * 88,
+        "SAGE INGEST SUMMARY",
+        "=" * 88,
         _render_ascii_table(["Metric", "Value"], overview),
     ]
     if course_rows:
-        lines.append(_render_ascii_table(
-            ["Course", "OK", "Skipped", "Empty", "Errors", "Chunks"], course_rows,
-        ))
+        lines.append(
+            _render_ascii_table(
+                ["Course", "OK", "Skipped", "Empty", "Errors", "Chunks"],
+                course_rows,
+            )
+        )
     lines += ["=" * 88, ""]
     print("\n".join(lines), flush=True)
+
 
 def _load_sage_version() -> str:
     for parent in Path(__file__).resolve().parents:
@@ -795,9 +935,9 @@ def _parse_args() -> argparse.Namespace:
         description="Sage ingestion pipeline: processed/ -> ChromaDB + BM25",
     )
     p.add_argument("--processed-dir", type=Path, default=None, metavar="PATH")
-    p.add_argument("--force",     action="store_true")
-    p.add_argument("--dry-run",   action="store_true")
-    p.add_argument("--course",    type=str, default=None, metavar="CODE")
+    p.add_argument("--force", action="store_true")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--course", type=str, default=None, metavar="CODE")
     p.add_argument("--log-level", choices=["debug", "info", "warning", "error"], default="info")
     return p.parse_args()
 
@@ -813,16 +953,26 @@ def main() -> None:
 
     processed_root: Path = args.processed_dir or (data_root / "processed")
 
-    log.info("ingest_startup", version=_load_sage_version(),
-             processed_root=str(processed_root), force=args.force,
-             dry_run=args.dry_run, course_filter=args.course, gpu=_HAS_GPU)
-
-    sys.exit(asyncio.run(run_pipeline(
-        processed_root=processed_root,
-        dry_run=args.dry_run,
+    log.info(
+        "ingest_startup",
+        version=_load_sage_version(),
+        processed_root=str(processed_root),
         force=args.force,
+        dry_run=args.dry_run,
         course_filter=args.course,
-    ))[0])
+        gpu=_HAS_GPU,
+    )
+
+    sys.exit(
+        asyncio.run(
+            run_pipeline(
+                processed_root=processed_root,
+                dry_run=args.dry_run,
+                force=args.force,
+                course_filter=args.course,
+            )
+        )[0]
+    )
 
 
 if __name__ == "__main__":

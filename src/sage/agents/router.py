@@ -19,23 +19,22 @@ from sage.agents.state import AgentState
 
 log = structlog.get_logger(__name__)
 
-VALID_INTENTS: frozenset[str] = frozenset({
-    "explain", "quiz", "diagram", "roadmap",
-    "research", "fix", "general", "thinking"
-})
+VALID_INTENTS: frozenset[str] = frozenset(
+    {"explain", "quiz", "diagram", "roadmap", "research", "fix", "general", "thinking"}
+)
 
 MODE_TO_INTENT: dict[str, str] = {
-    "general":    "general",
-    "thinking":   "thinking",
-    "explain":    "explain",
-    "quiz":       "quiz",
-    "quiz me":    "quiz",
-    "diagram":    "diagram",
-    "roadmap":    "roadmap",
+    "general": "general",
+    "thinking": "thinking",
+    "explain": "explain",
+    "quiz": "quiz",
+    "quiz me": "quiz",
+    "diagram": "diagram",
+    "roadmap": "roadmap",
     "study plan": "roadmap",
-    "research":   "research",
-    "fix":        "fix",
-    "code fix":   "fix",
+    "research": "research",
+    "fix": "fix",
+    "code fix": "fix",
 }
 
 
@@ -67,10 +66,10 @@ def route_by_intent(state: AgentState) -> str:
     if intent not in VALID_INTENTS:
         log.warning("route_unknown_intent", intent=intent, fallback="general")
         return "general"
-    
+
     if intent == "thinking":
         return "reasoning"
-        
+
     return intent
 
 

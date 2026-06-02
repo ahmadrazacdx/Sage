@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ----Paths----
@@ -110,44 +110,24 @@ class LLMSettings(BaseSettings):
 class EmbeddingSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    model_name: str = "BAAI/bge-small-en-v1.5"
-    cache_dir: Path = Path("artifacts/models/embedding-models")
+    embed_model: Path = Path(
+        "artifacts/models/embedding-models/models--qdrant--bge-small-en-v1.5-onnx-q/snapshots/52398278842ec682c6f32300af41344b1c0b0bb2"
+    )
 
 
 class RAGSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     curriculum_collection: str = "curriculum"
-    user_uploads_collection: str = "user_uploads"
-    vectordb_dir: Path = Path("artifacts/data/databases/vectordb")
+    vectordb: Path = Path("artifacts/data/databases/vectordb")
 
     # BM25 index paths
-    bm25_curriculum_file: Path = Path(
-        "artifacts/data/databases/vectordb/bm25_curriculum.pkl"
-    )
-    bm25_user_uploads_file: Path = Path(
-        "artifacts/data/databases/vectordb/bm25_user_uploads.pkl"
-    )
-
-    # Chunking
-    chunk_size: int = Field(default=512, ge=64, le=4096)
-    chunk_overlap: int = Field(default=80, ge=0, le=512)
-    min_chunk_tokens: int = Field(default=100, ge=10, le=512)
-
+    bm25_curriculum_file: Path = Path("artifacts/data/databases/vectordb/bm25_curriculum.pkl")
     # Hybrid retrieval
-    top_k: int = Field(default=5, ge=1, le=50)
+    top_k: int = Field(default=3, ge=1, le=50)
     retrieval_multiplier: int = Field(default=2, ge=1, le=10)
     rrf_k_constant: int = Field(default=60, ge=1)
-    max_retrieval_iterations: int = Field(default=3, ge=1, le=10)
-
-    @model_validator(mode="after")
-    def _overlap_lt_size(self) -> RAGSettings:
-        if self.chunk_overlap >= self.chunk_size:
-            raise ValueError(
-                f"chunk_overlap ({self.chunk_overlap}) must be "
-                f"less than chunk_size ({self.chunk_size})"
-            )
-        return self
+    max_retrieval_iterations: int = Field(default=2, ge=1, le=10)
 
 
 class PreprocessingSettings(BaseSettings):

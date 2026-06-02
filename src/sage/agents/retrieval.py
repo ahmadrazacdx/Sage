@@ -1,5 +1,21 @@
 """
-Retrieval agent node (RAG stub with smart caching).
+Retrieval agent node for Sage.
+
+Implements hybrid RAG retrieval (dense + BM25 + RRF).
+
+Pipeline:
+1. Cache check: reuse previous retrieval
+2. hybrid_retrieve(): dense + BM25 + RRF, optionally course-scoped
+3. Wrap chunks into KUs: each returned chunk is mapped 1-to-1 into the Knowledge Unit dict schema
+
+Knowledge Unit schema (dict):
+    id          : "KU{i+1}"  (1-indexed, e.g. "KU1")
+    content     : verbatim chunk text
+    claim       : verbatim chunk text
+    source_file : doc_title or source_path from chunk metadata
+    source_page : page number string (may be empty)
+    course_code : course code from chunk metadata
+    confidence  : "high" | "medium" | "low" based on RRF rank
 """
 
 from __future__ import annotations
@@ -11,49 +27,69 @@ import structlog
 from langchain_openai import ChatOpenAI
 
 from sage.agents.state import AgentState
+from sage.rag import hybrid_retrieve
 
 log = structlog.get_logger(__name__)
 
+_CONFIDENCE_HIGH_THRESH = 1
+_CONFIDENCE_MED_THRESH = 3
 
-def _query_cache_key(expanded_query: str) -> str:
-    """Produce a stable cache key from the expanded query.
 
-    Uses a truncated SHA-256 hash — sufficient for cache-hit
-    comparison while avoiding collisions in practical use.
+def _query_cache_key(query: str) -> str:
+    """Produce a stable 16-char hex cache key from the query."""
+    return hashlib.sha256(query.encode()).hexdigest()[:16]
+
+
+def _wrap_chunks_as_kus(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Wrap retrieved chunk dicts into the Knowledge Unit schema (1-to-1 mapping).
+
+    Args:
+        chunks: List of chunk dicts returned by `hybrid_retrieve`.
+
+    Returns:
+        Parallel list of KU dicts, ordered by RRF rank.
     """
-    return hashlib.sha256(expanded_query.encode()).hexdigest()[:16]
+    kus: list[dict[str, Any]] = []
+    for i, chunk in enumerate(chunks):
+        rank = i + 1
+        if rank <= _CONFIDENCE_HIGH_THRESH:
+            confidence = "high"
+        elif rank <= _CONFIDENCE_MED_THRESH:
+            confidence = "medium"
+        else:
+            confidence = "low"
+
+        text: str = chunk.get("text", "")
+        kus.append(
+            {
+                "id": f"KU{rank}",
+                "content": text,
+                "claim": text,
+                "source_file": chunk.get("source_file", "unknown"),
+                "source_page": chunk.get("source_page", ""),
+                "course_code": chunk.get("course_code", ""),
+                "confidence": confidence,
+            }
+        )
+    return kus
 
 
 async def retrieval_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
-    """Retrieve relevant curriculum chunks and extract Knowledge Units.
-
-    Currently a stub — returns empty retrieval fields.  When RAG is
-    integrated, this function's body will be replaced with:
-      1. ``hybrid_retrieve(expanded_query)`` → dense + sparse + RRF
-      2. ``extract_knowledge_units(chunks, query, llm)`` → KU list
-
-    **Smart cache**: If the expanded_query hash matches the previous
-    retrieval, cached results are reused.  This prevents redundant
-    vector lookups when the student asks sequential questions about
-    the same topic (e.g. "explain B-trees" → "what about deletion?").
-    """
-    expanded_query: str = state.get("expanded_query", state.get("query", ""))
+    """Hybrid RAG retrieval node"""
+    query: str = state.get("query", "")
     course_code: str | None = state.get("course_code")
-    
-    if course_code and course_code.lower() != "all":
-        log.info("retrieval_course_filter", course_code=course_code, hint="Retrieving strictly within course metadata")
-    else:
-        log.info("retrieval_global_search", hint="Retrieving across entire corpus")
-        
-    log.info(
-        "retrieval_stub_active",
-        query_preview=expanded_query[:80],
-        course_code=course_code,
-        hint="RAG pipeline not yet integrated.",
-    )
-    cache_key = _query_cache_key(expanded_query)
 
-    # ── Cache hit: reuse previous retrieval ──
+    if course_code and course_code.strip().lower() == "all":
+        course_code = None
+
+    log.info(
+        "retrieval_start",
+        query_preview=query[:80],
+        course_code=course_code or "all",
+    )
+
+    cache_key = _query_cache_key(query)
+
     prev_key = state.get("retrieval_cache_key", "")
     if prev_key and prev_key == cache_key:
         cached_chunks = state.get("retrieval_cache_chunks", [])
@@ -70,17 +106,34 @@ async def retrieval_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
                 "knowledge_units": cached_kus,
             }
 
-    # ── RAG stub: no retrieval yet ──
-    # TODO: Replace with actual hybrid retrieval + KU extraction.
-    # The function signature and return dict keys are stable contracts.
-    log.warning(
-        "retrieval_stub_active",
-        query_preview=expanded_query[:80],
-        hint="RAG pipeline not yet integrated — returning empty results.",
-    )
+    try:
+        chunks = await hybrid_retrieve(
+            query,
+            course_code=course_code,
+        )
+    except Exception as exc:
+        log.error(
+            "retrieval_failed",
+            exc_type=type(exc).__name__,
+            error=str(exc)[:400],
+            query_preview=query[:80],
+        )
+        return {
+            "chunks": [],
+            "knowledge_units": [],
+            "retrieval_cache_key": cache_key,
+            "retrieval_cache_chunks": [],
+            "retrieval_cache_kus": [],
+        }
 
-    chunks: list[dict] = []
-    knowledge_units: list[dict] = []
+    knowledge_units = _wrap_chunks_as_kus(chunks)
+
+    log.info(
+        "retrieval_complete",
+        course_code=course_code or "all",
+        chunks=len(chunks),
+        kus=len(knowledge_units),
+    )
 
     return {
         "chunks": chunks,

@@ -127,7 +127,9 @@ class _SafeEvaluator(ast.NodeVisitor):
         if isinstance(left, int) and isinstance(right, int):
             if right > 0:
                 if right * max(1, left.bit_length()) > _MAX_BIT_LENGTH:
-                    raise ValueError(f"Exponentiation result exceeds {_MAX_BIT_LENGTH} bits (too large)")
+                    raise ValueError(
+                        f"Exponentiation result exceeds {_MAX_BIT_LENGTH} bits (too large)"
+                    )
                 self._add_cost(right * max(1, left.bit_length() // 10))
         elif isinstance(right, (int, float)) and abs(right) > 2000:
             raise ValueError(f"Exponent too large: {right}")
@@ -139,8 +141,7 @@ class _SafeEvaluator(ast.NodeVisitor):
 
         if self._depth > _MAX_DEPTH:
             raise ValueError(
-                f"Expression too deeply nested (max depth {_MAX_DEPTH}).  "
-                "Simplify the expression."
+                f"Expression too deeply nested (max depth {_MAX_DEPTH}).  Simplify the expression."
             )
         try:
             return super().visit(node)
@@ -168,13 +169,13 @@ class _SafeEvaluator(ast.NodeVisitor):
             raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
         left = self.visit(node.left)
         right = self.visit(node.right)
-        
+
         if isinstance(node.op, ast.Mult) and isinstance(left, int) and isinstance(right, int):
             if left.bit_length() + right.bit_length() > _MAX_BIT_LENGTH:
                 raise ValueError(f"Multiplication result exceeds {_MAX_BIT_LENGTH} bits")
         if isinstance(node.op, ast.Pow):
             self._check_pow(left, right)
-                
+
         try:
             result = op_func(left, right)
         except Exception as e:
@@ -203,18 +204,14 @@ class _SafeEvaluator(ast.NodeVisitor):
             )
         # Guard against argument-list explosion (e.g. max(1,2,...,10^6)).
         if len(node.args) > _MAX_ARGS:
-            raise ValueError(
-                f"Too many arguments: {len(node.args)} (max {_MAX_ARGS})"
-            )
+            raise ValueError(f"Too many arguments: {len(node.args)} (max {_MAX_ARGS})")
         args = [self.visit(arg) for arg in node.args]
-        
+
         # Guard against factorial computation blowup.
         if func_name == "factorial":
             n = args[0]
             if not isinstance(n, int) or n > _MAX_FACTORIAL:
-                raise ValueError(
-                    f"factorial argument too large: {n} (max {_MAX_FACTORIAL})"
-                )
+                raise ValueError(f"factorial argument too large: {n} (max {_MAX_FACTORIAL})")
             self._add_cost(n // 2)
         elif func_name == "pow":
             if len(args) not in (2, 3):
@@ -222,16 +219,25 @@ class _SafeEvaluator(ast.NodeVisitor):
             self._check_pow(args[0], args[1])
         # Add base cost for expensive transcendental / floating-point functions.
         elif func_name in {
-            "exp", "log", "log2", "log10", "sin", 
-            "cos", "tan", "asin", "acos", "atan", "atan2", "sqrt"
+            "exp",
+            "log",
+            "log2",
+            "log10",
+            "sin",
+            "cos",
+            "tan",
+            "asin",
+            "acos",
+            "atan",
+            "atan2",
+            "sqrt",
         }:
             self._add_cost(5)
             # Prevent expensive C-level argument reduction for huge inputs (e.g. sin(1e100)).
             for i, arg in enumerate(args):
                 if isinstance(arg, (int, float)) and abs(arg) > _MAX_FLOAT_FUNC_ARG:
                     raise ValueError(
-                        f"Argument {i+1} to {func_name} is too large "
-                        f"(max {_MAX_FLOAT_FUNC_ARG})"
+                        f"Argument {i + 1} to {func_name} is too large (max {_MAX_FLOAT_FUNC_ARG})"
                     )
 
         try:
@@ -251,8 +257,6 @@ def _evaluate(expression: str) -> float | int:
     """Parse and evaluate a mathematical expression safely."""
     tree = ast.parse(expression.strip(), mode="eval")
     return _SafeEvaluator().visit(tree)
-
-
 
 
 # --- LangChain Tool ---

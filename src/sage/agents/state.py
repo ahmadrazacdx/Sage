@@ -27,8 +27,14 @@ class AgentState(TypedDict, total=False):
     messages: Annotated[list, add_messages]
     query: str
     intent: Literal[
-        "explain", "quiz", "diagram", "roadmap",
-        "research", "fix", "general", "thinking",
+        "explain",
+        "quiz",
+        "diagram",
+        "roadmap",
+        "research",
+        "fix",
+        "general",
+        "thinking",
     ]
 
     # --- Retrieval ---

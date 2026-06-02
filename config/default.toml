@@ -1,22 +1,29 @@
-# Sage — Default System Configuration
+# Sage: Default System Configuration
 
 [app]
-name      = "Sage"
-data_dir  = "artifacts/data"
-log_level = "info"
+name         = "Sage"
+data_dir     = "artifacts/data"
+log_level    = "info"
+desktop_mode = true
 
 [llm]
 model_path_cpu  = "artifacts/models/Qwen3.5-2B-Q4_K_M.gguf"
 model_path_cuda = "artifacts/models/Qwen3.5-4B-Q4_K_M.gguf"
 model_name_cpu  = "Qwen3.5-2B"
 model_name_cuda = "Qwen3.5-4B"
-llama_cpp_cpu_bin    = "artifacts/servers/cpu/llama-server.exe"
-llama_cpp_cuda_bin   = "artifacts/servers/cuda/llama-server.exe"
+llama_cpp_cpu_bin  = "artifacts/servers/cpu/llama-server.exe"
+llama_cpp_cuda_bin = "artifacts/servers/cuda/llama-server.exe"
 llama_cpp_vulkan_bin = "artifacts/servers/vulkan/llama-server.exe"
 
+# Utility model
+util_model_path = "artifacts/models/Qwen3.5-0.8B-Q4_K_M.gguf"
+util_model_name = "Qwen3.5-0.8B"
+util_context_window  = 2500
+util_startup_timeout = 45.0
+
 # Hardware auto-scaling
-gpu_layers      = "auto"
-context_window  = "auto"
+gpu_layers     = "auto"
+context_window = "auto"
 startup_timeout = 180.0
 port            = 8080
 
@@ -25,34 +32,26 @@ cache_type_k = "q4_0"
 cache_type_v = "q4_0"
 
 # Generation parameters
-temperature      = 0.3
-max_tokens       = 4096
-thinking_mode    = true
+temperature    = 0.3
+max_tokens     = 4096
+thinking_mode = true
 reasoning_budget = 512
 
 [embedding]
-model_name = "BAAI/bge-small-en-v1.5"
-cache_dir  = "artifacts/models/embedding-models"
+embed_model     = "artifacts/models/embedding-models/models--qdrant--bge-small-en-v1.5-onnx-q/snapshots/52398278842ec682c6f32300af41344b1c0b0bb2"
 
 [rag]
-curriculum_collection   = "curriculum"
-user_uploads_collection = "user_uploads"
-vectordb_dir            = "artifacts/data/databases/vectordb"
+curriculum_collection    = "curriculum"
+vectordb        = "artifacts/data/databases/vectordb"
 
-# BM25 index paths
+# BM25 index
 bm25_curriculum_file    = "artifacts/data/databases/vectordb/bm25_curriculum.pkl"
-bm25_user_uploads_file  = "artifacts/data/databases/vectordb/bm25_user_uploads.pkl"
-
-# Chunking
-chunk_size       = 512
-chunk_overlap    = 80
-min_chunk_tokens = 100
 
 # Hybrid retrieval
-top_k                    = 5
+top_k                   = 3
 retrieval_multiplier     = 2
-rrf_k_constant           = 60
-max_retrieval_iterations = 3
+rrf_k_constant          = 60
+max_retrieval_iterations = 2
 
 [preprocessing]
 max_file_size_mb   = 200
@@ -73,10 +72,18 @@ wal_mode = true
 [agent]
 max_input_tokens    = 2000
 max_history_tokens  = 600
-max_conversations   = 100
 llm_timeout         = 180
 diagram_max_retries = 3
 research_max_iters  = 2
+
+[memory]
+max_memories           = 1000
+extraction_threshold   = 0.6
+dedup_similarity       = 0.88
+search_top_k           = 5
+search_min_score       = 0.25
+compress_after_turns   = 6
+max_history_tokens     = 800
 
 [tools.sandbox]
 timeout         = 10
@@ -89,10 +96,10 @@ mmdr_bin_path  = "artifacts/mmdr/mmdr.exe"
 render_timeout = 15.0
 
 [tools.search]
-arxiv_timeout = 30
-web_timeout   = 30
-wiki_timeout  = 30
-max_results   = 5
+arxiv_timeout  = 30
+web_timeout    = 30
+wiki_timeout   = 30
+max_results    = 5
 
 [tools.export]
 typst_bin  = "artifacts/typst/typst.exe"
