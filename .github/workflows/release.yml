@@ -66,6 +66,8 @@ jobs:
       - name: Build ${{ matrix.tier }} installer
         run: .\build.ps1 -Tier ${{ matrix.tier }}
         shell: pwsh
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
       # --- Verify installer (basic smoke test) ---
       - name: Verify installer exists

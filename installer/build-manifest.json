@@ -162,6 +162,18 @@
         "fast-lite",
         "pro-lite"
       ]
+    },
+    "vectordb": {
+      "version": "1.0.0",
+      "source": "https://huggingface.co/datasets/cdx777/sage_vectordb/resolve/main/vectordb.zip",
+      "sha256": "0ADC94B9993DF39494B721B83FC74543751A04617A632446A182F7FFA396245D",
+      "install_path": "artifacts/data/databases/vectordb",
+      "tiers": [
+        "fast",
+        "pro",
+        "fast-lite",
+        "pro-lite"
+      ]
     }
   }
 }

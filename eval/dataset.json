@@ -1,0 +1,482 @@
+[
+  {
+    "id": "Q001",
+    "query": "What factors are used to adjust the estimated number of Lines of Code (LOC) per use case in the given estimation formula?",
+    "course_code": "CMPC104_ Software Engineering",
+    "ground_truth_answer": "The number of scenarios per use case and the page length of the use cases, represented by the variables Sa, Sh, Pa, and Ph, along with a local adjustment factor LOCadjust.",
+    "expected_document": "Software Engineering A Practitioner's Approach (7th Ed) Rogar S Pressman.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q002",
+    "query": "How are multidimensional arrays passed to functions in C++?",
+    "course_code": "CMPC101_Programing_Fundamentals",
+    "ground_truth_answer": "A multidimensional array is passed as a pointer to its first element, which is an array, so the pointer is a pointer to an array.",
+    "expected_document": "C++ Primer.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q003",
+    "query": "What entity reserves the right to remove additional content at any time if subsequent rights restrictions require it?",
+    "course_code": "ITCC402_Cyber Security",
+    "ground_truth_answer": "Cengage Learning",
+    "expected_document": "CompTIA_Security_Guide_to_Network_Security_Fundamentals (8th Ed) -Mark_Ciampa.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q004",
+    "query": "How is the level of detail represented by the PDL defined?",
+    "course_code": "CMPC104_ Software Engineering",
+    "ground_truth_answer": "Locally",
+    "expected_document": "Software Engineering A Practitioner's Approach (7th Ed) Rogar S Pressman.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q005",
+    "query": "What data structure is used to manage the events in the simulation, and how are events added to it?",
+    "course_code": "ITCC302_Web Technologies",
+    "ground_truth_answer": "A priority queue is used to manage the events, and events are added to it in a way that maintains the order of their time values.",
+    "expected_document": "Web-Technologies-A-Computer-Science-Perspective-J.-Jackson-Pearson.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q006",
+    "query": "Which organizations adopted the IT Governance Institute's definition in 2004?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "The Chartered Institute of Management Accountants (CIMA) and the International Federation of Accountants (IFAC)",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q007",
+    "query": "What is the purpose of the validation process in OWB?",
+    "course_code": "ITCC406_Database Administration and Management",
+    "ground_truth_answer": "To check the object definitions for completeness and consistency prior to code generation, detecting errors such as data type mismatches and foreign key errors.",
+    "expected_document": "Database-System-A-Practical-Approach-to-Design-Implementation-and-Management-by-T-Connoly-C-Begg.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q008",
+    "query": "How does a Network-Based IDPS (NIDPS) detect potential intrusions in a network?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "An NIDPS detects potential intrusions by examining incoming packets for patterns within network traffic, such as large collections of related items or the exchange of a series of related packets in a certain pattern, and comparing measured activity to known signatures in its knowledge base.",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q009",
+    "query": "What happens to the output of an N-bit binary counter when the reset input is activated?",
+    "course_code": "CSCC102_Digital Logic and Design",
+    "ground_truth_answer": "The output is initialized to 0.",
+    "expected_document": "digital-design-and-computer-architecture-by-david-and-sarah-harris.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q010",
+    "query": "Why is the ClientInterview relation not in Boyce-Codd Normal Form (BCNF)?",
+    "course_code": "ITCC406_Database Administration and Management",
+    "ground_truth_answer": "The ClientInterview relation is not in BCNF due to the presence of the (staffNo, interviewDate) determinant, which is not a candidate key for the relation.",
+    "expected_document": "Database-System-A-Practical-Approach-to-Design-Implementation-and-Management-by-T-Connoly-C-Begg.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q011",
+    "query": "What rights does Cengage Learning reserve regarding the content?",
+    "course_code": "ITCC402_Cyber Security",
+    "ground_truth_answer": "Cengage Learning reserves the right to remove additional content at any time if subsequent rights restrictions require it.",
+    "expected_document": "CompTIA_Security_Guide_to_Network_Security_Fundamentals (8th Ed) -Mark_Ciampa.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q012",
+    "query": "What are the primary drawbacks of using technology as a reward strategy in an enterprise?",
+    "course_code": "ITCC407 Information_Technology Infrastructure",
+    "ground_truth_answer": "The primary drawbacks are difficulty in taking advantage of economies of scale, increased complexity due to minor differences between systems, and potential decline in morale of employees who rarely receive upgrades.",
+    "expected_document": "IT_Architecture_for_Dummies- K. Hausman-Wiley.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q013",
+    "query": "At what age did Blaise Pascal discover an important result concerning conic sections?",
+    "course_code": "CMPC106_Discrete Structures",
+    "ground_truth_answer": "16",
+    "expected_document": "Discrete Mathematics and Its Applications (7th Ed) Kenneth H. Rosen.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q014",
+    "query": "What is the time complexity of the procedure that computes the matrix L0 D .l0 ij /,?",
+    "course_code": "CSCC202_Design and Analysis of Algorithms",
+    "ground_truth_answer": "The time complexity is O(n^3) due to the three nested for loops.",
+    "expected_document": "Cormen_Algorithms_Cleaned.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q015",
+    "query": "What types of iterators support constant-time access to any position in a sequence and also support relational operators to compare the relative positions of two iterators?",
+    "course_code": "CMPC101_Programing_Fundamentals",
+    "ground_truth_answer": "Random-access iterators",
+    "expected_document": "C++ Primer.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q016",
+    "query": "What is the purpose of using indentation and lineation in SQL statements?",
+    "course_code": "ITCC406_Database Administration and Management",
+    "ground_truth_answer": "To make an SQL statement or set of statements more readable.",
+    "expected_document": "Database-System-A-Practical-Approach-to-Design-Implementation-and-Management-by-T-Connoly-C-Begg.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q017",
+    "query": "What is the expected increase in processor speed in 10 years if the current trend continues?",
+    "course_code": "ITCC403_Virtual Systems and Services",
+    "ground_truth_answer": "Roughly 128 times faster than today's processors",
+    "expected_document": "Virtualization_Essentials (3rd Ed) -Matthew_Portnoy.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q018",
+    "query": "What is the purpose of the inductive step in the context of mathematical induction?",
+    "course_code": "CMPC106_Discrete Structures",
+    "ground_truth_answer": "To show that if the inductive hypothesis P(k) is true, then P(k + 1) is also true.",
+    "expected_document": "Discrete Mathematics and Its Applications (7th Ed) Kenneth H. Rosen.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q019",
+    "query": "What is the main issue with storing Web documents in separate files for large Web sites?",
+    "course_code": "ITCC406_Database Administration and Management",
+    "ground_truth_answer": "Maintaining current copies of hundreds or thousands of different documents in separate files is difficult, and maintaining links between these files is even more formidable, particularly when the documents are created and maintained by different authors.",
+    "expected_document": "Database-System-A-Practical-Approach-to-Design-Implementation-and-Management-by-T-Connoly-C-Begg.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q020",
+    "query": "According to Moore's Law, how often does processing power roughly double?",
+    "course_code": "ITCC403_Virtual Systems and Services",
+    "ground_truth_answer": "Every 18 months",
+    "expected_document": "Virtualization_Essentials (3rd Ed) -Matthew_Portnoy.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q021",
+    "query": "What determines the usefulness of a dimensional model in Kimball's Business Dimensional Lifecycle?",
+    "course_code": "ITCC406_Database Administration and Management",
+    "ground_truth_answer": "The scope and nature of the attributes of the dimension tables",
+    "expected_document": "Database-System-A-Practical-Approach-to-Design-Implementation-and-Management-by-T-Connoly-C-Begg.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q022",
+    "query": "What is the default netmask calculated by the ifconfig program for the IP address 192.168.1.42?",
+    "course_code": "ITCC301_System and Network Administration",
+    "ground_truth_answer": "255.255.255.0",
+    "expected_document": "Linux Administration A Beginners Guide.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q023",
+    "query": "How do pseudo-nMOS circuits pull the output HIGH in a ROM implementation?",
+    "course_code": "CSCC102_Digital Logic and Design",
+    "ground_truth_answer": "The weak pMOS transistor pulls the output HIGH only if there is no path to GND through the pull-down (nMOS) network.",
+    "expected_document": "digital-design-and-computer-architecture-by-david-and-sarah-harris.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q024",
+    "query": "What is the condition for the probability of no set of k mutual friends or mutual enemies at a party to be less than 1?",
+    "course_code": "CMPC106_Discrete Structures",
+    "ground_truth_answer": "n \u2265 2k/2",
+    "expected_document": "Discrete Mathematics and Its Applications (7th Ed) Kenneth H. Rosen.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q025",
+    "query": "What is the condition for yi and syi based on Lemma 19.1 and the monotonicity of sk?",
+    "course_code": "CSCC202_Design and Analysis of Algorithms",
+    "ground_truth_answer": "yi has degree i and syi has degree si2, following from Lemma 19.1 and the monotonicity of sk.",
+    "expected_document": "Cormen_Algorithms_Cleaned.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q026",
+    "query": "What is the purpose of the line 'srand( static_cast<unsigned>(time(&aTime)) );' in the track constructor?",
+    "course_code": "CMPC102_Object Oriented Programing in C++",
+    "ground_truth_answer": "The purpose of this line is to initialize random numbers by seeding the random number generator with the current time.",
+    "expected_document": "Object-Oriented Programming in C++ (4th Edition) by Robert.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q027",
+    "query": "What do the nodes drawn with dashed lines represent in the visualization of an execution of merge-sort?",
+    "course_code": "CMPC201_Data Structures and Algorithms",
+    "ground_truth_answer": "Calls that have not been made yet.",
+    "expected_document": "Data-Structures-and-Algorithm Michael-T.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q028",
+    "query": "What is the geometric relationship between two vectors p1 and p2 if their cross product is zero?",
+    "course_code": "CSCC202_Design and Analysis of Algorithms",
+    "ground_truth_answer": "The vectors are colinear, pointing in either the same or opposite directions.",
+    "expected_document": "Cormen Introduction to Algorithms.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q029",
+    "query": "According to the provided text excerpt, what are the listed deterrents to illegal or unethical behavior?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "The listed deterrents include penalty, apprehension, and reserved parking signs, as well as a humorous example of a sign stating 'Violators Will Be Shot'.",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q030",
+    "query": "What is a crucial consideration when partners combine their services during on-boarding?",
+    "course_code": "ITCC402_Cyber Security",
+    "ground_truth_answer": "How the entities will combine their services without compromising their existing security defenses.",
+    "expected_document": "CompTIA_Security_Guide_to_Network_Security_Fundamentals (8th Ed) -Mark_Ciampa.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q031",
+    "query": "What is the primary mechanism by which carbon dioxide extinguishes a fire?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "By removing its supply of oxygen.",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q032",
+    "query": "According to Roetzheim, what are the components that are considered as 'Inputs' when adapting function points for WebApp estimation?",
+    "course_code": "CMPC104_ Software Engineering",
+    "ground_truth_answer": "Inputs are each input screen or form, each maintenance screen, and if you use a tab notebook metaphor anywhere, each tab.",
+    "expected_document": "Software Engineering A Practitioner's Approach (7th Ed) Rogar S Pressman.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q033",
+    "query": "What is the purpose of sending a secure cookie from a web browser?",
+    "course_code": "ITCC402_Cyber Security",
+    "ground_truth_answer": "To prevent an unauthorized person from intercepting a cookie that is being transmitted between the browser and the web server.",
+    "expected_document": "CompTIA_Security_Guide_to_Network_Security_Fundamentals (8th Ed) -Mark_Ciampa.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q034",
+    "query": "What is the main goal of Prim's algorithm as described in the text?",
+    "course_code": "CMPC106_Discrete Structures",
+    "ground_truth_answer": "To find a minimum spanning tree in a weighted connected undirected graph.",
+    "expected_document": "Discrete Mathematics and Its Applications (7th Ed) Kenneth H. Rosen.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q035",
+    "query": "What is the effect of the shift left by 2 operation in the given HDL example?",
+    "course_code": "CSCC102_Digital Logic and Design",
+    "ground_truth_answer": "The shift left by 2 operation multiplies the input by 4, effectively shifting the bits of the input two positions to the left and filling the two least significant bits with zeros.",
+    "expected_document": "digital-design-and-computer-architecture-by-david-and-sarah-harris.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q036",
+    "query": "Under what circumstances is it recommended to select commercial closed source software?",
+    "course_code": "ITCC407 Information_Technology Infrastructure",
+    "ground_truth_answer": "When the organization has no need for code-level customization and desires a turnkey solution supporting common business functions with minimal configuration and installation effort.",
+    "expected_document": "IT_Architecture_for_Dummies- K. Hausman-Wiley.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q037",
+    "query": "What is the primary goal of security awareness training?",
+    "course_code": "ITCC402_Cyber Security",
+    "ground_truth_answer": "To help users achieve anomalous behavior recognition or be able to distinguish between what is normal and what is not normal.",
+    "expected_document": "CompTIA_Security_Guide_to_Network_Security_Fundamentals (8th Ed) -Mark_Ciampa.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q038",
+    "query": "What was the primary goal of the Protection Analysis project created by ARPA?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "To better understand the vulnerabilities of operating system security and examine the possibility of automated vulnerability detection techniques in existing system software.",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q039",
+    "query": "What are the four factors that determine what is rational for an agent at any given time?",
+    "course_code": "CSCC302_Artificial Intelligence",
+    "ground_truth_answer": "The performance measure, the agent's prior knowledge of the environment, the actions that the agent can perform, and the agent's percept sequence to date.",
+    "expected_document": "Artificial Intelligence A Modern Approach (3rd Ed) Stuart Russell.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q040",
+    "query": "What is the condition for a number 'a' to be a quadratic residue modulo 'p', where 'p' is an odd prime?",
+    "course_code": "CSCC202_Design and Analysis of Algorithms",
+    "ground_truth_answer": "A number 'a' is a quadratic residue modulo 'p' if the equation x^2 \u2261 a (mod p) has a solution for the unknown 'x'.",
+    "expected_document": "Cormen_Algorithms_Cleaned.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q041",
+    "query": "What is the main advantage of the virtual-memory scheme in a time-sharing system?",
+    "course_code": "CMPC202_Operating Systems",
+    "ground_truth_answer": "It enables users to run programs that are larger than actual physical memory.",
+    "expected_document": "Operating System Concepts (9th Ed) Abraham Silberschatz.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q042",
+    "query": "What is the time complexity of the INTERVAL-SEARCH procedure in an n-node red-black tree?",
+    "course_code": "CSCC202_Design and Analysis of Algorithms",
+    "ground_truth_answer": "O.lg n",
+    "expected_document": "Cormen Introduction to Algorithms.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q043",
+    "query": "What type of flip-flops are likely to be used as memory elements in large scale programmable devices (PLDs)?",
+    "course_code": "CSCC102_Digital Logic and Design",
+    "ground_truth_answer": "D flip-flops",
+    "expected_document": "Digital_Logic_Design.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q044",
+    "query": "What is required of each federal agency in terms of InfoSec for their information and information systems?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "Each federal agency is required to develop, document, and implement an agency-wide program to provide InfoSec for the information and information systems that support the operations and assets of the agency.",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q045",
+    "query": "What is the primary characteristic of an asynchronous binary counter?",
+    "course_code": "CSCC102_Digital Logic and Design",
+    "ground_truth_answer": "The individual FFs are not controlled by a synchronous clock pulse.",
+    "expected_document": "Digital_Logic_Design.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q046",
+    "query": "Why is clock skew a particular problem in shift register design and operation?",
+    "course_code": "CSCC102_Digital Logic and Design",
+    "ground_truth_answer": "Because there is no combinational logic in between each stage of a shift register.",
+    "expected_document": "Digital_Logic_Design.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q047",
+    "query": "What are the main characteristics of a suitable set of relations that support the data requirements of an enterprise?",
+    "course_code": "ITCC406_Database Administration and Management",
+    "ground_truth_answer": "A minimal number of attributes, attributes with a close logical relationship are found in the same relation, and minimal redundancy with each attribute represented only once.",
+    "expected_document": "Database-System-A-Practical-Approach-to-Design-Implementation-and-Management-by-T-Connoly-C-Begg.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q048",
+    "query": "How does the communication activity change as the nature of the project changes?",
+    "course_code": "CMPC104_ Software Engineering",
+    "ground_truth_answer": "The communication activity becomes more complex, encompassing more than just a phone call, as the project's requirements and stakeholders increase in number and complexity.",
+    "expected_document": "Software Engineering A Practitioner's Approach (7th Ed) Rogar S Pressman.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q049",
+    "query": "What year is indicated in the copyright notice of the given text excerpt?",
+    "course_code": "ITCC402_Cyber Security",
+    "ground_truth_answer": "2025",
+    "expected_document": "CompTIA_Security_Guide_to_Network_Security_Fundamentals (8th Ed) -Mark_Ciampa.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q050",
+    "query": "What is the primary purpose of the NIST risk management framework (RMF)?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "The primary purpose of the NIST risk management framework (RMF) is to provide a structured approach to managing risk, as outlined in NIST SP 800-12, 800-14, and 800-18 Rev. 1.",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q051",
+    "query": "What operation is performed when the put(k,v) method is called on a map M that already contains an entry with key equal to k?",
+    "course_code": "CMPC201_Data Structures and Algorithms",
+    "ground_truth_answer": "The value field of the existing entry with key equal to k is replaced with v.",
+    "expected_document": "Data-Structures-and-Algorithm Michael-T.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q052",
+    "query": "What is the primary advantage of using a controlled D latch over other types of latches?",
+    "course_code": "CSCC102_Digital Logic and Design",
+    "ground_truth_answer": "It only requires one data input and there is no input condition that has to be avoided.",
+    "expected_document": "Digital_Logic_Design.md",
+    "complexity": "summarization"
+  },
+  {
+    "id": "Q053",
+    "query": "What are the three mechanisms that provide authentication based on something an unauthenticated entity knows, has, and is?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "The three mechanisms are something an unauthenticated entity knows, something an unauthenticated entity has, and something an unauthenticated entity is, which are referred to as authentication factors.",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q054",
+    "query": "According to the 2016 global software study by the Business Software Alliance, what percentage of software installed on computers globally was not properly licensed in 2015?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "39 percent",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q055",
+    "query": "What happens to a player in the game of Nim when they have no legal moves left?",
+    "course_code": "CMPC106_Discrete Structures",
+    "ground_truth_answer": "The player loses.",
+    "expected_document": "Discrete Mathematics and Its Applications (7th Ed) Kenneth H. Rosen.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q056",
+    "query": "How does the JavaBeans interface handle data type conversions for properties when using EL expressions?",
+    "course_code": "ITCC302_Web Technologies",
+    "ground_truth_answer": "EL automatically converts the String values obtained from the param implicit object to the data types appropriate for the properties of the JavaBeans object.",
+    "expected_document": "Web-Technologies-A-Computer-Science-Perspective-J.-Jackson-Pearson.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q057",
+    "query": "What type of natural disaster in 2006 severed several underwater communications cables, shutting down Internet access for more than a month in several countries throughout the Pacific Rim?",
+    "course_code": "CMPC302_Information Security",
+    "ground_truth_answer": "An earthquake",
+    "expected_document": "Principles of Information Security by Whitman.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q058",
+    "query": "What is the purpose of the simple_init() function in a kernel module?",
+    "course_code": "CMPC202_Operating Systems",
+    "ground_truth_answer": "The simple_init() function is the module entry point, which is invoked when the module is loaded into the kernel, and it must return an integer value to indicate success or failure.",
+    "expected_document": "Operating System Concepts (9th Ed) Abraham Silberschatz.md",
+    "complexity": "reasoning"
+  },
+  {
+    "id": "Q059",
+    "query": "What is a recommended approach to designing layout in terms of available space?",
+    "course_code": "CMPC104_ Software Engineering",
+    "ground_truth_answer": "The design should specify all layout items as a percentage of available space.",
+    "expected_document": "Software Engineering A Practitioner's Approach (7th Ed) Rogar S Pressman.md",
+    "complexity": "factual"
+  },
+  {
+    "id": "Q060",
+    "query": "What is the purpose of the exercises presented in the given text excerpt?",
+    "course_code": "CSCC102_Digital Logic and Design",
+    "ground_truth_answer": "The exercises present questions that have been asked at interviews for digital design jobs.",
+    "expected_document": "digital-design-and-computer-architecture-by-david-and-sarah-harris.md",
+    "complexity": "reasoning"
+  }
+]

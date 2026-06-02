@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="./assets/sage-banner.svg" alt="Sage" width="500" />
+  <img src="./assets/sage-banner.png" alt="Sage" width="500" />
 
   <p><em>An Offline-First Academic Assistant Using Retrieval Augmented Generation with Tool-Integrated Workflows</em></p>
 
@@ -60,71 +60,35 @@ User queries enter a LangGraph state graph where a router classifies intent and 
 <table>
   <tr>
     <td width="50%" align="center">
-      <!-- <img src="assets/screenshots/chat.png" alt="Chat interface" width="100%" /> -->
+      <img src="./assets/screenshots/first-run.png" alt="First Run" width="100%" />
       <br />
-      <strong>Chat Interface</strong>
-      <br />
-      <sub>Placeholder — add screenshot</sub>
+      <strong>First Run</strong>
     </td>
     <td width="50%" align="center">
-      <!-- <img src="assets/screenshots/diagram.png" alt="Diagram generation" width="100%" /> -->
+      <img src="./assets/screenshots/loading.png" alt="Loading Screen" width="100%" />
       <br />
-      <strong>Diagram Generation</strong>
-      <br />
-      <sub>Placeholder — add screenshot</sub>
+      <strong>Loading Screen</strong>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <!-- <img src="assets/screenshots/research.png" alt="Research mode" width="100%" /> -->
+      <img src="./assets/screenshots/quiz-mode.png" alt="Quiz Mode" width="100%" />
       <br />
-      <strong>Research Mode</strong>
-      <br />
-      <sub>Placeholder — add screenshot</sub>
+      <strong>Quiz Mode</strong>
     </td>
     <td width="50%" align="center">
-      <!-- <img src="assets/screenshots/quiz.png" alt="Quiz generation" width="100%" /> -->
+      <img src="./assets/screenshots/research-mode.png" alt="Research Mode" width="100%" />
       <br />
-      <strong>Quiz Generation</strong>
-      <br />
-      <sub>Placeholder — add screenshot</sub>
+      <strong>Research Mode</strong>
     </td>
   </tr>
 </table>
 
 ## Architecture
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│                    pywebview Window                      │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │            React / TypeScript SPA                 │  │
-│  │         (Vite, SSE streaming, Mermaid)            │  │
-│  └──────────────────────┬────────────────────────────┘  │
-│                         │ HTTP / SSE                     │
-│  ┌──────────────────────▼────────────────────────────┐  │
-│  │              FastAPI Backend                       │  │
-│  │         REST endpoints + SSE streaming             │  │
-│  └──────────────────────┬────────────────────────────┘  │
-│                         │                                │
-│  ┌──────────────────────▼────────────────────────────┐  │
-│  │         LangGraph Orchestration Layer             │  │
-│  │  router → retrieval → agent node → response       │  │
-│  └───────┬──────────┬──────────────┬─────────────────┘  │
-│          │          │              │                      │
-│  ┌───────▼───┐ ┌────▼─────┐ ┌─────▼──────┐              │
-│  │  Hybrid   │ │ Semantic │ │   Tools    │              │
-│  │   RAG     │ │  Memory  │ │ sandbox,   │              │
-│  │ ChromaDB  │ │  SQLite  │ │ search,    │              │
-│  │ + BM25    │ │          │ │ export     │              │
-│  └───────────┘ └──────────┘ └────────────┘              │
-│                                                          │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │            llama-server (Primary + Utility)       │   │
-│  │           Qwen3.5 GGUF · llama.cpp                │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-```
+<div align="center">
+  <img src="./assets/sage_architecture.svg" alt="Sage Architecture" width="400">
+</div>
 
 ## Tech Stack
 

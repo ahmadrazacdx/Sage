@@ -63,7 +63,17 @@ function Download-File {
     $tmpFile = "$OutFile.downloading"
     try {
         $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $Url -OutFile $tmpFile -UseBasicParsing
+        $params = @{
+            Uri = $Url
+            OutFile = $tmpFile
+            UseBasicParsing = $true
+        }
+        if ($env:HF_TOKEN -and $Url.Contains("huggingface.co")) {
+            $params["Headers"] = @{
+                "Authorization" = "Bearer $env:HF_TOKEN"
+            }
+        }
+        Invoke-WebRequest @params
         $ProgressPreference = 'Continue'
         Move-Item $tmpFile $OutFile -Force
     } catch {
