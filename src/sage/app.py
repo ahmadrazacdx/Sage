@@ -108,6 +108,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.uploaded_docs = []
     app.state._checkpointer_cm = None
     app.state._heavy_task = None
+    app.state._fast_startup_task = None
 
     # Start network monitor — fires first probe concurrently, non-blocking.
     network = NetworkMonitor(cfg.network)
@@ -129,9 +130,9 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
             db_path = resolve_db_path()
             cm = AsyncSqliteSaver.from_conn_string(str(db_path))
+            app.state._checkpointer_cm = cm
             checkpointer = await cm.__aenter__()
             app.state.checkpointer = checkpointer
-            app.state._checkpointer_cm = cm
 
             heavy_task = asyncio.create_task(
                 _heavy_startup(app, checkpointer, cfg),
@@ -141,10 +142,19 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             log.error("checkpointer_open_failed", error=str(exc)[:300])
 
-    asyncio.create_task(_fast_then_heavy(), name="sage-fast-startup")
+    fast_startup_task = asyncio.create_task(_fast_then_heavy(), name="sage-fast-startup")
+    app.state._fast_startup_task = fast_startup_task
     yield
 
     # --- Shutdown ---
+    fast_startup_task = app.state._fast_startup_task
+    if fast_startup_task is not None and not fast_startup_task.done():
+        fast_startup_task.cancel()
+        import contextlib
+
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await fast_startup_task
+
     heavy_task = app.state._heavy_task
     if heavy_task is not None and not heavy_task.done():
         heavy_task.cancel()
