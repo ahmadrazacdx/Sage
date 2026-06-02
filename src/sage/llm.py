@@ -224,7 +224,7 @@ def _resolve_context_size(effective_backend: str, vram_mb: int, cfg: LLMSettings
         try:
             model_size_mb = cfg.active_model_path.stat().st_size // (1024 * 1024)
         except OSError:
-            model_size_mb = 2_500
+            model_size_mb = 2860
 
         size_diff = 2860 - model_size_mb
 
@@ -599,80 +599,9 @@ def _validate_paths(cfg: LLMSettings, binary: Path) -> None:
         )
 
 
-def _check_cuda_binary(binary: Path, gpu_info: dict[str, Any]) -> None:
-    """Warn loudly if the binary placed in the cuda/ folder is a CPU-only build.
-
-    Root cause this guards against:
-        The llama.cpp release page ships two separate .zip archives:
-
-        - ``llama-bXXXX-bin-win-cpu-x64.zip``   — CPU only. Contains
-          ``llama-server.exe`` with **no CUDA DLL imports**.
-        - ``llama-bXXXX-bin-win-cuda-cu12.X-x64.zip`` — CUDA-enabled.
-          Contains ``llama-server.exe`` **and** ``cublas64_12.dll``,
-          ``cublasLt64_12.dll``, ``cudart64_12.dll`` as side-car DLLs.
-
-        If a user copies the CPU ``llama-server.exe`` into the ``cuda/``
-        directory (alongside the three CUDA DLLs), the binary will start
-        successfully in CPU-only mode despite ``--n-gpu-layers -1``, giving
-        0 % GPU utilization with no error message.
-
-    Detection heuristic (Windows PE import table scan):
-        Read the raw bytes of the EXE and check for the ASCII substring
-        ``cublas`` (present in CUDA builds, absent in CPU builds).  This
-        avoids loading the PE parser library ``pefile`` as a dependency.
-        False-positive rate: essentially zero (CPU builds never link cuBLAS).
-
-    Raises:
-        RuntimeError: If CUDA is the detected backend, the binary lives in a
-            ``cuda/`` directory, and no CUDA DLL import evidence is found.
-    """
-    if gpu_info["backend"] != "cuda":
-        return  # Only relevant for CUDA path.
-
-    # Only check binaries that are explicitly placed in a cuda/ subfolder.
-    parts = binary.parts
-    try:
-        servers_idx = next(i for i, p in enumerate(parts) if p.lower() == "servers")
-    except StopIteration:
-        return  # Non-standard path; skip check.
-
-    current_folder = parts[servers_idx + 1] if servers_idx + 1 < len(parts) else ""
-    if current_folder.lower() != "cuda":
-        return  # Binary is not in the cuda/ folder; skip check.
-
-    # Scan first 512 KB of the binary for CUDA DLL import evidence.
-    try:
-        with binary.open("rb") as fh:
-            header = fh.read(524_288)  # 512 KB is sufficient for the PE import table
-        has_cuda = b"cublas" in header.lower() or b"cudart" in header.lower()
-    except OSError as exc:
-        log.warning("cuda_binary_check_failed", error=str(exc))
-        return
-
-    if not has_cuda:
-        raise RuntimeError(
-            f"GPU acceleration failure: the binary at\n"
-            f"  {binary}\n"
-            "appears to be a CPU-only build placed in the cuda/ directory.\n\n"
-            "How to fix:\n"
-            "  1. Go to https://github.com/ggml-org/llama.cpp/releases\n"
-            "  2. Download the CUDA 12.x zip:\n"
-            "       llama-bXXXX-bin-win-cuda-cu12.X-x64.zip\n"
-            "     (NOT the cpu-only zip)\n"
-            "  3. Extract llama-server.exe AND the three .dll files\n"
-            "     (cublas64_12.dll, cublasLt64_12.dll, cudart64_12.dll)\n"
-            "     into: artifacts/servers/cuda/\n"
-            "  4. Restart Sage.\n\n"
-            "The CPU-only exe ignores --n-gpu-layers; GPU utilization will be 0 %."
-        )
-
-    log.debug("cuda_binary_check_passed", binary=str(binary))
-
-
 def _build_cmd(
     binary: Path,
     cfg: LLMSettings,
-    binary: Path,
     port: int,
     gpu_layers: int,
     ctx_size: int,
