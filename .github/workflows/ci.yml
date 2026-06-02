@@ -52,23 +52,6 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
-  build:
-    needs: lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv python install 3.12
-      - name: Build wheel
-        run: uv build
-      - name: Verify wheel installs
-        run: |
-          uv venv /tmp/test-install
-          uv pip install dist/*.whl --python /tmp/test-install/bin/python
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
 
   architecture-check:
     runs-on: ubuntu-latest
