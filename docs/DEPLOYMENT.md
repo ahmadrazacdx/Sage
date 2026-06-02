@@ -12,10 +12,10 @@ The build system produces four installer variants:
 
 | Tier | Backend | Models Bundled | Typical Size | Use Case |
 | --- | --- | --- | --- | --- |
-| `fast` | CPU | Yes | ~3 GB | CPU-only machines, fully offline |
-| `pro` | CUDA | Yes | ~5 GB | GPU-accelerated, fully offline |
-| `fast-lite` | CPU | No | ~1.2 GB | Smaller download; models added separately |
-| `pro-lite` | CUDA | No | ~1.6 GB | Smaller download; models added separately |
+| `fast` | CPU | Yes | ~3.2 GB | CPU-only machines, fully offline |
+| `pro` | CUDA | Yes | ~5.2 GB | GPU-accelerated, fully offline |
+| `fast-lite` | CPU | No | ~1.4 GB | Smaller download; models added separately |
+| `pro-lite` | CUDA | No | ~2 GB | Smaller download; models added separately |
 
 Tier configuration is defined in `installer/build-manifest.json`, which specifies download sources, SHA-256 checksums, and per-tier artifact inclusion rules.
 

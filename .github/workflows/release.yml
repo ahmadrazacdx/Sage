@@ -63,6 +63,21 @@ jobs:
       - name: Download embedding model
         run: git clone https://huggingface.co/qdrant/bge-small-en-v1.5-onnx-q artifacts/models/embedding-models/models--qdrant--bge-small-en-v1.5-onnx-q
 
+      # --- Download Vector Database ---
+      - name: Download Vector Database
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          $headers = @{}
+          if ($env:HF_TOKEN) {
+              $headers["Authorization"] = "Bearer $env:HF_TOKEN"
+          }
+          New-Item -ItemType Directory -Force -Path artifacts/data/databases/vectordb
+          Invoke-WebRequest -Uri "https://huggingface.co/datasets/cdx777/sage_vectordb/resolve/main/vectordb.zip" -OutFile "vectordb.zip" -Headers $headers
+          Expand-Archive -Path "vectordb.zip" -DestinationPath "artifacts/data/databases/vectordb" -Force
+          Remove-Item "vectordb.zip" -Force
+        shell: pwsh
+
       # --- Build installer ---
       - name: Build ${{ matrix.tier }} installer
         run: .\build.ps1 -Tier ${{ matrix.tier }}
@@ -94,7 +109,7 @@ jobs:
   upload-r2:
     needs: build-installer
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev-main' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
         tier: [fast, pro, fast-lite, pro-lite]
@@ -143,7 +158,7 @@ jobs:
   create-release:
     needs: build-installer
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev-main' || startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
 
@@ -168,6 +183,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.content }}
           files: |
             installers/**/*.zip
