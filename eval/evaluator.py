@@ -1,10 +1,11 @@
-import asyncio
 import json
 import math
-import os
-import time
 import re
-from typing import Any
+
+import numpy as np
+from fastembed import TextEmbedding
+from langchain_openai import ChatOpenAI
+
 
 def _parse_json(text: str) -> dict:
     """Robustly extract and parse a JSON object from text."""
@@ -15,14 +16,14 @@ def _parse_json(text: str) -> dict:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
-    
+
     match = re.search(r"({.*})", text, re.DOTALL)
     if match:
         try:
             return json.loads(match.group(1))
         except json.JSONDecodeError:
             pass
-            
+
     cleaned = text
     if cleaned.startswith("```json"):
         cleaned = cleaned[7:]
@@ -35,16 +36,15 @@ def _parse_json(text: str) -> dict:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
-        
+
     return {}
 
-import numpy as np
-from fastembed import TextEmbedding
-from langchain_openai import ChatOpenAI
 
 FAITHFULNESS_PROMPT = """
-You are an expert evaluator. Your task is to evaluate the faithfulness of an AI-generated answer based on the given context.
-An answer is faithful if all the claims made in the answer can be directly inferred from the context.
+You are an expert evaluator. Your task is to evaluate the faithfulness of
+an AI-generated answer based on the given context.
+An answer is faithful if all the claims made in the answer can be directly
+inferred from the context.
 Please score the faithfulness on a scale from 1 to 5, where:
 1 = Completely unfaithful (hallucinated or contradicts context)
 5 = Completely faithful (all claims fully supported by context)
@@ -55,7 +55,8 @@ Context:
 Generated Answer:
 {answer}
 
-Respond ONLY with a valid JSON object containing the score and a brief reason. Example: {{"score": 5, "reason": "All claims are supported."}}
+Respond ONLY with a valid JSON object containing the score and a brief reason.
+Example: {{"score": 5, "reason": "All claims are supported."}}
 """
 
 RELEVANCE_PROMPT = """
@@ -71,11 +72,13 @@ Question:
 Generated Answer:
 {answer}
 
-Respond ONLY with a valid JSON object containing the score and a brief reason. Example: {{"score": 4, "reason": "Directly addresses the question but includes minor extra info."}}
+Respond ONLY with a valid JSON object containing the score and a brief reason.
+Example: {{"score": 4, "reason": "Directly addresses the question but includes minor extra info."}}
 """
 
 CONTEXT_PRECISION_PROMPT = """
-You are an expert evaluator. Given a question and a context chunk, determine if the chunk contains information that is useful for answering the question.
+You are an expert evaluator. Given a question and a context chunk, determine if the
+chunk contains information that is useful for answering the question.
 Score 1 if it is useful, 0 if it is not.
 
 Question:
@@ -87,20 +90,24 @@ Context Chunk:
 Respond ONLY with a valid JSON object containing the score. Example: {{"score": 1}}
 """
 
+
 class Evaluator:
-    def __init__(self, llm_model: str = "llama-3.3-70b-versatile", groq_api_key: str | None = None, llm_port: int | None = None):
+    def __init__(
+        self, llm_model: str = "llama-3.3-70b-versatile", groq_api_key: str | None = None, llm_port: int | None = None
+    ):
         """
-        Initializes the evaluator. Defaults to Groq API for fast LLM-as-a-judge. Falls back to local LLM if no API key provided.
+        Initializes the evaluator. Defaults to Groq API for fast LLM-as-a-judge.
+        Falls back to local LLM if no API key provided.
         """
         self.groq_api_key = groq_api_key
-        
+
         if self.groq_api_key:
             self.judge_llm = ChatOpenAI(
                 model=llm_model,
                 api_key=self.groq_api_key,
                 base_url="https://api.groq.com/openai/v1",
                 temperature=0.0,
-                model_kwargs={"response_format": {"type": "json_object"}}
+                model_kwargs={"response_format": {"type": "json_object"}},
             )
         else:
             port = llm_port or 8080
@@ -109,10 +116,12 @@ class Evaluator:
                 api_key="local",
                 base_url=f"http://127.0.0.1:{port}/v1",
                 temperature=0.0,
-                model_kwargs={"response_format": {"type": "json_object"}}
+                model_kwargs={"response_format": {"type": "json_object"}},
             )
-            
-        self.embedder = TextEmbedding(model_name="BAAI/bge-small-en-v1.5", cache_dir="artifacts/models/embedding-models")
+
+        self.embedder = TextEmbedding(
+            model_name="BAAI/bge-small-en-v1.5", cache_dir="artifacts/models/embedding-models"
+        )
 
     def _extract_score(self, response_text: str, max_score: float = 5.0) -> float:
         try:
@@ -174,7 +183,7 @@ class Evaluator:
         """Calculates Precision@K weighted by relevance of chunks."""
         if not context_chunks:
             return 0.0
-        
+
         scores = []
         for chunk in context_chunks:
             prompt = CONTEXT_PRECISION_PROMPT.format(question=question, chunk=chunk)
@@ -184,7 +193,7 @@ class Evaluator:
                 scores.append(s)
             except Exception:
                 scores.append(0.0)
-        precision_at_k = [sum(scores[:i+1]) / (i+1) for i in range(len(scores)) if scores[i] == 1.0]
+        precision_at_k = [sum(scores[: i + 1]) / (i + 1) for i in range(len(scores)) if scores[i] == 1.0]
         if not precision_at_k:
             return 0.0
         return sum(precision_at_k) / sum(scores) if sum(scores) > 0 else 0.0
@@ -197,12 +206,13 @@ class Evaluator:
         v1, v2 = np.array(vecs[0]), np.array(vecs[1])
         cos_sim = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
         return float(max(0.0, min(1.0, cos_sim)))
-        
+
     def _normalize_course_code(self, code: str) -> str:
         """Extracts the base course code prefix, e.g. 'CMPC104_ Software Engineering' -> 'CMPC104'"""
         if not code:
             return ""
         import re
+
         match = re.match(r"^([A-Z]{3,4}\d{3})", code.strip().upper())
         if match:
             return match.group(1)
@@ -223,7 +233,11 @@ class Evaluator:
         target_norm = self._normalize_course_code(target_course)
         if not target_norm:
             return 0.0
-        dcg = sum(1.0 / math.log2(i + 2) for i, code in enumerate(retrieved_course_codes) if self._normalize_course_code(code) == target_norm)
+        dcg = sum(
+            1.0 / math.log2(i + 2)
+            for i, code in enumerate(retrieved_course_codes)
+            if self._normalize_course_code(code) == target_norm
+        )
         hits = sum(1 for c in retrieved_course_codes if self._normalize_course_code(c) == target_norm)
         idcg = sum(1.0 / math.log2(i + 2) for i in range(hits))
         return dcg / idcg if idcg > 0 else 0.0
