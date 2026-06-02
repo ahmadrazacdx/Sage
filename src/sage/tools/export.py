@@ -60,7 +60,7 @@ def _response(
 
 def _sanitize_filename(filename: str) -> str:
     """Strip unsafe characters and enforce length limit."""
-    clean = Path(filename).name
+    clean = Path(str(filename).replace("\\", "/")).name
     clean = re.sub(r'[<>:"/\\|?*]', "_", clean).strip(". ")
     return (clean or "export")[:_MAX_FILENAME_LENGTH]
 
