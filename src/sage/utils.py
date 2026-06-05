@@ -68,7 +68,7 @@ def configure_logging(level: str = "info") -> None:
             processors=processors,
             wrapper_class=structlog.make_filtering_bound_logger(_level),
             context_class=dict,
-            logger_factory=structlog.WriteLoggerFactory(file=log_file.open("a", encoding="utf-8")),
+            logger_factory=structlog.WriteLoggerFactory(file=log_file.open("w", encoding="utf-8")),
             cache_logger_on_first_use=True,
         )
     else:
@@ -338,6 +338,13 @@ def parse_structured_output[StructuredModelT: BaseModel](raw: Any, schema: type[
             last_exc = exc
 
     preview = strip_think_markers(_content_to_text(getattr(raw, "content", raw)))[:220]
+    try:
+        import os
+        debug_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "planner_validation_debug.log")
+        with open(debug_path, "w", encoding="utf-8") as f:
+            f.write(f"RAW OUTPUT:\n{_content_to_text(getattr(raw, 'content', raw))}\n\nVALIDATION ERROR:\n{repr(last_exc)}\n")
+    except Exception:
+        pass
     raise ValueError(f"Unable to parse structured output for {schema.__name__}. Preview: {preview!r}") from last_exc
 
 
@@ -354,6 +361,15 @@ async def ainvoke_structured_with_fallback[StructuredModelT: BaseModel](
 ) -> StructuredModelT:
     """Invoke structured output; fall back to raw JSON parsing on grammar failures."""
     import asyncio
+    if not prefer_raw_json:
+        try:
+            bound_kwargs: dict = getattr(llm, "kwargs", {})
+            extra_body: dict = bound_kwargs.get("extra_body", {})
+            chat_kwargs: dict = extra_body.get("chat_template_kwargs", {})
+            if chat_kwargs.get("enable_thinking") is True:
+                prefer_raw_json = True
+        except Exception:
+            pass
 
     if prefer_raw_json:
         raw_result = await asyncio.wait_for(
@@ -371,17 +387,19 @@ async def ainvoke_structured_with_fallback[StructuredModelT: BaseModel](
             return result
         return schema.model_validate(result)
     except Exception as exc:
-        if not is_think_grammar_error(exc):
+        if isinstance(exc, asyncio.CancelledError):
             raise
 
-        logger.warning(
-            f"{event_prefix}_grammar_fallback",
-            exc_type=type(exc).__name__,
-            exc_msg=str(exc)[:220],
-        )
+        if logger:
+            logger.warning(
+                f"{event_prefix}_structured_fallback",
+                exc_type=type(exc).__name__,
+                exc_msg=str(exc)[:220],
+            )
 
         raw_result = await asyncio.wait_for(
             (prompt | llm).ainvoke(payload),
             timeout=timeout_s,
         )
         return parse_structured_output(raw_result, schema)
+

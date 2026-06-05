@@ -96,7 +96,7 @@ class LLMSettings(BaseSettings):
     util_model_path: Path = Path("artifacts/models/Qwen3.5-0.8B-Q4_K_M.gguf")
     util_model_name: str = "Qwen3.5-0.8B"
     util_context_window: int = Field(default=4096, ge=512, le=16384)
-    util_startup_timeout: float = Field(default=60.0, ge=10.0, le=300.0)
+    util_startup_timeout: float = Field(default=50.0, ge=10.0, le=300.0)
 
     # Per-backend llama-server binaries.
     llama_cpp_cpu_bin: Path = Path("artifacts/servers/cpu/llama-server.exe")
