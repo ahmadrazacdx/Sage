@@ -223,7 +223,8 @@ DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
     1. Line 1: diagram type + direction (e.g. flowchart TD).
     2. Node IDs: MUST exactly match the snake_case `id` from the description (e.g. start_node). \
        NEVER invent short IDs like A, B, C.
-    3. Node syntax: node_id["Label Text"]. You MUST wrap the label text in double quotes if it contains special characters (<, >, [, ]). NEVER nest double quotes or duplicate the node ID inside the label.
+    3. Node syntax: node_id["Label Text"]. You MUST wrap the label text in double quotes if it \
+       contains special characters (<, >, [, ]). NEVER nest double quotes or duplicate the node ID inside the label.
     4. Decision nodes: {label?} diamond syntax.
     5. subgraph NAME ["Display Label"] when 3+ nodes share a phase. Subgraphs MUST contain ONLY node definitions.
     6. Edge chaining (e.g. node_a --> node_b --> node_c) is highly encouraged to keep the \

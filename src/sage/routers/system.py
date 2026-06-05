@@ -72,6 +72,7 @@ async def get_courses() -> CoursesResponse:
     Queries courses.json, the BM25 index, or ChromaDB metadata.
     """
     import structlog
+
     log = structlog.get_logger(__name__)
     cfg = get_settings()
     project_root = Path(__file__).resolve().parents[3]
@@ -107,9 +108,7 @@ async def get_courses() -> CoursesResponse:
                 payload = pickle.load(fh)
             metadatas = payload.get("metadatas", [])
             courses = {
-                str(m.get("course_code", "")).upper()
-                for m in metadatas
-                if isinstance(m, dict) and m.get("course_code")
+                str(m.get("course_code", "")).upper() for m in metadatas if isinstance(m, dict) and m.get("course_code")
             }
             if courses:
                 log.info("courses_loaded_from_bm25", path=str(bm25_path), count=len(courses))
@@ -120,14 +119,13 @@ async def get_courses() -> CoursesResponse:
     # 3. Try querying ChromaDB collection directly
     try:
         from sage.rag.vectorstore import get_curriculum_collection
+
         collection = get_curriculum_collection()
         results = collection.get(include=["metadatas"])
         metadatas = results.get("metadatas")
         if metadatas:
             courses = {
-                str(m.get("course_code", "")).upper()
-                for m in metadatas
-                if isinstance(m, dict) and m.get("course_code")
+                str(m.get("course_code", "")).upper() for m in metadatas if isinstance(m, dict) and m.get("course_code")
             }
             if courses:
                 log.info("courses_loaded_from_chroma", count=len(courses))

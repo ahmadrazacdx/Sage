@@ -158,13 +158,17 @@ _REF_LINE_RE = re.compile(r"^\[\d+\]\s+.+")
 
 
 def _escape_literal_dollars(text: str) -> str:
-    """Escape literal and currency dollar signs in markdown to prevent Typst compilation failures due to unclosed math delimiters."""
+    """Escape literal and currency dollar signs in markdown.
+
+    This prevents Typst compilation failures due to unclosed math delimiters.
+    """
     placeholders: list[str] = []
 
     def mask_match(match: re.Match) -> str:
         placeholder = f"__SAGE_EXPORT_PLACEHOLDER_{len(placeholders)}__"
         placeholders.append(match.group(0))
         return placeholder
+
     text = re.sub(r"```.*?```", mask_match, text, flags=re.DOTALL)
     text = re.sub(r"`[^`\n]+`", mask_match, text)
     text = re.sub(r"\$\$.*?\$\$", mask_match, text, flags=re.DOTALL)
@@ -172,11 +176,37 @@ def _escape_literal_dollars(text: str) -> str:
     processed_lines = []
     MATH_CHARS = set("+=*/^_-<>\\|{}[]")
     CURRENCY_WORDS = {
-        "billion", "million", "thousand", "trillion", "hundred", "percent",
-        "dollar", "dollars", "usd", "eur", "gbp", "jpy", "cny", "cad", "aud",
-        "revenue", "profit", "cost", "price", "valuation", "acquired", "funding",
-        "budget", "sales", "market", "capital", "financial", "equity", "debt",
-        "transaction", "deal"
+        "billion",
+        "million",
+        "thousand",
+        "trillion",
+        "hundred",
+        "percent",
+        "dollar",
+        "dollars",
+        "usd",
+        "eur",
+        "gbp",
+        "jpy",
+        "cny",
+        "cad",
+        "aud",
+        "revenue",
+        "profit",
+        "cost",
+        "price",
+        "valuation",
+        "acquired",
+        "funding",
+        "budget",
+        "sales",
+        "market",
+        "capital",
+        "financial",
+        "equity",
+        "debt",
+        "transaction",
+        "deal",
     }
 
     for line in lines:
@@ -205,7 +235,7 @@ def _escape_literal_dollars(text: str) -> str:
             to_escape.add(indices[-1])
 
         for start, end in pairs:
-            content = line[start + 1:end]
+            content = line[start + 1 : end]
             is_math = True
 
             if not content.strip():
@@ -216,11 +246,7 @@ def _escape_literal_dollars(text: str) -> str:
                 has_space = " " in content
                 has_math_char = any(c in content for c in MATH_CHARS)
 
-                if has_currency_word:
-                    is_math = False
-                elif has_space and not has_math_char:
-                    is_math = False
-                elif len(content) > 60:
+                if has_currency_word or has_space and not has_math_char or len(content) > 60:
                     is_math = False
 
             if not is_math:

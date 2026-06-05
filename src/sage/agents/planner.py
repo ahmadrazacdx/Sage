@@ -33,7 +33,8 @@ from sage.prompts import (
 from sage.utils import ainvoke_structured_with_fallback
 
 PLANNER_SYSTEM_PROMPT: str = (
-    "You are a precise academic planning assistant. Your job is to extract structured details and generate study plans. "
+    "You are a precise academic planning assistant. Your job is to extract "
+    "structured details and generate study plans. "
     "Respond ONLY with raw, valid JSON matching the requested schema. Never output any greeting, introductory text, "
     "conversational filler, explanation, or markdown fences. Output clean, parseable JSON."
 )

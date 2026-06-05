@@ -192,7 +192,7 @@ async def test_ainvoke_structured_with_fallback():
     assert res3.name == "Raw"
 
     llm4 = MockLLM(fail_structured=True, think_error=False)
-    with pytest.raises(Exception, match="Structured error"):
+    with pytest.raises(ValueError, match="Unable to parse structured output"):
         await ainvoke_structured_with_fallback(
             prompt=prompt, llm=llm4, schema=DummySchema, payload={}, timeout_s=1.0, logger=logger, event_prefix="test"
         )
@@ -259,3 +259,8 @@ def test_code_fix_ast_and_fences():
     assert _detect_framework_imports("import syntaxerror(") is None
     assert _detect_framework_imports("import flask") == "flask"
     assert _detect_framework_imports("from django.db import models") == "django"
+
+
+def test_parse_structured_output_validation_failure():
+    with pytest.raises(ValueError, match="Unable to parse structured output"):
+        parse_structured_output({"invalid": "data"}, DummySchema)

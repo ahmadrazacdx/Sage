@@ -340,9 +340,13 @@ def parse_structured_output[StructuredModelT: BaseModel](raw: Any, schema: type[
     preview = strip_think_markers(_content_to_text(getattr(raw, "content", raw)))[:220]
     try:
         import os
-        debug_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "planner_validation_debug.log")
+
+        debug_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "planner_validation_debug.log"
+        )
         with open(debug_path, "w", encoding="utf-8") as f:
-            f.write(f"RAW OUTPUT:\n{_content_to_text(getattr(raw, 'content', raw))}\n\nVALIDATION ERROR:\n{repr(last_exc)}\n")
+            raw_text = _content_to_text(getattr(raw, "content", raw))
+            f.write(f"RAW OUTPUT:\n{raw_text}\n\nVALIDATION ERROR:\n{repr(last_exc)}\n")
     except Exception:
         pass
     raise ValueError(f"Unable to parse structured output for {schema.__name__}. Preview: {preview!r}") from last_exc
@@ -361,6 +365,7 @@ async def ainvoke_structured_with_fallback[StructuredModelT: BaseModel](
 ) -> StructuredModelT:
     """Invoke structured output; fall back to raw JSON parsing on grammar failures."""
     import asyncio
+
     if not prefer_raw_json:
         try:
             bound_kwargs: dict = getattr(llm, "kwargs", {})
@@ -402,4 +407,3 @@ async def ainvoke_structured_with_fallback[StructuredModelT: BaseModel](
             timeout=timeout_s,
         )
         return parse_structured_output(raw_result, schema)
-

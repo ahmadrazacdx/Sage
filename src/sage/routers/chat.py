@@ -22,6 +22,7 @@ Rationale:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 import uuid
@@ -646,7 +647,11 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                     )
                     try:
                         snapshot = await graph.aget_state(graph_config)
-                        if snapshot and snapshot.values and ("response" in snapshot.values or "artifact_paths" in snapshot.values):
+                        if (
+                            snapshot
+                            and snapshot.values
+                            and ("response" in snapshot.values or "artifact_paths" in snapshot.values)
+                        ):
                             final_state = snapshot.values
                             log.info("recovered_final_state_from_checkpointer", thread_id=thread_id)
                     except Exception as e:
@@ -770,10 +775,8 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
         finally:
             if pending_task is not None and not pending_task.done():
                 pending_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     await pending_task
-                except (asyncio.CancelledError, Exception):
-                    pass
             active.pop(thread_id, None)
 
     return StreamingResponse(

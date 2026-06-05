@@ -15,8 +15,8 @@ import re
 from typing import Any
 
 import structlog
-
 from langchain_core.messages import AIMessage
+
 from sage.agents.state import AgentState
 
 log = structlog.get_logger(__name__)
@@ -35,7 +35,7 @@ def _clean_source_name(source: str) -> tuple[str, str]:
     clean_name = source.strip()
     base, ext = os.path.splitext(clean_name)
     clean_name = base
-    
+
     emoji = "📚"
     lower_ext = ext.lower()
     lower_source = source.lower()
@@ -51,18 +51,18 @@ def _clean_metadata(raw_claim: str, source: str) -> str | None:
         return None
     inner = match.group(1).strip()
     parts = [p.strip() for p in inner.split("|")]
-    
+
     clean_parts = []
     norm_source = _normalize_source_name(source)
-    
+
     for p in parts:
         if _normalize_source_name(p) == norm_source:
             continue
         clean_parts.append(p)
-        
+
     if not clean_parts:
         return None
-        
+
     return " | ".join(clean_parts)
 
 
@@ -143,10 +143,7 @@ def _build_references_section(
         emoji, clean_source = _clean_source_name(source)
         metadata = _clean_metadata(raw_claim, clean_source)
 
-        if metadata:
-            ref_str = f"[{num}] {emoji} {clean_source}: [{metadata}]"
-        else:
-            ref_str = f"[{num}] {emoji} {clean_source}"
+        ref_str = f"[{num}] {emoji} {clean_source}: [{metadata}]" if metadata else f"[{num}] {emoji} {clean_source}"
 
         lines.append(ref_str)
 

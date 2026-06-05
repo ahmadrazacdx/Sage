@@ -177,6 +177,18 @@ def test_research_helpers():
     norm = _normalize_references_section(report)
     assert "[1] Ref 1" in norm
 
+    report_dup = (
+        "# Title\n## References\n"
+        "[1] Vaswani et al. Attention is all you need\n"
+        "[2] Brown et al. GPT-3 paper\n"
+        "[3] Vaswani et al. Attention is all you need\n"
+        "[4] Brown et al. GPT-3 paper"
+    )
+    norm_dup = _normalize_references_section(report_dup)
+    assert "[1] Vaswani et al. Attention is all you need" in norm_dup
+    assert "[2] Brown et al. GPT-3 paper" in norm_dup
+    assert "[3]" not in norm_dup
+
     refs = "[1] Title. Venue. Year.\n[2] Title. Venue. Year."
     assert _all_refs_look_fake(refs) is True
     assert _all_refs_look_fake("[1] Real Paper. arxiv.") is False

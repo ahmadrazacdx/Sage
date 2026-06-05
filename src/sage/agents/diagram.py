@@ -34,7 +34,7 @@ log = structlog.get_logger(__name__)
 
 _MERMAID_START_RE = re.compile(
     r"(?m)^\s*(?:mermaid\s+)?(?P<type>flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|mindmap|journey|timeline|gitGraph)\b",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 _INIT_BLOCK_RE = re.compile(r"%%\{init:.*?\}%%\s*\n?", re.DOTALL)
