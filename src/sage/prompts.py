@@ -223,14 +223,15 @@ DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
     1. Line 1: diagram type + direction (e.g. flowchart TD).
     2. Node IDs: MUST exactly match the snake_case `id` from the description (e.g. start_node). \
        NEVER invent short IDs like A, B, C.
-    3. Quote labels with special chars using double quotes.
+    3. Node syntax: node_id["Label Text"]. You MUST wrap the label text in double quotes if it contains special characters (<, >, [, ]). NEVER nest double quotes or duplicate the node ID inside the label.
     4. Decision nodes: {label?} diamond syntax.
     5. subgraph NAME ["Display Label"] when 3+ nodes share a phase. Subgraphs MUST contain ONLY node definitions.
     6. Edge chaining (e.g. node_a --> node_b --> node_c) is highly encouraged to keep the \
        diagram logically clean and prevent orphan nodes. NEVER use & fan-out.
     7. Dashed edges for feedback/recurrent: -.->, solid for normal: -->
     8. Define ALL edges outside/below the subgraphs. NEVER define edges inside subgraphs to prevent duplication.
-    9. Return ONLY the raw Mermaid code inside a `mermaid fenced block, with no explanation.
+    9. NEVER append classes to nodes using ::: syntax (e.g. node_id:::class is FORBIDDEN).
+    10. Return ONLY the raw Mermaid code inside a ```mermaid fenced block, with no explanation.
 
     EXAMPLE (bare structure, every edge on its own line):
     flowchart TD

@@ -56,7 +56,13 @@ _MAX_FALLBACK_REFS = 24
 
 
 def _no_think(llm: ChatOpenAI) -> ChatOpenAI:
-    return llm.bind(extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+    return llm.bind(
+        extra_body={
+            "chat_template_kwargs": {"enable_thinking": False},
+            "thinking_budget": 0,
+            "reasoning_budget": 0,
+        }
+    )
 
 
 _DIGEST_PROMPT = (
@@ -271,12 +277,23 @@ def _normalize_references_section(report: str) -> str:
     if not items:
         return report
 
+    seen_refs = set()
     cleaned_items: list[str] = []
     for item in items:
+        content_only = re.sub(r"^\[\d+\]\s*", "", item).strip()
+        ref_key = "".join(c for c in content_only.lower() if c.isalnum())
+        if not ref_key:
+            continue
+        if ref_key in seen_refs:
+            continue
+        seen_refs.add(ref_key)
+
         normalized = " ".join(item.split())
         normalized = _REF_INITIAL_RUN_RE.sub(_compress_initials_run, normalized)
         if len(normalized) > _MAX_REFERENCE_LINE_CHARS:
             normalized = normalized[:_MAX_REFERENCE_LINE_CHARS].rstrip() + "..."
+        idx = len(cleaned_items) + 1
+        normalized = re.sub(r"^\[\d+\]", f"[{idx}]", normalized)
         cleaned_items.append(normalized)
 
     return f"{prefix}\n" + "\n".join(cleaned_items)

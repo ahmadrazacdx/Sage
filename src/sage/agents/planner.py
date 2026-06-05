@@ -29,18 +29,21 @@ from sage.config import get_settings
 from sage.prompts import (
     ROADMAP_ANALYSIS_PROMPT,
     ROADMAP_SCHEDULE_PROMPT,
-    SYSTEM_PROMPT,
 )
 from sage.utils import ainvoke_structured_with_fallback
+
+PLANNER_SYSTEM_PROMPT: str = (
+    "You are a precise academic planning assistant. Your job is to extract structured details and generate study plans. "
+    "Respond ONLY with raw, valid JSON matching the requested schema. Never output any greeting, introductory text, "
+    "conversational filler, explanation, or markdown fences. Output clean, parseable JSON."
+)
 
 log = structlog.get_logger(__name__)
 
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 _MAX_RETRIES: int = 2
-# Schedule generation is more complex; give it 50% more time
-_SCHEDULE_TIMEOUT_MULTIPLIER: float = 1.5
-# Low temperature ensures deterministic, reproducible schedules
+_SCHEDULE_TIMEOUT_MULTIPLIER: float = 2.0
 _SCHEDULE_TEMPERATURE: float = 0.1
 
 
@@ -490,23 +493,32 @@ async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
     kus: list[dict] = state.get("knowledge_units", [])
     student_memory: str = state.get("student_memory", "No prior context available.")
     ku_text = _format_knowledge_units(kus)
+    _no_think = {
+        "extra_body": {
+            "chat_template_kwargs": {"enable_thinking": False},
+            "thinking_budget": 0,
+            "reasoning_budget": 0,
+        }
+    }
+    llm = llm.bind(**_no_think)
 
     # Analysis
     analysis_prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", SYSTEM_PROMPT),
+            ("system", PLANNER_SYSTEM_PROMPT),
             ("human", ROADMAP_ANALYSIS_PROMPT),
         ]
     )
 
     analysis: RoadmapAnalysis | None = None
     last_exc: Exception | None = None
-    _analysis_llm = util_llm or llm
+    _analysis_llm = util_llm.bind(**_no_think) if util_llm else llm
     for attempt in range(1, _MAX_RETRIES + 1):
+        current_llm = llm if (attempt > 1) else _analysis_llm
         try:
             analysis = await ainvoke_structured_with_fallback(
                 prompt=analysis_prompt,
-                llm=_analysis_llm,
+                llm=current_llm,
                 schema=RoadmapAnalysis,
                 payload={"query": query, "student_memory": student_memory},
                 timeout_s=cfg.llm_timeout,
@@ -550,7 +562,7 @@ async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
     analysis_json = analysis.model_dump_json()
     schedule_prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", SYSTEM_PROMPT),
+            ("system", PLANNER_SYSTEM_PROMPT),
             ("human", ROADMAP_SCHEDULE_PROMPT),
         ]
     )
@@ -560,7 +572,10 @@ async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
     last_exc = None
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            schedule_llm = llm.bind(temperature=_SCHEDULE_TEMPERATURE)
+            schedule_llm = llm.bind(
+                temperature=_SCHEDULE_TEMPERATURE,
+                **_no_think,
+            )
             schedule = await ainvoke_structured_with_fallback(
                 prompt=schedule_prompt,
                 llm=schedule_llm,

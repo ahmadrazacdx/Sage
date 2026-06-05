@@ -68,6 +68,12 @@ async def get_session_messages(
                         content = " ".join(str(c.get("text", c) if isinstance(c, dict) else c) for c in content)
                     result.append(Message(role=role, content=str(content)))
                 if result:
+                    artifacts = values.get("artifact_paths", [])
+                    if artifacts and isinstance(artifacts, list):
+                        for msg in reversed(result):
+                            if msg.role == "assistant":
+                                msg.artifact = artifacts[0]
+                                break
                     return result
         except Exception:
             pass

@@ -121,7 +121,11 @@ class QuizEvaluation(BaseModel):
 
 _chain_cache: dict[tuple, Any] = {}
 
-_NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
+_NO_THINK = {
+    "chat_template_kwargs": {"enable_thinking": False},
+    "thinking_budget": 0,
+    "reasoning_budget": 0,
+}
 
 
 def _gen_chain(llm: Any) -> Any:

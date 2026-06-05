@@ -42,16 +42,19 @@ async def _heavy_startup(app: FastAPI, checkpointer: Any, cfg: Any) -> None:
         app.state.llm_port = llm_port
         app.state.gpu_info = gpu_info
 
-        # Start utility server in a thread-pool.
+        # Start utility server in a thread-pool only if backend is CPU.
         utility_port: int | None = None
-        try:
-            _, utility_port = await asyncio.to_thread(start_utility_server)
-        except FileNotFoundError as exc:
-            log.warning(
-                "utility_server_skipped",
-                reason=str(exc)[:200],
-                hint="Memory features will use the primary model as fallback.",
-            )
+        if gpu_info.get("backend") == "cpu":
+            try:
+                _, utility_port = await asyncio.to_thread(start_utility_server)
+            except FileNotFoundError as exc:
+                log.warning(
+                    "utility_server_skipped",
+                    reason=str(exc)[:200],
+                    hint="Memory features will use the primary model as fallback.",
+                )
+        else:
+            log.info("utility_server_skipped_for_gpu", reason="GPU mode active; main LLM is sufficient.")
         app.state.utility_port = utility_port
 
         # LLM clients.

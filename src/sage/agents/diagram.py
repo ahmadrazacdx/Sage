@@ -33,7 +33,8 @@ from sage.utils import extract_fenced_block, strip_think_markers
 log = structlog.get_logger(__name__)
 
 _MERMAID_START_RE = re.compile(
-    r"(?m)^\s*(?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|mindmap|journey|timeline|gitGraph)\b"
+    r"(?m)^\s*(?:mermaid\s+)?(?P<type>flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|mindmap|journey|timeline|gitGraph)\b",
+    re.IGNORECASE
 )
 
 _INIT_BLOCK_RE = re.compile(r"%%\{init:.*?\}%%\s*\n?", re.DOTALL)
@@ -94,10 +95,11 @@ def _strip_fences(text: str) -> str:
 
     match = _MERMAID_START_RE.search(cleaned)
     if match is not None:
-        cleaned = cleaned[match.start() :]
+        cleaned = cleaned[match.start("type") :]
 
     cleaned = _INIT_BLOCK_RE.sub("", cleaned)
     cleaned = _deduplicate_mermaid(cleaned)
+    cleaned = re.sub(r'([A-Za-z0-9_]+)\["?\1\["?(.*?)"?\]"?\]', r'\1["\2"]', cleaned)
 
     return cleaned.strip()
 
@@ -168,7 +170,8 @@ def _inject_mermaid_styling(bare_code: str, description: dict | None) -> str:
             or stripped.startswith("style ")
         ):
             continue
-        structural_lines.append(line)
+        cleaned_line = re.sub(r":::[A-Za-z0-9_-]+", "", line)
+        structural_lines.append(cleaned_line)
 
     result_lines: list[str] = [structural_lines[0]]
     result_lines.extend(_CLASS_DEFS)
@@ -329,7 +332,18 @@ async def diagram_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
     phase1_limit: float = timeout * _PHASE1_BUDGET_FRACTION
     _fix_llm = util_llm or llm
 
-    _no_think = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+    if hasattr(llm, "copy"):
+        llm = llm.copy(update={"streaming": False})
+    if hasattr(_fix_llm, "copy"):
+        _fix_llm = _fix_llm.copy(update={"streaming": False})
+
+    _no_think = {
+        "extra_body": {
+            "chat_template_kwargs": {"enable_thinking": False},
+            "thinking_budget": 0,
+            "reasoning_budget": 0,
+        }
+    }
     llm = llm.bind(**_no_think)
     _fix_llm = _fix_llm.bind(**_no_think)
 
