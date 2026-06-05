@@ -302,7 +302,7 @@ def _format_schedule_markdown(
     lines += [_build_intro(analysis, schedule), ""]
 
     lines += [
-        f"# 🗺️ Study Roadmap — {analysis.subject}",
+        f"# 🚀 Study Roadmap — {analysis.subject}",
         "",
         "| 📅 Timeline | 🎯 Scope | ⏱ Daily Budget | 📊 Total Hours |",
         "| :---: | :---: | :---: | :---: |",

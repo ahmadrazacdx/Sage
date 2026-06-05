@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD033 MD041 -->
 <div align="center">
 
   <img src="./assets/sage-banner.png" alt="Sage" width="500" />
@@ -15,11 +16,10 @@
   </p>
 
   <p>
-    <a href="#overview">Overview</a> ·
-    <a href="#preview">Preview</a> ·
-    <a href="#architecture">Architecture</a> ·
-    <a href="#getting-started">Getting Started</a> ·
-    <a href="#documentation">Documentation</a>
+    <a href="assets/FYP-Poster">Poster</a> |
+    <a href="docs/FYP-Report.pdf">Report</a> |
+    <a href="docs/FYP-Slides.pptx">Slides</a> |
+    <a href="https://drive.google.com/drive/folders/167ma6st-2AcG-5MyzAY6WJMMisgSZuza?usp=sharing">Data</a>
   </p>
 
 </div>
@@ -46,7 +46,7 @@ User queries enter a LangGraph state graph where a router classifies intent and 
 ### Agent Modes
 
 | Mode | Agent | What It Does |
-|:---|:---|:---|
+| --- | --- | --- |
 | Explain | `reasoning` | Chain-of-thought explanation with RAG context |
 | Quiz Me | `quiz` | Generates and evaluates quizzes from course material |
 | Diagram | `diagram` | Produces Mermaid diagrams with validation and SVG rendering |
@@ -73,9 +73,33 @@ User queries enter a LangGraph state graph where a router classifies intent and 
   </tr>
   <tr>
     <td width="50%" align="center">
+      <img src="./assets/screenshots/home.png" alt="Home" width="100%" />
+      <br />
+      <strong>Home Screen</strong>
+    </td>
+    <td width="50%" align="center">
       <img src="./assets/screenshots/quiz-mode.png" alt="Quiz Mode" width="100%" />
       <br />
       <strong>Quiz Mode</strong>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="./assets/screenshots/explain-mode.png" alt="Explain Mode" width="100%" />
+      <br />
+      <strong>Explain Mode</strong>
+    </td>
+    <td width="50%" align="center">
+      <img src="./assets/screenshots/codefix-mode.png" alt="Code Fix Mode" width="100%" />
+      <br />
+      <strong>Code Fix Mode</strong>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="./assets/screenshots/diagram-mode.png" alt="Diagram Mode" width="100%" />
+      <br />
+      <strong>Diagram Mode</strong>
     </td>
     <td width="50%" align="center">
       <img src="./assets/screenshots/research-mode.png" alt="Research Mode" width="100%" />
@@ -83,12 +107,13 @@ User queries enter a LangGraph state graph where a router classifies intent and 
       <strong>Research Mode</strong>
     </td>
   </tr>
+
 </table>
 
 ## Architecture
 
 <div align="center">
-  <img src="./assets/sage_architecture.svg" alt="Sage Architecture" width="400">
+  <img src="./assets/sage_architecture.png" alt="Sage Architecture" width="500">
 </div>
 
 ## Tech Stack
@@ -100,7 +125,7 @@ User queries enter a LangGraph state graph where a router classifies intent and 
 | Backend | `FastAPI`, `Uvicorn`, `Pydantic`, `SQLite` (WAL), `ChromaDB` |
 | Embeddings | `BGE-small-en-v1.5` (ONNX via `FastEmbed`) |
 | Frontend | `React` 18, `TypeScript`, `Vite`, `Tailwind CSS` |
-| Desktop Shell |  `pywebview`, `pystray` |
+| Desktop Shell | `pywebview`, `pystray` |
 | Code Sandbox | Subprocess isolation with `NumPy`, `Pandas`, `SciPy`, `SymPy`, `Matplotlib`, `scikit-learn` |
 | Export | `Typst` (PDF), Markdown |
 | Search | `DuckDuckGo`, arXiv, Wikipedia |
@@ -182,9 +207,9 @@ python -m sage --dev
 | [Institution Guide](docs/INSTITUTION_GUIDE.md) | Customizing Sage for a specific institution/ department |
 
 <div align="center">
-  <sub>BS Software Engineering · Final Year Project</sub>
+  <sub>Final Year Project · BS Software Engineering</sub>
   <br />
-  <sub><a href="https://tu.edu.pk">Thal University Bhakkar</a> · Department of Computer Science & Information Technology</sub>
+  <sub><a href="https://tu.edu.pk/department-of-computer-science-it/">Department of Computer Science & Information Technology</a> · <a href="https://tu.edu.pk">Thal University Bhakkar</a></sub>
   <br />
   <sub>Built by <a href="https://github.com/ahmadrazacdx">Ahmad Raza</a> and <a href="https://github.com/abdullahkhan001">Abdullah Khan</a></sub>
 </div>

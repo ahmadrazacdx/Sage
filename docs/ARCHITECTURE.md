@@ -17,7 +17,7 @@ Sage is structured as five layers, each with a single responsibility:
 ## Layer Diagram
 
 <div align="center">
-  <img src="../assets/sage_architecture.svg" alt="Sage Architecture" width="500">
+  <img src="../assets/sage_architecture.png" alt="Sage Architecture" width="500">
 </div>
 
 ## Inference Layer
