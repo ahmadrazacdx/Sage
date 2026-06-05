@@ -158,6 +158,7 @@ export function Sidebar({ currentThreadId, onSelectThread, onNewChat, onOpenSett
                       toast({
                         title: "Conversation deleted",
                         description: "The selected conversation was removed.",
+                        duration: 2000,
                       });
                     },
                     onError: (error) => {

@@ -1,10 +1,75 @@
-import React from "react";
-import { Check, Loader2 } from "lucide-react";
+import React, { useState } from "react";
+import { Check, Loader2, FileText, Globe, BookOpen } from "lucide-react";
 import { StreamStep } from "@/hooks/use-chat-stream";
 
 interface ProgressTimelineProps {
   steps: StreamStep[];
   isComplete: boolean;
+}
+
+function StepLabelWithLogo({ label }: { label: string }) {
+  const isArxiv = label.toLowerCase().includes("arxiv");
+  const isWeb = label.toLowerCase().includes("the web") || label.toLowerCase().includes("google");
+  const isWiki = label.toLowerCase().includes("wikipedia");
+
+  const [imgFailed, setImgFailed] = useState(false);
+  const cleanLabel = label.replace(/^[^\p{L}\p{N}\s]+\s*/u, "");
+
+  if (isArxiv) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {!imgFailed ? (
+          <img
+            src="/arxiv.png"
+            alt=""
+            className="w-4.5 h-4.5 object-contain shrink-0"
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <FileText className="w-4 h-4 text-muted-foreground/70 shrink-0" />
+        )}
+        <span>{cleanLabel}</span>
+      </div>
+    );
+  }
+
+  if (isWeb) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {!imgFailed ? (
+          <img
+            src="/google.png"
+            alt=""
+            className="w-4 h-4 object-contain shrink-0"
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <Globe className="w-4 h-4 text-muted-foreground/70 shrink-0" />
+        )}
+        <span>{cleanLabel}</span>
+      </div>
+    );
+  }
+
+  if (isWiki) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {!imgFailed ? (
+          <img
+            src="/wikipedia.png"
+            alt=""
+            className="w-4 h-4 object-contain shrink-0"
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <BookOpen className="w-4 h-4 text-muted-foreground/70 shrink-0" />
+        )}
+        <span>{cleanLabel}</span>
+      </div>
+    );
+  }
+
+  return <span>{cleanLabel}</span>;
 }
 
 export function ProgressTimeline({ steps, isComplete }: ProgressTimelineProps) {
@@ -33,7 +98,7 @@ export function ProgressTimeline({ steps, isComplete }: ProgressTimelineProps) {
 
           <div className="pt-0.5 min-w-0">
             <div className={`text-sm font-medium ${step.status === "done" ? "text-muted-foreground" : "text-foreground"}`}>
-              {step.label}
+              <StepLabelWithLogo label={step.label} />
             </div>
           </div>
         </div>

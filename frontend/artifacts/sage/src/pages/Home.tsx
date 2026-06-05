@@ -307,7 +307,7 @@ export default function Home() {
           {!hasMessages ? (
             <WelcomeScreen name={userName} />
           ) : (
-            <div className="w-full max-w-[980px] mx-auto px-4 md:px-8 py-8 flex flex-col gap-6">
+            <div className="w-full max-w-[900px] mx-auto px-4 md:px-8 py-8 flex flex-col gap-6">
               {displayMessages.map((msg, idx) => (
                 <motion.div
                   initial={{ opacity: 0, y: 6 }}
