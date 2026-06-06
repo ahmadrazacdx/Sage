@@ -101,8 +101,8 @@ Triggered by pushing a semver tag (e.g., `v0.1.0`):
 | Step | Description |
 | --- | --- |
 | Build | Runs `build.ps1` for all four tiers on `windows-latest` |
-| Upload to R2 | Pushes installer archives to Cloudflare R2 CDN |
-| GitHub Release | Creates a release with auto-generated changelog (via `git-cliff`) and attached installer archives |
+| Upload to R2 | Pushes `fast` and `pro` installer archives to Cloudflare R2 CDN |
+| GitHub Release | Creates a release with auto-generated changelog and attached `fast-lite` and `pro-lite` installer archives |
 
 ## Release Process
 
@@ -116,7 +116,7 @@ Triggered by pushing a semver tag (e.g., `v0.1.0`):
    git push origin v0.1.0
    ```
 
-5. The release workflow builds all four installer tiers, uploads to R2, and creates a GitHub Release.
+5. The release workflow builds all four installer tiers, uploads full tiers (`fast`, `pro`) to R2, and uploads lite tiers (`fast-lite`, `pro-lite`) to the GitHub Release.
 
 ## Release Validation
 

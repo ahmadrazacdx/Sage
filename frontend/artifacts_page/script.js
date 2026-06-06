@@ -2,7 +2,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentVersion = "0.1.0";
     async function loadVersion() {
         try {
-            const res = await fetch("../../pyproject.toml");
+            let res = await fetch("../../pyproject.toml");
+            if (!res.ok) {
+                res = await fetch("pyproject.toml");
+            }
             if (res.ok) {
                 const text = await res.text();
                 const match = text.match(/version\s*=\s*"([^"]+)"/);
@@ -18,8 +21,8 @@ document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".download-trigger").forEach(el => {
             const tier = el.dataset.tier;
             if (tier) {
-                if (tier === "fast-lite") {
-                    el.href = `https://github.com/ahmadrazacdx/Sage/releases/download/v${currentVersion}/sage-fast-lite-${currentVersion}-windows-x86_64.zip`;
+                if (tier === "fast-lite" || tier === "pro-lite") {
+                    el.href = `https://github.com/ahmadrazacdx/Sage/releases/download/v${currentVersion}/sage-${tier}-${currentVersion}-windows-x86_64.zip`;
                 } else {
                     el.href = `https://pub-bd9548bbe1db4308b025de406732a5fa.r2.dev/vdev-ci/sage-${tier}-${currentVersion}-windows-x86_64.zip`;
                 }

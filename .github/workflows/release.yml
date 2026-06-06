@@ -112,7 +112,7 @@ jobs:
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
-        tier: [fast, pro, pro-lite]
+        tier: [fast, pro]
 
     steps:
       - uses: actions/checkout@v4
@@ -178,6 +178,7 @@ jobs:
           echo "Combined SHA256SUMS.txt:"
           cat SHA256SUMS.txt
           cp installers/installer-fast-lite/sage-fast-lite-*-windows-x86_64.zip .
+          cp installers/installer-pro-lite/sage-pro-lite-*-windows-x86_64.zip .
 
       - name: Extract Release Notes from CHANGELOG.md
         id: extract-changelog
@@ -190,5 +191,6 @@ jobs:
           body_path: release_notes.md
           files: |
             sage-fast-lite-*-windows-x86_64.zip
+            sage-pro-lite-*-windows-x86_64.zip
             SHA256SUMS.txt
           generate_release_notes: false

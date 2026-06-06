@@ -29,6 +29,10 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
+      - name: Copy pyproject.toml to pages folder
+        run: cp pyproject.toml frontend/artifacts_page/
+        shell: bash
+
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
