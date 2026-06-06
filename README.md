@@ -16,7 +16,7 @@
   </p>
 
   <p>
-    <a href="assets/FYP-Poster">Poster</a> |
+    <a href="docs/FYP-Poster.pdf">Poster</a> |
     <a href="docs/FYP-Report.pdf">Report</a> |
     <a href="docs/FYP-Slides.pptx">Slides</a> |
     <a href="https://drive.google.com/drive/folders/167ma6st-2AcG-5MyzAY6WJMMisgSZuza?usp=sharing">Data</a>
