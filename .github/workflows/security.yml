@@ -50,8 +50,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: python
       - run: uv sync --all-extras
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
