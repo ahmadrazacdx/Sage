@@ -7,7 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.1.0] - 2026-06-05
+## [0.1.0] - 2026-06-06
 
 Initial release of **Sage**, an offline-first academic assistant using Retrieval-Augmented Generation (RAG) with multi-agent orchestration via LangGraph.
 

@@ -177,19 +177,16 @@ jobs:
           path: installers
           merge-multiple: true
 
-      - name: Generate changelog
-        id: changelog
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --latest --strip header
+      - name: Extract Release Notes from CHANGELOG.md
+        id: extract-changelog
+        run: python scripts/extract_changelog.py
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          body: ${{ steps.changelog.outputs.content }}
+          body_path: release_notes.md
           files: |
             installers/**/*.zip
             installers/**/SHA256SUMS.txt
-          generate_release_notes: true
+          generate_release_notes: false
