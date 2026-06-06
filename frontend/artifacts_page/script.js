@@ -18,7 +18,11 @@ document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".download-trigger").forEach(el => {
             const tier = el.dataset.tier;
             if (tier) {
-                el.href = `https://pub-bd9548bbe1db4308b025de406732a5fa.r2.dev/vdev-ci/sage-${tier}-${currentVersion}-windows-x86_64.zip`;
+                if (tier === "fast-lite") {
+                    el.href = `https://github.com/ahmadrazacdx/Sage/releases/download/v${currentVersion}/sage-fast-lite-${currentVersion}-windows-x86_64.zip`;
+                } else {
+                    el.href = `https://pub-bd9548bbe1db4308b025de406732a5fa.r2.dev/vdev-ci/sage-${tier}-${currentVersion}-windows-x86_64.zip`;
+                }
             }
         });
         const badge = document.getElementById("version-badge");

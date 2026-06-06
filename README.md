@@ -6,20 +6,19 @@
   <p><em>An Offline-First Academic Assistant Using Retrieval Augmented Generation with Tool-Integrated Workflows</em></p>
 
   <p>
-    <a href="https://github.com/ahmadrazacdx/Sage/actions/workflows/ci.yml"><img src="https://github.com/ahmadrazacdx/Sage/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <a href="https://github.com/ahmadrazacdx/Sage/actions/workflows/release.yml"><img src="https://github.com/ahmadrazacdx/Sage/actions/workflows/release.yml/badge.svg" alt="Release Status" /></a>
-    <a href="https://codecov.io/gh/ahmadrazacdx/Sage"><img src="https://codecov.io/gh/ahmadrazacdx/Sage/branch/main/graph/badge.svg" alt="Codecov" /></a>
-    <a href="https://github.com/ahmadrazacdx/Sage/releases/latest"><img src="https://img.shields.io/github/v/release/ahmadrazacdx/Sage?style=flat-square" alt="Latest Release" /></a>
-    <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-Apache%202.0-111827?style=flat-square" alt="Apache 2.0 License" /></a>
-    <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square" alt="Python 3.12" />
-    <img src="https://img.shields.io/badge/Platform-Windows-0078D4?style=flat-square" alt="Windows" />
-  </p>
-
-  <p>
     <a href="docs/FYP-Poster.pdf">Poster</a> |
     <a href="docs/FYP-Report.pdf">Report</a> |
     <a href="docs/FYP-Slides.pptx">Slides</a> |
     <a href="https://drive.google.com/drive/folders/167ma6st-2AcG-5MyzAY6WJMMisgSZuza?usp=sharing">Data</a>
+  </p>
+
+  <p>
+    <a href="https://github.com/ahmadrazacdx/Sage/actions/workflows/ci.yml"><img src="https://github.com/ahmadrazacdx/Sage/workflows/CI/badge.svg" alt="CI" /></a>
+    <a href="https://codecov.io/gh/ahmadrazacdx/Sage"><img src="https://codecov.io/gh/ahmadrazacdx/Sage/branch/main/graph/badge.svg" alt="Codecov" /></a>
+    <a href="https://github.com/ahmadrazacdx/Sage/releases/latest"><img src="https://img.shields.io/github/v/release/ahmadrazacdx/Sage?include_prereleases&style=flat-square&label=Release" alt="Release" /></a>
+    <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-Apache%202.0-111827?style=flat-square" alt="Apache 2.0 License" /></a>
+    <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square" alt="Python 3.12" />
+    <img src="https://img.shields.io/badge/Platform-Windows-0078D4?style=flat-square" alt="Windows" />
   </p>
 
 </div>
