@@ -175,7 +175,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: installers
-          merge-multiple: true
+
+      - name: Combine SHA256SUMS
+        run: |
+          cat installers/installer-*/SHA256SUMS.txt > SHA256SUMS.txt
+          echo "Combined SHA256SUMS.txt:"
+          cat SHA256SUMS.txt
 
       - name: Extract Release Notes from CHANGELOG.md
         id: extract-changelog
@@ -187,6 +192,5 @@ jobs:
           tag_name: ${{ github.ref_name }}
           body_path: release_notes.md
           files: |
-            installers/**/*.zip
-            installers/**/SHA256SUMS.txt
+            SHA256SUMS.txt
           generate_release_notes: false
