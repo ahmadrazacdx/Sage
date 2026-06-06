@@ -3,10 +3,10 @@ import pytest
 from sage.agents.response import (
     _build_citation_map,
     _build_references_section,
-    _rewrite_citations,
-    _normalize_source_name,
-    _clean_source_name,
     _clean_metadata,
+    _clean_source_name,
+    _normalize_source_name,
+    _rewrite_citations,
     response_node,
 )
 
@@ -74,7 +74,7 @@ def test_response_extra():
             {"id": "KU1", "source_file": "S1.pdf", "claim": "C1"},
             {"id": "KU2", "source_file": "S1.pdf", "claim": "C2"},
         ],
-        {"KU1": 1, "KU2": 1}
+        {"KU1": 1, "KU2": 1},
     )
     assert refs.count("[1]") == 1
 
@@ -86,7 +86,7 @@ async def test_response_node_no_refs():
     assert "## References" not in res["response"]
     state2 = {
         "response": "Hello [1]",
-        "knowledge_units": [{"id": "", "source_file": "doc.pdf"}, {"id": "KU1", "source_file": "doc.pdf"}]
+        "knowledge_units": [{"id": "", "source_file": "doc.pdf"}, {"id": "KU1", "source_file": "doc.pdf"}],
     }
     res2 = await response_node(state2)
     assert len(res2["citations"]) == 1

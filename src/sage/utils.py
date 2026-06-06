@@ -371,7 +371,7 @@ async def ainvoke_structured_with_fallback[StructuredModelT: BaseModel](
             bound_kwargs: dict = getattr(llm, "kwargs", {})
             extra_body: dict = bound_kwargs.get("extra_body", {})
             chat_kwargs: dict = extra_body.get("chat_template_kwargs", {})
-            if chat_kwargs.get("enable_thinking") is True:
+            if "enable_thinking" in chat_kwargs:
                 prefer_raw_json = True
         except Exception:
             pass

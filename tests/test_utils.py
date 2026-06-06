@@ -198,6 +198,52 @@ async def test_ainvoke_structured_with_fallback():
         )
 
 
+@pytest.mark.asyncio
+async def test_ainvoke_autodetects_thinking_model_skips_grammar():
+    """LLMs with `enable_thinking` in kwargs (True OR False) must skip grammar mode."""
+    call_log: list[str] = []
+
+    class ThinkingLLM:
+        """Mock LLM that has enable_thinking: False (like Qwen3.5 in Sage)."""
+
+        kwargs = {
+            "extra_body": {
+                "chat_template_kwargs": {"enable_thinking": False},
+                "thinking_budget": 0,
+                "reasoning_budget": 0,
+            }
+        }
+
+        def with_structured_output(self, schema):
+            call_log.append("grammar_attempted")
+            raise ValueError("failed to initialize samplers... empty grammar stack... <think>")
+
+        async def ainvoke(self, payload):
+            call_log.append("raw_invoked")
+            return '{"name": "AutoDetected", "age": 42}'
+
+        def __or__(self, other):
+            return other
+
+    class MockPrompt:
+        def __or__(self, other):
+            return other
+
+    result = await ainvoke_structured_with_fallback(
+        prompt=MockPrompt(),
+        llm=ThinkingLLM(),
+        schema=DummySchema,
+        payload={},
+        timeout_s=5.0,
+        logger=None,
+        event_prefix="test_auto",
+    )
+    assert result.name == "AutoDetected"
+    assert result.age == 42
+    assert "grammar_attempted" not in call_log
+    assert "raw_invoked" in call_log
+
+
 def test_reasoning_math_extraction_rules():
     from sage.agents.reasoning import _extract_math_expression, _format_calculator_result
 

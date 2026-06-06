@@ -124,8 +124,15 @@ def _normalize_schedule(analysis: RoadmapAnalysis, schedule: RoadmapSchedule) ->
         norm_cp.append(Checkpoint(after_day=timeline_days, milestone="Complete the planned scope confidently"))
 
     qs = [_clean(q) for q in schedule.self_assessment_questions if _clean(q)][:3]
+    fallbacks = [
+        f"What did you improve most in {analysis.subject} during this plan?",
+        f"Which area of {analysis.subject} requires further study or practice?",
+        f"How would you explain the core concepts of {analysis.subject} to someone else?",
+    ]
+    idx = 0
     while len(qs) < 3:
-        qs.append(f"What did you improve most in {analysis.subject} during this plan?")
+        qs.append(fallbacks[idx % len(fallbacks)])
+        idx += 1
 
     return RoadmapSchedule(schedule=cleaned, checkpoints=norm_cp, self_assessment_questions=qs)
 
@@ -175,6 +182,41 @@ class ScheduleDay(BaseModel):
     activities: list[str] = Field(default_factory=list)
     knowledge_unit_refs: list[str] = Field(default_factory=list)
     checkpoint: str | dict[str, Any] | None = None
+
+    @field_validator("topics", mode="before")
+    @classmethod
+    def _coerce_topics(cls, v: Any) -> Any:
+        """Coerce topic objects (e.g. {name, difficulty}) into plain strings."""
+        if not isinstance(v, list):
+            return v
+        out: list[str] = []
+        for item in v:
+            if isinstance(item, str):
+                out.append(item)
+            elif isinstance(item, dict):
+                out.append(
+                    str(item.get("name") or item.get("topic") or item.get("label") or next(iter(item.values()), ""))
+                )
+            else:
+                out.append(str(item))
+        return out
+
+    @field_validator("activities", mode="before")
+    @classmethod
+    def _dedup_activities(cls, v: Any) -> Any:
+        """Deduplicate and cap activities to prevent repetition loops."""
+        if not isinstance(v, list):
+            return v
+        seen: set[str] = set()
+        out: list[str] = []
+        for item in v:
+            s = str(item).strip()
+            if s and s not in seen:
+                seen.add(s)
+                out.append(s)
+            if len(out) >= 6:
+                break
+        return out
 
 
 class Checkpoint(BaseModel):
@@ -229,6 +271,23 @@ class RoadmapSchedule(BaseModel):
                 out.append(item.model_dump())
             elif hasattr(item, "dict"):
                 out.append(item.dict())
+        return out
+
+    @field_validator("self_assessment_questions", mode="before")
+    @classmethod
+    def _dedup_questions(cls, v: Any) -> Any:
+        """Deduplicate and cap self-assessment questions to prevent repetition loops."""
+        if not isinstance(v, list):
+            return v
+        seen: set[str] = set()
+        out: list[str] = []
+        for item in v:
+            s = str(item).strip()
+            if s and s not in seen:
+                seen.add(s)
+                out.append(s)
+            if len(out) >= 4:
+                break
         return out
 
 
@@ -501,6 +560,8 @@ async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
             "reasoning_budget": 0,
         }
     }
+    if hasattr(llm, "copy"):
+        llm = llm.copy(update={"streaming": False})
     llm = llm.bind(**_no_think)
 
     # Analysis
@@ -525,6 +586,7 @@ async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
                 timeout_s=cfg.llm_timeout,
                 logger=log,
                 event_prefix="roadmap_analysis",
+                prefer_raw_json=True,
             )  # type: ignore
             log.info(
                 "roadmap_analysis_complete",
@@ -571,12 +633,17 @@ async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
     schedule: RoadmapSchedule | None = None
     schedule_timeout = cfg.llm_timeout * _SCHEDULE_TIMEOUT_MULTIPLIER
     last_exc = None
+    schedule_llm = llm.bind(
+        temperature=_SCHEDULE_TEMPERATURE,
+        extra_body={
+            "chat_template_kwargs": {"enable_thinking": False},
+            "thinking_budget": 0,
+            "reasoning_budget": 0,
+            "repeat_penalty": 1.3,
+        },
+    )
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            schedule_llm = llm.bind(
-                temperature=_SCHEDULE_TEMPERATURE,
-                **_no_think,
-            )
             schedule = await ainvoke_structured_with_fallback(
                 prompt=schedule_prompt,
                 llm=schedule_llm,
@@ -585,6 +652,7 @@ async def planner_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpen
                 timeout_s=schedule_timeout,
                 logger=log,
                 event_prefix="roadmap_schedule",
+                prefer_raw_json=True,
             )  # type: ignore
             log.info(
                 "roadmap_schedule_complete",
