@@ -10,6 +10,7 @@ from src.sage.tools.calculator import (
     calculator,
 )
 from src.sage.tools.export import (
+    _escape_literal_dollars,
     _generate_typst_source,
     _markdown_to_typst,
     _nonconflict_path,
@@ -175,6 +176,22 @@ def test_markdown_to_typst():
 
     with pytest.raises(ValueError, match="Unsafe Typst directive"):
         _markdown_to_typst('#include("malicious.typ")')
+
+
+def test_escape_literal_dollars():
+    assert _escape_literal_dollars("$1.8 billion") == "\\$1.8 billion"
+    assert (
+        _escape_literal_dollars("NextGen sold for $1.8 billion, while another sold for $2.5 billion.")
+        == "NextGen sold for \\$1.8 billion, while another sold for \\$2.5 billion."
+    )
+    assert _escape_literal_dollars("The price rose from $100 to $150.") == "The price rose from \\$100 to \\$150."
+    assert _escape_literal_dollars("AAPL stock ticker is $AAPL.") == "AAPL stock ticker is \\$AAPL."
+
+    assert _escape_literal_dollars("We know $a + b = c$.") == "We know $a + b = c$."
+    assert _escape_literal_dollars("Formulas: $x_1$ and $y_2$.") == "Formulas: $x_1$ and $y_2$."
+    assert _escape_literal_dollars("```\n$1.8 billion\n```") == "```\n$1.8 billion\n```"
+    assert _escape_literal_dollars("`$100` is code.") == "`$100` is code."
+    assert _escape_literal_dollars("$$\n$1.8 billion\n$$") == "$$\n$1.8 billion\n$$"
 
 
 def test_generate_typst_source():

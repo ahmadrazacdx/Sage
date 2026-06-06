@@ -17,6 +17,7 @@ def create_mock_llm(responses=None, tool_calls=None):
     llm = MagicMock(spec=ChatOpenAI)
     llm.bind.return_value = llm
     llm.bind_tools.return_value = llm
+    llm.copy.return_value = llm
     llm.ainvoke = AsyncMock()
 
     if responses:

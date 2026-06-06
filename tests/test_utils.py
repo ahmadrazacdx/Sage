@@ -192,10 +192,56 @@ async def test_ainvoke_structured_with_fallback():
     assert res3.name == "Raw"
 
     llm4 = MockLLM(fail_structured=True, think_error=False)
-    with pytest.raises(Exception, match="Structured error"):
+    with pytest.raises(ValueError, match="Unable to parse structured output"):
         await ainvoke_structured_with_fallback(
             prompt=prompt, llm=llm4, schema=DummySchema, payload={}, timeout_s=1.0, logger=logger, event_prefix="test"
         )
+
+
+@pytest.mark.asyncio
+async def test_ainvoke_autodetects_thinking_model_skips_grammar():
+    """LLMs with `enable_thinking` in kwargs (True OR False) must skip grammar mode."""
+    call_log: list[str] = []
+
+    class ThinkingLLM:
+        """Mock LLM that has enable_thinking: False (like Qwen3.5 in Sage)."""
+
+        kwargs = {
+            "extra_body": {
+                "chat_template_kwargs": {"enable_thinking": False},
+                "thinking_budget": 0,
+                "reasoning_budget": 0,
+            }
+        }
+
+        def with_structured_output(self, schema):
+            call_log.append("grammar_attempted")
+            raise ValueError("failed to initialize samplers... empty grammar stack... <think>")
+
+        async def ainvoke(self, payload):
+            call_log.append("raw_invoked")
+            return '{"name": "AutoDetected", "age": 42}'
+
+        def __or__(self, other):
+            return other
+
+    class MockPrompt:
+        def __or__(self, other):
+            return other
+
+    result = await ainvoke_structured_with_fallback(
+        prompt=MockPrompt(),
+        llm=ThinkingLLM(),
+        schema=DummySchema,
+        payload={},
+        timeout_s=5.0,
+        logger=None,
+        event_prefix="test_auto",
+    )
+    assert result.name == "AutoDetected"
+    assert result.age == 42
+    assert "grammar_attempted" not in call_log
+    assert "raw_invoked" in call_log
 
 
 def test_reasoning_math_extraction_rules():
@@ -259,3 +305,8 @@ def test_code_fix_ast_and_fences():
     assert _detect_framework_imports("import syntaxerror(") is None
     assert _detect_framework_imports("import flask") == "flask"
     assert _detect_framework_imports("from django.db import models") == "django"
+
+
+def test_parse_structured_output_validation_failure():
+    with pytest.raises(ValueError, match="Unable to parse structured output"):
+        parse_structured_output({"invalid": "data"}, DummySchema)

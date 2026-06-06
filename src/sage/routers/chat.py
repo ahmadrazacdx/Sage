@@ -22,6 +22,7 @@ Rationale:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 import uuid
@@ -528,6 +529,7 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
         thinking_in_block = False
         seen_think_marker = False
         thinking_carry = ""
+        pending_task = None
 
         try:
             event_iter = graph.astream_events(
@@ -535,7 +537,6 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
                 config=graph_config,
                 version="v2",
             ).__aiter__()
-            pending_task = None
             while True:
                 if pending_task is None:
                     pending_task = asyncio.create_task(event_iter.__anext__())
@@ -640,10 +641,24 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
             if not stream_tokens:
                 if final_state is None:
                     log.warning(
-                        "stream_missing_final_state",
+                        "stream_missing_final_state_attempting_checkpointer_recovery",
                         thread_id=thread_id,
                         intent=intent,
                     )
+                    try:
+                        snapshot = await graph.aget_state(graph_config)
+                        if (
+                            snapshot
+                            and snapshot.values
+                            and ("response" in snapshot.values or "artifact_paths" in snapshot.values)
+                        ):
+                            final_state = snapshot.values
+                            log.info("recovered_final_state_from_checkpointer", thread_id=thread_id)
+                    except Exception as e:
+                        log.warning("failed_to_get_state_from_checkpointer", error=str(e))
+
+                if final_state is None:
+                    log.warning("rerunning_graph_fallback", thread_id=thread_id)
                     final_state = await graph.ainvoke(state_input, config=graph_config)
 
                 response_text = str(final_state.get("response", "") or "")
@@ -758,6 +773,10 @@ async def stream_response(thread_id: str, request: Request) -> StreamingResponse
             yield _sse({"type": "error", "message": str(exc)[:500]})
 
         finally:
+            if pending_task is not None and not pending_task.done():
+                pending_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await pending_task
             active.pop(thread_id, None)
 
     return StreamingResponse(

@@ -739,6 +739,8 @@ def create_llm(port: int) -> ChatOpenAI:
     return llm.bind(
         extra_body={
             "chat_template_kwargs": {"enable_thinking": False},
+            "thinking_budget": 0,
+            "reasoning_budget": 0,
         }
     )
 
@@ -868,7 +870,7 @@ def create_utility_llm(port: int) -> ChatOpenAI:
         api_key="local",
         model=cfg.util_model_name,
         temperature=0.1,
-        max_tokens=512,
+        max_tokens=1024,
         streaming=False,
         timeout=60,
     )
@@ -876,5 +878,7 @@ def create_utility_llm(port: int) -> ChatOpenAI:
     return llm.bind(
         extra_body={
             "chat_template_kwargs": {"enable_thinking": False},
+            "thinking_budget": 0,
+            "reasoning_budget": 0,
         }
     )

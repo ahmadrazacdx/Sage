@@ -157,6 +157,120 @@ def _flush_refs(ref_lines: list[str], out: list[str]) -> None:
 _REF_LINE_RE = re.compile(r"^\[\d+\]\s+.+")
 
 
+def _escape_literal_dollars(text: str) -> str:
+    """Escape literal and currency dollar signs in markdown.
+
+    This prevents Typst compilation failures due to unclosed math delimiters.
+    """
+    placeholders: list[str] = []
+
+    def mask_match(match: re.Match) -> str:
+        placeholder = f"__SAGE_EXPORT_PLACEHOLDER_{len(placeholders)}__"
+        placeholders.append(match.group(0))
+        return placeholder
+
+    text = re.sub(r"```.*?```", mask_match, text, flags=re.DOTALL)
+    text = re.sub(r"`[^`\n]+`", mask_match, text)
+    text = re.sub(r"\$\$.*?\$\$", mask_match, text, flags=re.DOTALL)
+    lines = text.split("\n")
+    processed_lines = []
+    MATH_CHARS = set("+=*/^_-<>\\|{}[]")
+    CURRENCY_WORDS = {
+        "billion",
+        "million",
+        "thousand",
+        "trillion",
+        "hundred",
+        "percent",
+        "dollar",
+        "dollars",
+        "usd",
+        "eur",
+        "gbp",
+        "jpy",
+        "cny",
+        "cad",
+        "aud",
+        "revenue",
+        "profit",
+        "cost",
+        "price",
+        "valuation",
+        "acquired",
+        "funding",
+        "budget",
+        "sales",
+        "market",
+        "capital",
+        "financial",
+        "equity",
+        "debt",
+        "transaction",
+        "deal",
+    }
+
+    for line in lines:
+        indices = []
+        i = 0
+        while i < len(line):
+            if line[i] == "$":
+                if i > 0 and line[i - 1] == "\\":
+                    pass
+                else:
+                    indices.append(i)
+            i += 1
+
+        if not indices:
+            processed_lines.append(line)
+            continue
+
+        to_escape = set()
+
+        pairs = []
+        idx = 0
+        while idx < len(indices) - 1:
+            pairs.append((indices[idx], indices[idx + 1]))
+            idx += 2
+        if len(indices) % 2 != 0:
+            to_escape.add(indices[-1])
+
+        for start, end in pairs:
+            content = line[start + 1 : end]
+            is_math = True
+
+            if not content.strip():
+                is_math = False
+            else:
+                content_lower = content.lower()
+                has_currency_word = any(w in content_lower for w in CURRENCY_WORDS)
+                has_space = " " in content
+                has_math_char = any(c in content for c in MATH_CHARS)
+
+                if has_currency_word or has_space and not has_math_char or len(content) > 60:
+                    is_math = False
+
+            if not is_math:
+                to_escape.add(start)
+                to_escape.add(end)
+
+        new_line_parts = []
+        last_idx = 0
+        for idx in sorted(list(to_escape)):
+            new_line_parts.append(line[last_idx:idx])
+            new_line_parts.append("\\$")
+            last_idx = idx + 1
+        new_line_parts.append(line[last_idx:])
+
+        processed_lines.append("".join(new_line_parts))
+
+    text = "\n".join(processed_lines)
+
+    for idx, orig in enumerate(placeholders):
+        text = text.replace(f"__SAGE_EXPORT_PLACEHOLDER_{idx}__", orig)
+
+    return text
+
+
 def _markdown_to_typst(md: str) -> str:
     """Convert basic Markdown to Typst markup.
 
@@ -164,6 +278,7 @@ def _markdown_to_typst(md: str) -> str:
     """
     if _UNSAFE_RE.search(md):
         raise ValueError("Unsafe Typst directive detected in content")
+    md = _escape_literal_dollars(md)
     md = re.sub(r"\s+(\[\d+\]\s)", r"\n\1", md)
 
     lines = md.split("\n")
@@ -171,7 +286,6 @@ def _markdown_to_typst(md: str) -> str:
     pending_refs: list[str] = []
 
     for line in lines:
-        # --- Reference list lines ---
         if _REF_LINE_RE.match(line.strip()):
             pending_refs.append(line.strip())
             continue
@@ -185,16 +299,10 @@ def _markdown_to_typst(md: str) -> str:
             out_lines.append("=" * depth + " " + body)
             continue
 
-        # Code fences: pass through raw
         if line.startswith("```"):
             out_lines.append(line)
             continue
-
-        # Escape lone '#' (e.g. in reference lists "[1] Author#Year")
         line = re.sub(r"(?<!\\)#", r"\#", line)
-
-        # Bold / italic
-        # Links [text](url) to Typst #link
         line = re.sub(
             r"\[([^\]]+)\]\(([^)]+)\)",
             lambda m: f'#link("{m.group(2)}")[{m.group(1)}]',
@@ -202,7 +310,6 @@ def _markdown_to_typst(md: str) -> str:
         )
         out_lines.append(line)
 
-    # Flush any trailing refs.
     _flush_refs(pending_refs, out_lines)
 
     return "\n".join(out_lines)

@@ -148,6 +148,16 @@ async def code_fix_node(state: AgentState, llm: ChatOpenAI, *, util_llm: ChatOpe
     cfg = get_settings().agent
     query: str = state.get("query", "").strip()
     t_start = time.perf_counter()
+    _no_think = {
+        "extra_body": {
+            "chat_template_kwargs": {"enable_thinking": False},
+            "thinking_budget": 0,
+            "reasoning_budget": 0,
+        }
+    }
+    llm = llm.bind(**_no_think)
+    if util_llm is not None:
+        util_llm = util_llm.bind(**_no_think)
 
     if not query:
         res_text = "I was unable to diagnose the code issue. Please provide the error message and relevant code."

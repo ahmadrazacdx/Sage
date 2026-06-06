@@ -223,14 +223,16 @@ DIAGRAM_MERMAID_PROMPT: str = textwrap.dedent("""\
     1. Line 1: diagram type + direction (e.g. flowchart TD).
     2. Node IDs: MUST exactly match the snake_case `id` from the description (e.g. start_node). \
        NEVER invent short IDs like A, B, C.
-    3. Quote labels with special chars using double quotes.
+    3. Node syntax: node_id["Label Text"]. You MUST wrap the label text in double quotes if it \
+       contains special characters (<, >, [, ]). NEVER nest double quotes or duplicate the node ID inside the label.
     4. Decision nodes: {label?} diamond syntax.
     5. subgraph NAME ["Display Label"] when 3+ nodes share a phase. Subgraphs MUST contain ONLY node definitions.
     6. Edge chaining (e.g. node_a --> node_b --> node_c) is highly encouraged to keep the \
        diagram logically clean and prevent orphan nodes. NEVER use & fan-out.
     7. Dashed edges for feedback/recurrent: -.->, solid for normal: -->
     8. Define ALL edges outside/below the subgraphs. NEVER define edges inside subgraphs to prevent duplication.
-    9. Return ONLY the raw Mermaid code inside a `mermaid fenced block, with no explanation.
+    9. NEVER append classes to nodes using ::: syntax (e.g. node_id:::class is FORBIDDEN).
+    10. Return ONLY the raw Mermaid code inside a ```mermaid fenced block, with no explanation.
 
     EXAMPLE (bare structure, every edge on its own line):
     flowchart TD
@@ -325,7 +327,7 @@ ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
     1. Strict prerequisite order — never place a topic before its dependencies.
     2. Spaced repetition: open every study day with a 20–30 min recap of the prior day.
     3. Cap new material at 4 h/day.
-    4. Final 2 days = revision + practice tests only (session_type "revision").
+    4. Final day = revision + practice tests only (session_type "revision").
     5. known_topics → session_type "review", ≤30 min, not a full study block.
     6. Give proportionally more time to weak_topics and difficulty=3 topics.
     7. Insert a checkpoint every 3–4 days: "By Day N you should be able to …"
@@ -333,9 +335,18 @@ ROADMAP_SCHEDULE_PROMPT: str = textwrap.dedent("""\
     9. End with exactly 3 self_assessment_questions spanning the full scope.
    10. checkpoints must be objects with keys: after_day (int), milestone (str). NEVER return checkpoint strings.
 
+    ## CRITICAL OUTPUT CONSTRAINTS
+    - activities: MUST be highly actionable and specific (e.g. "Implement binary search \
+    in Python"). NEVER use vague phrases. Max 4-5 unique items per day. NEVER repeat an activity.
+    - self_assessment_questions: MUST be highly specific technical questions testing the \
+    material (e.g. "What is the time complexity of X?"). NEVER write generic questions.
+    - topics MUST be plain strings like ["Python Basics", "Data Structures"]. \
+    NEVER output objects like {{"name":"...","difficulty":1}}.
+    - Keep the entire JSON compact. Do NOT pad or repeat content.
+
     Return JSON only — no fences, no commentary:
     {{"schedule":[{{"day":1,"session_type":"study|review|revision|assessment",
-    "topics":["..."],"hours":3.0,"activities":["..."],
+    "topics":["Topic Name"],"hours":3.0,"activities":["Activity 1","Activity 2"],
     "knowledge_unit_refs":["KU1"],"checkpoint":null}}],
     "checkpoints":[{{"after_day":4,"milestone":"..."}}],
     "self_assessment_questions":["...","...","..."]}}

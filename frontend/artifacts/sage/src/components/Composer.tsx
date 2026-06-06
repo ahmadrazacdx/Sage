@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Plus, ChevronRight, Check, X, Square, Timer } from "lucide-react";
+import { SendHorizontal, Plus, ChevronRight, Check, X, Square, Timer } from "lucide-react";
 import { SAGE_MODES, type SageMode, cn } from "@/lib/utils";
 import { useGetCourses } from "@workspace/api-client-react";
 
@@ -49,7 +49,7 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
   const selectorRef = useRef<HTMLDivElement>(null);
 
   const { data: coursesData } = useGetCourses();
-  const courses = [{ value: "all", label: "Default" }, ...(coursesData?.courses || []).map((courseCode) => ({ value: courseCode, label: courseCode }))];
+  const courses = [{ value: "all", label: "All" }, ...(coursesData?.courses || []).map((courseCode) => ({ value: courseCode, label: courseCode }))];
 
   const currentModeObj = SAGE_MODES.find(m => m.id === mode)!;
   const isComposerDisabled = disabled || isStreaming;
@@ -122,15 +122,21 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
   const setModeAndNotify = (nextMode: SageMode) => {
     setMode(nextMode);
     onModeChange?.(nextMode);
-    setModeSelectorOpen(false);
-    setCoursesOpen(false);
+    
+    const supportsCourses = ["explain", "quiz", "roadmap"].includes(nextMode);
+    if (supportsCourses) {
+      setCoursesOpen(true);
+    } else {
+      setModeSelectorOpen(false);
+      setCoursesOpen(false);
+    }
   };
 
   const clearModeSelection = () => {
     setModeAndNotify("general");
   };
 
-  const selectedCourseLabel = courses.find((courseOption) => courseOption.value === course)?.label ?? "Default";
+  const selectedCourseLabel = courses.find((courseOption) => courseOption.value === course)?.label ?? "All";
 
   const setCourseAndClose = (nextCourse: string) => {
     setCourse(nextCourse);
@@ -139,37 +145,57 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
   };
 
   return (
-    <div className="relative w-full max-w-[980px] mx-auto px-4 md:px-8">
-      <div className="flex items-center gap-2 mb-2 px-1">
-        <div className="inline-flex items-center gap-1.5 bg-sidebar border border-sidebar-border rounded-full px-2.5 py-1 text-xs text-foreground/90">
-          <span className="text-muted-foreground">Mode:</span>
-          <span className="font-medium">{currentModeObj.icon} {currentModeObj.name}</span>
-          {mode === "diagram" && isDiagramOnCooldown && (
-            <span className="ml-1 text-[10px] text-warning font-mono tabular-nums" title="Diagram cooldown active">
-              <Timer className="inline w-3 h-3 mr-0.5 -mt-px" />
-              {formatCooldown(diagramCooldown)}
-            </span>
-          )}
-          {mode !== "general" && (
-            <button
-              type="button"
-              onClick={clearModeSelection}
-              disabled={isComposerDisabled}
-              className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Clear mode"
-              aria-label="Clear mode"
-            >
-              <X className="w-3 h-3" />
-            </button>
+    <div className="relative w-full max-w-[750px] mx-auto px-4 md:px-8">
+      <div className="flex items-center justify-between mb-2 px-1">
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-1.5 bg-sidebar border border-sidebar-border rounded-full px-2.5 py-1 text-xs text-foreground/90">
+            <span className="text-muted-foreground">Mode:</span>
+            <span className="font-medium">{currentModeObj.icon} {currentModeObj.name}</span>
+            {mode === "diagram" && isDiagramOnCooldown && (
+              <span className="ml-1 text-[10px] text-warning font-mono tabular-nums" title="Diagram cooldown active">
+                <Timer className="inline w-3 h-3 mr-0.5 -mt-px" />
+                {formatCooldown(diagramCooldown)}
+              </span>
+            )}
+            {mode !== "general" && (
+              <button
+                type="button"
+                onClick={clearModeSelection}
+                disabled={isComposerDisabled}
+                className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Clear mode"
+                aria-label="Clear mode"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {["explain", "quiz", "roadmap"].includes(mode) && (
+            <div className="inline-flex items-center gap-1.5 bg-sidebar border border-sidebar-border rounded-full px-2.5 py-1 text-xs text-foreground/90">
+              <span className="text-muted-foreground">Course:</span>
+              <span className="font-medium">{selectedCourseLabel}</span>
+            </div>
           )}
         </div>
 
-        {!["research", "fix", "diagram", "thinking"].includes(mode) && (
-          <div className="inline-flex items-center gap-1.5 bg-sidebar border border-sidebar-border rounded-full px-2.5 py-1 text-xs text-foreground/90">
-            <span className="text-muted-foreground">Course:</span>
-            <span className="font-medium">{selectedCourseLabel}</span>
-          </div>
-        )}
+        <AnimatePresence>
+          {message.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.1 }}
+              className={cn(
+                "inline-flex items-center gap-1.5 bg-sidebar border rounded-full px-2.5 py-1 text-xs",
+                message.length > 2200 ? "border-error/50 text-error" : "border-sidebar-border text-foreground/90"
+              )}
+            >
+              <span className="text-muted-foreground">Length:</span>
+              <span className="font-semibold">{message.length}/2200</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="relative">
@@ -186,14 +212,11 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
             disabled={isComposerDisabled}
             placeholder={currentModeObj.placeholder}
             maxLength={2200}
-            className="flex-1 max-h-[200px] min-h-[24px] py-4 pl-4 bg-transparent text-foreground placeholder:text-muted-foreground outline-none resize-none overflow-y-auto"
+            className="flex-1 max-h-[200px] min-h-[24px] py-3 pl-4 pr-2 bg-transparent text-foreground placeholder:text-muted-foreground outline-none resize-none overflow-y-auto"
             rows={1}
           />
 
-          <div className="flex flex-col items-center justify-end p-2 gap-1 pb-3">
-            <span className={cn("text-[10px] font-medium px-1", message.length > 2200 ? "text-error" : "text-muted-foreground/60")}>
-              {message.length > 0 && `${message.length}/2200`}
-            </span>
+          <div className="flex items-center justify-end p-1.5 pr-2.5 pb-1.5">
             <button
               onClick={() => {
                 if (isStreaming) {
@@ -210,26 +233,42 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
                 "flex items-center justify-center w-10 h-10 rounded-full transition-all shadow-md",
                 isStreaming
                   ? "bg-destructive text-destructive-foreground hover:opacity-90"
-                  : "bg-accent text-accent-foreground hover:bg-white hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed"
               )}
             >
-              {isStreaming ? <Square className="w-4 h-4 fill-current" /> : <Send className="w-5 h-5 ml-0.5" />}
+              {isStreaming ? <Square className="w-4 h-4 fill-current" /> : <SendHorizontal className="w-5 h-5 ml-0.5" />}
             </button>
           </div>
         </div>
 
         <div className="absolute left-0 top-1/2 -translate-x-[calc(100%+8px)] -translate-y-1/2" ref={selectorRef}>
-          <button
-            onClick={() => {
-              if (isComposerDisabled) return;
-              setModeSelectorOpen((prev) => !prev);
-              if (modeSelectorOpen) setCoursesOpen(false);
-            }}
-            disabled={isComposerDisabled}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-input border border-border hover:bg-primary hover:border-primary text-muted-foreground hover:text-primary-foreground transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          <div className={cn(
+            "relative w-10 h-10 flex items-center justify-center transition-all duration-200",
+            isComposerDisabled ? "opacity-50" : "group hover:scale-110 active:scale-95 cursor-pointer"
+          )}>
+            {!isComposerDisabled && !modeSelectorOpen && (
+              <div className="absolute inset-0 rounded-full bg-[conic-gradient(from_0deg,transparent_70%,hsl(var(--primary))_100%)] animate-spin" style={{ animationDuration: "3s" }} />
+            )}
+
+            <button
+              onClick={() => {
+                if (isComposerDisabled) return;
+                setModeSelectorOpen((prev) => !prev);
+                if (modeSelectorOpen) setCoursesOpen(false);
+              }}
+              disabled={isComposerDisabled}
+              className={cn(
+                "absolute inset-[1.5px] rounded-full flex items-center justify-center transition-all duration-200",
+                isComposerDisabled
+                  ? "bg-input text-muted-foreground border border-border"
+                  : modeSelectorOpen
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-input text-muted-foreground group-hover:text-foreground"
+              )}
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
 
           <AnimatePresence>
             {modeSelectorOpen && (
@@ -238,38 +277,47 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute bottom-14 left-0 w-52 bg-sidebar border border-sidebar-border rounded-xl shadow-2xl overflow-visible z-50 py-1"
+                className="absolute bottom-14 left-0 w-52 bg-sidebar/85 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl overflow-visible z-50 py-1.5"
               >
-                {SAGE_MODES.map((m) => {
-                  const isCoolingDiagram = m.id === "diagram" && isDiagramOnCooldown;
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => { if (!isCoolingDiagram) setModeAndNotify(m.id as SageMode); }}
-                      disabled={isCoolingDiagram}
-                      className={cn(
-                        "flex items-center gap-3 w-full px-3 py-2.5 text-sm text-left transition-colors",
-                        isCoolingDiagram
-                          ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                          : mode === m.id ? "bg-primary/10 text-primary" : "text-foreground hover:bg-white/5"
-                      )}
-                    >
-                      <span className="text-base">{m.icon}</span>
-                      <span className="font-medium">{m.name}</span>
-                      {isCoolingDiagram && (
-                        <span className="ml-auto text-[10px] font-mono tabular-nums text-warning flex items-center gap-1">
-                          <Timer className="w-3 h-3" />
-                          {formatCooldown(diagramCooldown)}
+                <div className="max-h-[136px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex flex-col gap-0.5 py-0.5">
+                  {SAGE_MODES.map((m) => {
+                    const isCoolingDiagram = m.id === "diagram" && isDiagramOnCooldown;
+                    const isSelected = mode === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => { if (!isCoolingDiagram) setModeAndNotify(m.id as SageMode); }}
+                        disabled={isCoolingDiagram}
+                        className={cn(
+                          "mx-1.5 w-[calc(100%-12px)] rounded-xl px-2.5 py-1.5 flex items-center gap-3 text-left transition-all duration-200 shrink-0",
+                          isCoolingDiagram
+                            ? "opacity-40 cursor-not-allowed text-muted-foreground"
+                            : isSelected
+                              ? "bg-primary/10 text-primary border border-primary/20 font-semibold"
+                              : "text-foreground hover:bg-white/[0.06] hover:translate-x-0.5"
+                        )}
+                      >
+                        <span className="text-base bg-white/[0.04] p-1.5 rounded-lg border border-white/5 shrink-0 flex items-center justify-center w-8 h-8">
+                          {m.icon}
                         </span>
-                      )}
-                      {!isCoolingDiagram && mode === m.id && <Check className="w-3.5 h-3.5 ml-auto" />}
-                    </button>
-                  );
-                })}
+                        <span className="font-semibold text-xs text-foreground/90 flex-1">{m.name}</span>
+                        {isCoolingDiagram && (
+                          <span className="ml-auto text-[10px] font-mono tabular-nums text-warning flex items-center gap-1 shrink-0">
+                            <Timer className="w-3 h-3" />
+                            {formatCooldown(diagramCooldown)}
+                          </span>
+                        )}
+                        {!isCoolingDiagram && isSelected && (
+                          <Check className="w-3.5 h-3.5 ml-auto text-primary shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
 
-                <div className="h-px bg-sidebar-border my-1" />
+                <div className="h-px bg-white/5 my-1" />
 
-                {!["research", "fix", "diagram", "thinking"].includes(mode) && (
+                {["explain", "quiz", "roadmap"].includes(mode) && (
                   <div
                     className="relative"
                     onMouseEnter={(e) => {
@@ -282,11 +330,13 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
                   >
                     <button
                       type="button"
-                      className="flex items-center gap-3 w-full px-3 py-2.5 text-sm text-left transition-colors text-foreground hover:bg-white/5"
+                      className="mx-1.5 w-[calc(100%-12px)] rounded-xl px-2.5 py-1.5 flex items-center gap-3 text-left transition-all duration-200 hover:bg-white/[0.06] hover:translate-x-0.5 text-foreground"
                     >
-                      <span className="text-base">📚</span>
-                      <span className="font-medium">Courses</span>
-                      <ChevronRight className="w-3.5 h-3.5 ml-auto" />
+                      <span className="text-base bg-white/[0.04] p-1.5 rounded-lg border border-white/5 shrink-0 flex items-center justify-center w-8 h-8">
+                        📚
+                      </span>
+                      <span className="font-semibold text-xs text-foreground/90 flex-1">Courses</span>
+                      <ChevronRight className="w-3.5 h-3.5 ml-auto text-muted-foreground/50 shrink-0" />
                     </button>
 
                     <AnimatePresence>
@@ -297,7 +347,7 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
                           exit={{ opacity: 0, x: 8, scale: 0.98 }}
                           transition={{ duration: 0.12 }}
                           className={cn(
-                            "absolute left-full ml-2 w-48 max-h-[11rem] overflow-y-auto custom-scrollbar pr-1 bg-sidebar border border-sidebar-border rounded-xl shadow-2xl py-1",
+                            "absolute left-full ml-2 w-48 max-h-[11rem] overflow-y-auto custom-scrollbar pr-1 bg-sidebar/90 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl py-1.5 z-50",
                             coursesOpenUpward ? "bottom-0" : "top-0"
                           )}
                         >
@@ -306,14 +356,14 @@ export function Composer({ onSend, onStopStreaming, disabled, isStreaming = fals
                               key={courseOption.value}
                               onClick={() => setCourseAndClose(courseOption.value)}
                               className={cn(
-                                "flex items-center w-full px-3 py-2 text-sm text-left transition-colors",
+                                "mx-1.5 w-[calc(100%-12px)] rounded-lg px-2.5 py-1.5 flex items-center justify-between text-xs transition-all duration-200 hover:translate-x-0.5",
                                 course === courseOption.value
-                                  ? "bg-primary/10 text-primary"
-                                  : "text-foreground hover:bg-white/5"
+                                  ? "bg-primary/10 text-primary border border-primary/20 font-semibold"
+                                  : "text-foreground hover:bg-white/[0.06]"
                               )}
                             >
-                              <span>{courseOption.label}</span>
-                              {course === courseOption.value && <Check className="w-3.5 h-3.5 ml-auto" />}
+                              <span className="truncate">{courseOption.label}</span>
+                              {course === courseOption.value && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
                             </button>
                           ))}
                         </motion.div>
